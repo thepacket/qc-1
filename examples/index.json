@@ -13,6 +13,22 @@
    {
     "file": "magic_state.qasm",
     "label": "Magic state |H⟩ = T|+⟩ (1q)"
+   },
+   {
+    "file": "interference.qasm",
+    "label": "Interference: H·H and a hidden phase (2q)"
+   },
+   {
+    "file": "mach_zehnder.qasm",
+    "label": "Mach–Zehnder interferometer (1q)"
+   },
+   {
+    "file": "measurement_collapse.qasm",
+    "label": "Measurement collapse (2q)"
+   },
+   {
+    "file": "quantum_eraser.qasm",
+    "label": "Quantum eraser (4q)"
    }
   ]
  },
@@ -111,6 +127,14 @@
    {
     "file": "no_cloning_witness.qasm",
     "label": "No-cloning witness (2q)"
+   },
+   {
+    "file": "quantum_zeno.qasm",
+    "label": "Quantum Zeno effect (2q)"
+   },
+   {
+    "file": "deferred_measurement.qasm",
+    "label": "Deferred measurement (6q)"
    }
   ]
  },
@@ -240,6 +264,14 @@
    {
     "file": "quantum_random_walk_cycle.qasm",
     "label": "Quantum walk on 4-cycle (3q)"
+   },
+   {
+    "file": "hhl_2x2.qasm",
+    "label": "HHL linear solver, 2×2 (4q)"
+   },
+   {
+    "file": "quantum_counting.qasm",
+    "label": "Quantum counting, N = 4 (5q)"
    }
   ]
  },
@@ -285,6 +317,10 @@
    {
     "file": "surface_code_logical_ops.qasm",
     "label": "Surface code logical ops, [[4,2,2]] (6q)"
+   },
+   {
+    "file": "bitflip_correct.qasm",
+    "label": "Bit-flip code with correction (6q)"
    }
   ]
  },
@@ -323,6 +359,26 @@
    {
     "file": "toffoli_decomposition.qasm",
     "label": "Toffoli → 1- and 2-qubit gates (3q)"
+   },
+   {
+    "file": "decomp_cz.qasm",
+    "label": "CZ from CX and H (2q)"
+   },
+   {
+    "file": "decomp_swap.qasm",
+    "label": "SWAP from three CX (2q)"
+   },
+   {
+    "file": "decomp_iswap.qasm",
+    "label": "iSWAP from two CX (2q)"
+   },
+   {
+    "file": "decomp_controlled_u.qasm",
+    "label": "Controlled-U, ABC construction (2q)"
+   },
+   {
+    "file": "decomp_sqrt_t.qasm",
+    "label": "√T from Clifford+T (2q)"
    }
   ]
  },
@@ -381,6 +437,36 @@
    {
     "file": "ghz_metrology_3q.qasm",
     "label": "GHZ Ramsey metrology, Heisenberg scaling (3q)"
+   }
+  ]
+ },
+ {
+  "label": "Noise",
+  "items": [
+   {
+    "file": "hahn_echo.qasm",
+    "label": "Hahn echo vs Ramsey (2q)"
+   },
+   {
+    "file": "mirror_circuit.qasm",
+    "label": "Mirror circuit (3q)"
+   }
+  ]
+ },
+ {
+  "label": "Large (stabilizer mode)",
+  "items": [
+   {
+    "file": "ghz_100q.qasm",
+    "label": "GHZ state (100q)"
+   },
+   {
+    "file": "cluster_64q.qasm",
+    "label": "Linear cluster state (64q)"
+   },
+   {
+    "file": "repetition_code_49q.qasm",
+    "label": "Repetition code, 25 data + 24 syndrome (49q)"
    }
   ]
  },

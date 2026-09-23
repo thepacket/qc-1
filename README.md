@@ -28,7 +28,7 @@ install to your home screen, and it works offline.
   benchmarking (RB, QV, XEB, T1/T2, tomography…) and verification.
 - **Noise** with Qiskit Aer's conventions: exact density matrices or
   trajectories, ZNE and PEC, device calibration import.
-- **Import and export**: OpenQASM 2/3 import, 101 example programs (each can be
+- **Import and export**: OpenQASM 2/3 import, 120 example programs (each can be
   stepped through with its comments), OpenQASM 3 and Qiskit (Python) export,
   share links and QR codes.
 
@@ -38,7 +38,8 @@ Every simulation path and analysis is checked against Qiskit, Qiskit Aer,
 numpy or scipy references. Examples:
 - exact statevectors and unitaries, global phase included;
 - density matrices built from Aer's error channels;
-- the 101 examples read by Qiskit;
+- the 120 examples read by Qiskit (the three above 20 qubits as
+  stabilizer states);
 - the generated Qiskit scripts executed;
 - stabilizer states up to 200 qubits.
 

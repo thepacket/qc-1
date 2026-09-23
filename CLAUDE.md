@@ -118,7 +118,7 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
     - Symbols keep any name (`t_` → `t`).
     - Integer ratios are read as real divisions.
   - Security: `sim/expr.ts` `isSafeExpr` gates `new Function` (bug #20). `share.ts` builds `#q=` base64url QASM plus `&v=` symbol values; App opens such links as an undoable replace.
-  - `examples/` holds the 93 upstream programs without the brand, plus 8 QC-1 animations (`anim_*`, added later; their claims are checked in `test/examples-anim.test.ts`); `index.json` gives the 10 categories. `src/examples.ts` loads them lazily through `import.meta.glob`.
+  - `examples/` holds the 93 upstream programs without the brand, plus QC-1's own: 8 animations (`anim_*`) and 19 more (intro, decompositions, error correction with IF, HHL, counting, noise, and three above 20 qubits in stabilizer mode). Their physics claims are checked in `test/examples-anim.test.ts` and `test/examples-claims.test.ts`; the examples fixture checks programs above 20 qubits as stabilizer generators against Qiskit's StabilizerState; `index.json` gives the 10 categories. `src/examples.ts` loads them lazily through `import.meta.glob`.
   - TAPE ≡ menu: Examples, Import QASM (paste or file), Copy QASM, Share QASM file, Share link.
   - Fixtures:
     - `classical`: independent interpreter, branch enumerator, and Aer counts at 5σ.

@@ -12,7 +12,10 @@ none of which changes the program:
 Symbols are bound to the same values as QC-1. Programs whose measurements
 are all final compare statevectors with them removed (exact, global phase
 included); dynamic ones compare every measurement history (enumerator from
-g_classical). QC-1's re-export of its import must also load in Qiskit.
+g_classical). Programs above 20 qubits run in QC-1's stabilizer mode: every
+QC-1 generator must have expectation +1 in Qiskit's StabilizerState of the
+program (final measurements removed), and the n generators must be
+independent. QC-1's re-export of its import must also load in Qiskit.
 """
 import json
 import re
@@ -26,6 +29,9 @@ from qiskit.quantum_info import Statevector
 
 from common import OUT, cvec, fail, r, write_fixture
 from g_classical import branches
+from g_stabilizer import clifford_of
+from g_tools import gf2_rank
+from qiskit.quantum_info import Pauli, StabilizerState
 
 LIBRARY = {
     "rzz": (RZZGate, 1, 2), "rxx": (RXXGate, 1, 2), "ryy": (RYYGate, 1, 2), "rzx": (RZXGate, 1, 2),
@@ -155,7 +161,18 @@ def main():
         if qc.num_qubits != c["n"]:
             fail(f"examples {c['file']}: {qc.num_qubits} qubits vs QC-1 {c['n']}")
         entry = {"id": c["id"], "file": c["file"], "n": c["n"], "kind": c["kind"], "scope": c["scope"]}
-        if c["kind"] == "state":
+        if c["kind"] == "stabilizer":
+            st = StabilizerState(clifford_of(qc.remove_final_measurements(inplace=False)))
+            for g in c["generators"]:
+                # QC-1 labels are big-endian (qubit 0 first); Qiskit's Pauli labels are little-endian.
+                ev = st.expectation_value(Pauli(("-" if g[0] == "-" else "") + g[1:][::-1]))
+                if abs(ev - 1) > 1e-12:
+                    fail(f"examples {c['file']}: <{g[:16]}…> = {ev}")
+            bits = [[1 if p in "XY" else 0 for p in g[1:]] + [1 if p in "ZY" else 0 for p in g[1:]] for g in c["generators"]]
+            if gf2_rank(bits) != c["n"]:
+                fail(f"examples {c['file']}: generators not independent")
+            entry["generators"] = c["generators"]
+        elif c["kind"] == "state":
             ref = Statevector(qc.remove_final_measurements(inplace=False)).reverse_qargs().data
             mine = np.array(c["state"][0::2]) + 1j * np.array(c["state"][1::2])
             err = float(np.max(np.abs(ref - mine)))

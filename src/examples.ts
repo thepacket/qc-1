@@ -26,6 +26,21 @@ export function describeProgram(text: string): string {
     else if (line === "") { if (out.length) out.push(""); }
     else if (out.length) break;
   }
-  return out.join("\n").trim();
+  return reflow(out.join("\n").trim());
+}
+
+/**
+ * Join a comment's hard-wrapped lines into paragraphs. A line stays on its
+ * own after a blank line, or when it is indented or starts a list item.
+ */
+export function reflow(text: string): string {
+  const out: string[] = [];
+  for (const line of text.split("\n")) {
+    const prev = out[out.length - 1];
+    const own = line === "" || prev === undefined || prev === "" || /^(\s|[-•*]\s|\d+[.)]\s)/.test(line);
+    if (own) out.push(line);
+    else out[out.length - 1] = `${prev} ${line}`;
+  }
+  return out.join("\n");
 }
 

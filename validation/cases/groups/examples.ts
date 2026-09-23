@@ -2,7 +2,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { importQasm } from "../../../src/qasm/import";
 import { exportQasm3 } from "../../../src/qasm/fromTape";
 import { setCustomGates } from "../../../src/calc/custom";
-import { Register } from "../../../src/calc/register";
+import { MAX_QUBITS, Register } from "../../../src/calc/register";
+import { StabilizerRegister } from "../../../src/stab/register";
 import { branchTree } from "../../../src/calc/branches";
 import { MEASURE_IDS, NONUNITARY, type Entry } from "../../../src/calc/steps";
 
@@ -37,9 +38,16 @@ export function compute(file: string) {
   setCustomGates([]);
   const r = importQasm(src);
   setCustomGates(r.gates);
-  const syms = new Register(r.n, r.tape).symbols();
+  const syms = r.n > MAX_QUBITS ? [] : new Register(r.n, r.tape).symbols();
   const scope = bindings(syms);
   const exported = exportQasm3(r.n, r.tape);
+  if (r.n > MAX_QUBITS) {
+    // Stabilizer mode: the generators of the state before the final measurements.
+    if (!finalMeasurementsOnly(r.tape)) throw new Error(`${file}: above ${MAX_QUBITS} qubits, only final measurements are validated`);
+    const unitary = r.tape.map((e) => e.filter((s) => s.gateId !== "measure")).filter((e) => e.length);
+    const generators = new StabilizerRegister(r.n, unitary).tab.stabilizers();
+    return { file, n: r.n, symbols: syms, scope, kind: "stabilizer" as const, generators, exported, notes: r.notes };
+  }
   if (finalMeasurementsOnly(r.tape)) {
     const unitary = r.tape.map((e) => e.filter((s) => s.gateId !== "measure")).filter((e) => e.length);
     return { file, n: r.n, symbols: syms, scope, kind: "state" as const, state: Array.from(new Register(r.n, unitary, scope).state), exported, notes: r.notes };

@@ -4,6 +4,7 @@ import { Calculator } from "../src/calc/calculator";
 import { InlineEngine } from "../src/calc/engine";
 import { importQasm } from "../src/qasm/import";
 import { stepCaptions } from "../src/qasm/captions";
+import { describeProgram } from "../src/examples";
 
 const example = (f: string) => readFileSync(`examples/${f}`, "utf8");
 
@@ -75,5 +76,20 @@ describe("step-through guide", () => {
     c.loadQasm(example("bell.qasm"), "bell", {}, { title: "Bell", intro: "" });
     c.loadQasm(example("bell.qasm"), "bell");
     expect(c.activeGuide).toBeNull();
+  });
+});
+
+describe("example descriptions", () => {
+  test("hard-wrapped comment lines join into paragraphs; lists and indented lines stay", () => {
+    const src = `// First line of a paragraph
+// that continues here.
+//
+//   q[0]: indented stays
+//   q[1]: on its own line
+// 1. a list item
+// 2. another
+
+OPENQASM 3.0;`;
+    expect(describeProgram(src)).toBe("First line of a paragraph that continues here.\n\n  q[0]: indented stays\n  q[1]: on its own line\n1. a list item\n2. another");
   });
 });

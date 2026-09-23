@@ -4,7 +4,7 @@ import { layoutTape, usedQubits, type Placed } from "../calc/diagram";
 import { gateLabel, MEASURE_IDS } from "../calc/steps";
 
 /** Diagram limits: beyond these the LIST pane is the readable form. */
-export const DIAGRAM_MAX_QUBITS = 32;
+export const DIAGRAM_MAX_QUBITS = 128; // wires; the pane scrolls both ways
 const MAX_STEPS = 4000;
 
 const ROW = 24; // wire spacing
@@ -44,9 +44,10 @@ export function CircuitView({ calc }: { calc: Calculator }) {
   useEffect(() => {
     const el = box.current;
     if (!el || !geo) return;
-    const cx = curCol >= 0 ? geo.x[curCol] + geo.w[curCol] / 2 : geo.x[geo.x.length - 1];
+    // The current step's column; before the first step, the start.
+    const cx = curCol >= 0 ? geo.x[curCol] + geo.w[curCol] / 2 : at === 0 ? 0 : geo.x[geo.x.length - 1];
     if (cx < el.scrollLeft + 20 || cx > el.scrollLeft + el.clientWidth - 20) el.scrollLeft = cx - el.clientWidth / 2;
-  }, [curCol, geo]);
+  }, [curCol, geo, at]);
 
   if (tape.length === 0) return <div className="rows dim">empty: key some gates</div>;
   if (!lay || !geo) {

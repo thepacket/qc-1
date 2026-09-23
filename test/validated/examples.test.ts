@@ -4,8 +4,12 @@ import { loadFixture, maxDiff, type CVec } from "./fixtures";
 
 // References: Qiskit's reading of each ORIGINAL example file (normalised only
 // where its importer needs it), at the same symbol values
-// (validation/ref/g_examples.py).
-type Ex = { file: string; n: number; kind: "state" | "branches"; state?: CVec; top?: [number, number, number][]; branches?: { path: string; p: number }[] };
+// (validation/ref/g_examples.py). Above 20 qubits: the stabilizer tableau's
+// generators, each checked against Qiskit's StabilizerState.
+type Ex = {
+  file: string; n: number; kind: "state" | "branches" | "stabilizer";
+  state?: CVec; top?: [number, number, number][]; branches?: { path: string; p: number }[]; generators?: string[];
+};
 const fx = loadFixture<Ex>("examples");
 
 describe(`examples (vs ${fx.meta.reference})`, () => {
@@ -20,6 +24,9 @@ describe(`examples (vs ${fx.meta.reference})`, () => {
         expect(st[2 * i]).toBeCloseTo(re, 9);
         expect(st[2 * i + 1]).toBeCloseTo(im, 9);
       }
+    } else if (mine.kind === "stabilizer") {
+      // Qiskit checked each generator (expectation +1) and their independence.
+      expect(mine.generators).toEqual(c.generators);
     } else {
       expect(mine.branches.map((b) => b.path)).toEqual(c.branches!.map((b) => b.path));
       mine.branches.forEach((b, i) => expect(b.p).toBeCloseTo(c.branches![i].p, 9));
