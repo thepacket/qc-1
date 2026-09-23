@@ -1,0 +1,161 @@
+"""Phase 6 references: circuit tools and circuit resources.
+
+For every case and every tool (optimise, deep optimise, transpile to three
+targets, routing onto line/ring coupling maps, compile, inverse) Qiskit
+imports QC-1's QASM export of the input and of the tool's output and checks:
+
+  * the operator is kept, up to a global phase: U_out = e^{iφ} P·U_in, with P
+    the routing permutation (identity otherwise); the inverse must give
+    U_out = e^{iφ} U_in†. Every tool must pass, and QC-1's own in-app verdict
+    (src/calc/equiv.ts) must agree;
+  * for transpilation, the number of instructions outside the target basis
+    equals QC-1's count (gates the transpiler reports as skipped);
+  * circuit resources match Qiskit's definitions: size, depth, 1/2/multi-
+    qubit counts, T count, T-depth (depth filtered to T/T†), CX count,
+    Clifford count (each instruction's Operator conjugates X_q, Z_q to a
+    single Pauli; decided with SparsePauliOp.from_operator), parameterized
+    instructions, and the busiest qubit.
+"""
+import numpy as np
+from qiskit import qasm3
+from qiskit.quantum_info import Operator, SparsePauliOp
+
+from common import fail, load_cases, write_fixture
+
+EQ_TOL = 1e-8
+NATIVE = {
+    "clifford-t": {"id", "x", "y", "z", "h", "s", "sdg", "t", "tdg", "cx"},
+    "ibm-heavy-hex": {"id", "rz", "sx", "cx"},
+    "rigetti": {"id", "rz", "cz"},
+}
+TARGET = {"transpile-clifford-t": "clifford-t", "transpile-ibm-heavy-hex": "ibm-heavy-hex",
+          "transpile-rigetti": "rigetti", "compile-ibm-line": "ibm-heavy-hex"}
+
+
+def be_unitary(qc):
+    return Operator(qc).reverse_qargs().data
+
+
+def perm_matrix(n, perm):
+    """Big-endian: logical qubit l moves to physical qubit perm[l]."""
+    d = 1 << n
+    P = np.zeros((d, d))
+    for i in range(d):
+        j = 0
+        for l in range(n):
+            if (i >> (n - 1 - l)) & 1:
+                j |= 1 << (n - 1 - perm[l])
+        P[j, i] = 1
+    return P
+
+
+def phase_err(expected, got):
+    k = np.unravel_index(np.argmax(np.abs(expected)), expected.shape)
+    ph = got[k] / expected[k]
+    return float(max(abs(abs(ph) - 1), np.max(np.abs(ph * expected - got))))
+
+
+def is_id(inst):
+    """stdgates `id`, which qiskit-qasm3-import reads as U(0, 0, 0)."""
+    op = inst.operation
+    return op.name == "id" or (op.name == "u" and all(float(x) == 0 for x in op.params))
+
+
+def is_rx_half_pi(inst):
+    return inst.operation.name == "rx" and abs(abs(float(inst.operation.params[0])) - np.pi / 2) < 1e-12
+
+
+def is_clifford(inst):
+    op = inst.operation
+    if op.name in ("measure", "reset", "barrier"):
+        return False
+    try:
+        U = Operator(op).data
+    except Exception:
+        return False
+    k = op.num_qubits
+    for q in range(k):
+        for p in "XZ":
+            label = "".join(p if i == q else "I" for i in range(k))
+            P = SparsePauliOp(label).to_matrix()
+            M = SparsePauliOp.from_operator(U @ P @ U.conj().T).simplify(atol=1e-9)
+            if len(M) != 1 or abs(abs(M.coeffs[0]) - 1) > 1e-9:
+                return False
+    return True
+
+
+def resources(qc):
+    ops = [i for i in qc.data if i.operation.name != "barrier"]
+    per_q = {}
+    for i in ops:
+        for q in i.qubits:
+            per_q[q] = per_q.get(q, 0) + 1
+    unitary = [i for i in ops if i.operation.name not in ("measure", "reset")]
+    return {
+        "gates": len(ops),
+        "oneQubit": sum(1 for i in unitary if i.operation.num_qubits == 1),
+        "twoQubit": sum(1 for i in unitary if i.operation.num_qubits == 2),
+        "multiQubit": sum(1 for i in unitary if i.operation.num_qubits >= 3),
+        "measurements": sum(1 for i in ops if i.operation.name == "measure"),
+        "resets": sum(1 for i in ops if i.operation.name == "reset"),
+        "depth": qc.depth(),
+        "tCount": sum(1 for i in ops if i.operation.name in ("t", "tdg")),
+        "tDepth": qc.depth(filter_function=lambda i: i.operation.name in ("t", "tdg")),
+        "cxCount": sum(1 for i in ops if i.operation.name == "cx"),
+        "cliffordCount": sum(1 for i in unitary if is_clifford(i)),
+        "parameterized": sum(1 for i in ops if len(i.operation.params) > 0 and not is_id(i)),
+        "longestQubit": max(per_q.values(), default=0),
+    }
+
+
+def check_resources(where, qc, qc1):
+    ref = resources(qc)
+    for k, v in ref.items():
+        if qc1[k] != v:
+            fail(f"tools {where}: {k} QC-1 {qc1[k]} vs Qiskit {v}")
+    return ref
+
+
+def main():
+    cases = load_cases("tools")
+    out = []
+    worst = 0.0
+    for c in cases:
+        n, qc1 = c["n"], c["qc1"]
+        qa = qasm3.loads(c["qasm"])
+        UA = be_unitary(qa)
+        entry = {"id": c["id"], "n": n, "tape": c["tape"], "resources": check_resources(c["id"], qa, qc1["resources"]), "tools": {}}
+        for name, t in qc1["tools"].items():
+            qb = qasm3.loads(t["qasm"])
+            UB = be_unitary(qb)
+            if name == "inverse":
+                expected = UA.conj().T
+            elif t["perm"] is not None:
+                expected = perm_matrix(n, t["perm"]) @ UA
+            else:
+                expected = UA
+            err = phase_err(expected, UB)
+            worst = max(worst, err)
+            equal = err < EQ_TOL
+            if not equal:
+                fail(f"tools {c['id']}: {name} changed the operator (err {err:.2e})")
+            if equal != t["equal"]:
+                fail(f"tools {c['id']}: {name} QC-1 equivalence verdict {t['equal']} vs Qiskit {equal}")
+            non_native = None
+            if name in TARGET:
+                allowed = NATIVE[TARGET[name]]
+                non_native = sum(1 for i in qb.data if i.operation.name not in allowed and not is_id(i)
+                                 and not (TARGET[name] == "rigetti" and is_rx_half_pi(i)))
+                if non_native != t["nonNative"]:
+                    fail(f"tools {c['id']}: {name} non-native count QC-1 {t['nonNative']} vs Qiskit {non_native}")
+            entry["tools"][name] = {
+                "equal": equal, "perm": t["perm"], "nonNative": non_native, "skipped": t["skipped"],
+                "resources": check_resources(f"{c['id']}/{name}", qb, t["resources"]),
+            }
+        out.append(entry)
+    print(f"  tools: worst operator error {worst:.2e} over {len(out)} cases")
+    write_fixture("tools", "qiskit Operator equivalence (up to global phase, routing permutation), count_ops/depth, SparsePauliOp Clifford test", out, {"equiv": EQ_TOL})
+
+
+if __name__ == "__main__":
+    main()

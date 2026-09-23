@@ -234,6 +234,14 @@ function emitGate(g: PlacedGate): string[] {
     return [`// ${g.gateId} ${arg}: control flow not yet exported`];
   }
 
+  // ── QC-1: gates defined in the file itself (`def:name`, e.g. u_arb) ─
+  if (g.gateId.startsWith("def:")) {
+    const modifiers = g.controls.map((_, i) => (g.controlStates?.[i] === false ? "negctrl @ " : "ctrl @ ")).join("");
+    const params = g.params.length > 0 ? `(${g.params.map(asciify).join(", ")})` : "";
+    const args = [...g.controls, ...g.targets].map(qref).join(", ");
+    return [`${modifiers}${g.gateId.slice(4)}${params} ${args};`];
+  }
+
   // ── QC-1: a base gate carrying controls (e.g. `s` + one control) ────
   // QC-1's tape keeps controls on the base gate id. When no named
   // controlled form applies, emit one ctrl @ / negctrl @ modifier per control.

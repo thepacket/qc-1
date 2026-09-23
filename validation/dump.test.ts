@@ -13,6 +13,8 @@ import * as sym from "./cases/groups/symbolic";
 import * as met from "./cases/groups/metrology";
 import * as spc from "./cases/groups/spectrum";
 import * as dyn from "./cases/groups/dynamics";
+import * as tls from "./cases/groups/tools";
+import * as syn from "./cases/groups/synth";
 
 const OUT = new URL("./out/", import.meta.url);
 
@@ -78,5 +80,18 @@ test("dump validation cases", async () => {
   writeFileSync(
     new URL("dynamics.cases.json", OUT),
     JSON.stringify({ group: "dynamics", points: dyn.P, cases: dyn.cases().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: dyn.compute(c) })) }),
+  );
+  writeFileSync(
+    new URL("tools.cases.json", OUT),
+    JSON.stringify({ group: "tools", cases: tls.cases().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: tls.compute(c) })) }),
+  );
+  writeFileSync(
+    new URL("synth.cases.json", OUT),
+    JSON.stringify({
+      group: "synth",
+      prep: syn.prepCases().map((c) => ({ ...c, qc1: syn.computePrep(c) })),
+      synth: syn.synthCases().map((c) => ({ ...c, qc1: syn.computeSynth(c) })),
+      trotter: syn.trotterCases().map((c) => ({ ...c, qc1: syn.computeTrotter(c) })),
+    }),
   );
 });

@@ -3,7 +3,7 @@ import type { Entry, Scope } from "../../../src/calc/steps";
 import { GATES, rng, step } from "../tapes";
 
 /** Symbolic angle expressions as the keypad produces them. */
-const SYM_EXPRS = ["θ", "2*θ+π/4", "t/2", "φ-θ", "3*t", "-λ", "θ*t", "π*φ/3", "t"];
+const SYM_EXPRS = ["θ", "2*θ+π/4", "t/2", "φ-θ", "3*t", "-λ", "θ*t", "π*φ/3", "t", "(1/3)*θ"];
 export const POINTS: Scope[] = [
   { theta: 0, phi: 0, lambda: 0, t: 0 },
   { theta: 0.37, phi: -1.2, lambda: 2.1, t: 1.1 },

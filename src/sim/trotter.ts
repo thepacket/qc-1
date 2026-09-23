@@ -52,6 +52,8 @@ export type TrotterOptions = {
   samples?: number;
   /** Optional name override; otherwise inferred from the source. */
   name?: string;
+  /** QC-1: QDrift's sampler (seedable for tests); default Math.random. */
+  rng?: () => number;
 };
 
 const VALID_PAULI = /^[IXYZ]+$/;
@@ -118,7 +120,7 @@ export function buildTrotterCircuit(terms: PauliTerm[], options: TrotterOptions)
 
   for (let s = 0; s < options.steps; s++) {
     if (mode === "qdrift") {
-      column = appendQDrift(gates, terms, n, delta, options.samples ?? 32, column);
+      column = appendQDrift(gates, terms, n, delta, options.samples ?? 32, column, options.rng ?? Math.random);
     } else if (order === 1) {
       column = appendFirstOrder(gates, terms, n, delta, "1", column);
     } else if (order === 2) {
@@ -210,7 +212,9 @@ function appendFourthOrder(
   startColumn: number,
 ): number {
   const alpha = "0.4144907717943757";          // 1 / (4 - 4^(1/3))
-  const oneMinus4Alpha = "-0.6579630807919028"; // 1 - 4·alpha
+  // QC-1 fix (docs/quantiom-bugs.md #19): the literal was mistyped from the
+  // 9th digit (-0.6579630807919028), breaking the order-4 cancellation.
+  const oneMinus4Alpha = "-0.6579630871775028"; // 1 - 4·alpha
   let column = startColumn;
   column = appendSecondOrder(gates, terms, n, delta, alpha, column);
   column = appendSecondOrder(gates, terms, n, delta, alpha, column);
@@ -232,6 +236,7 @@ function appendQDrift(
   delta: string,
   samples: number,
   startColumn: number,
+  rng: () => number,
 ): number {
   const weights = terms.map((t) => Math.abs(t.coefficient));
   const lambda = weights.reduce((a, b) => a + b, 0);
@@ -245,7 +250,7 @@ function appendQDrift(
   const tauMag = `${formatNumber(lambda / samples)}*${delta}`;
   let column = startColumn;
   for (let s = 0; s < samples; s++) {
-    const r = Math.random();
+    const r = rng();
     let idx = 0;
     while (idx < cum.length && r > cum[idx]) idx++;
     if (idx >= terms.length) idx = terms.length - 1;

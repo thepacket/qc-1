@@ -5,7 +5,8 @@ Byte-for-byte diffs flag last-digit differences between LAPACK builds
 fixture's own per-field tolerance where it states one (e.g. concurrence,
 whose reference is conditioned only to ~sqrt(eps) on any platform).
 Majorana stars are compared as a set (root order is platform-dependent).
-Strings, structure and array lengths must match exactly.
+Strings, structure and array lengths must match exactly (except the
+instance ids of tape steps, which only number the generated steps).
 
 usage: python drift.py <committed_dir> <regenerated_dir>
 """
@@ -41,6 +42,8 @@ def walk(path, a, b, bad, tol=TOL, tols=None):
             return
         for k in a:
             if k == "versions":  # environment metadata, not a reference value
+                continue
+            if k == "id" and ".tape[" in path:  # step instance ids: a generator counter
                 continue
             if k == "stars":
                 if len(a[k]) != len(b[k]) or star_drift(a[k], b[k]) > 5e-3:

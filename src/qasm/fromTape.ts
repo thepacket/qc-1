@@ -95,11 +95,100 @@ export const qasmSymbol = (name: string) => (name === "t" ? "t_" : name);
  * valid OpenQASM 3, but not loadable by qiskit-qasm3-import 0.6.
  */
 export function qasmParam(expr: string): string {
-  if (symbolsOf(expr).length > 0) return expr.replace(/\bt\b/g, "t_");
-  return /[a-z]/i.test(expr) ? String(evalParam(expr)) : expr;
+  if (symbolsOf(expr).length > 0) return floatLiterals(expr.replace(/\bt\b/g, "t_"));
+  return floatLiterals(/[a-z]/i.test(expr) ? String(evalParam(expr)) : expr);
+}
+
+/**
+ * Make every division's numerator a float. In OpenQASM 3 an integer divided
+ * by an integer is integer division, so `rz(1/2)` would import as rz(0) and
+ * `2/3*pi` as 0. An integer literal right before `/` becomes `1.0`; a
+ * parenthesised numerator gets its integer literals floated.
+ */
+function floatLiterals(expr: string): string {
+  const float = new Set<number>(); // start index of integer literals to float
+  const intAt = (end: number): number | null => {
+    // An integer literal ending at `end` (inclusive)? Return its start.
+    let k = end;
+    while (k >= 0 && /\d/.test(expr[k])) k--;
+    if (k === end || expr[k] === "." || /[eE]/.test(expr[k] ?? "") || /[\w.]/.test(expr[k] ?? "")) return null;
+    return k + 1;
+  };
+  for (let i = 0; i < expr.length; i++) {
+    if (expr[i] !== "/") continue;
+    let k = i - 1;
+    while (k >= 0 && expr[k] === " ") k--;
+    if (expr[k] === ")") {
+      let depth = 0, open = k;
+      for (; open >= 0; open--) {
+        if (expr[open] === ")") depth++;
+        else if (expr[open] === "(" && --depth === 0) break;
+      }
+      for (let m = open + 1; m < k; m++) {
+        if (/\d/.test(expr[m]) && !/[\w.]/.test(expr[m - 1] ?? "")) {
+          let e = m;
+          while (/\d/.test(expr[e + 1] ?? "")) e++;
+          if (intAt(e) === m && !/[.eE\d]/.test(expr[e + 1] ?? "")) float.add(m);
+          m = e;
+        }
+      }
+    } else {
+      const start = intAt(k);
+      if (start !== null) float.add(start);
+    }
+  }
+  let out = "";
+  for (let i = 0; i < expr.length; i++) {
+    out += expr[i];
+    if ([...float].some((st) => {
+      let e = st;
+      while (/\d/.test(expr[e + 1] ?? "")) e++;
+      return e === i;
+    })) out += ".0";
+  }
+  return out;
+}
+
+/**
+ * A 2×2 unitary as e^{iα}·U(θ, φ, λ) (OpenQASM's U), from u_arb's eight
+ * numbers (Re, Im of each cell, row-major). Exact up to rounding.
+ */
+export function zyz(p: number[]): { theta: number; phi: number; lambda: number; alpha: number } {
+  const [ar, ai, br, bi, cr, ci, dr, di] = p;
+  const a = Math.hypot(ar, ai), c = Math.hypot(cr, ci);
+  const theta = 2 * Math.atan2(c, a);
+  const arg = (re: number, im: number) => Math.atan2(im, re);
+  if (a > 1e-12) {
+    // M00 = e^{iα} cos, M10 = e^{i(α+φ)} sin, M01 = −e^{i(α+λ)} sin, M11 = e^{i(α+φ+λ)} cos
+    const alpha = arg(ar, ai);
+    const phi = c > 1e-12 ? arg(cr, ci) - alpha : 0;
+    const lambda = c > 1e-12 ? arg(-br, -bi) - alpha : arg(dr, di) - alpha - phi;
+    return { theta, phi, lambda, alpha };
+  }
+  // θ = π: only the off-diagonal is set; take λ = 0.
+  const alpha = arg(-br, -bi);
+  return { theta, phi: arg(cr, ci) - alpha, lambda: 0, alpha };
+}
+
+/** File-local gate definitions for u_arb matrices (one per distinct matrix). */
+function uarbDefinitions(tape: Entry[]): Map<string, { name: string; def: string }> {
+  const out = new Map<string, { name: string; def: string }>();
+  for (const s of tape.flat()) {
+    if (s.gateId !== "u_arb") continue;
+    const key = s.params.join(",");
+    if (out.has(key)) continue;
+    const v = s.params.map((x) => evalParam(x));
+    if (v.length !== 8 || v.some((x) => !Number.isFinite(x))) continue;
+    const { theta, phi, lambda, alpha } = zyz(v);
+    const name = `uarb${out.size}`;
+    const phase = Math.abs(alpha) > 1e-15 ? ` gphase(${alpha});` : "";
+    out.set(key, { name, def: `gate ${name} a { U(${theta}, ${phi}, ${lambda}) a;${phase} }` });
+  }
+  return out;
 }
 
 export function tapeToCircuit(n: number, tape: Entry[]): Circuit {
+  const uarb = uarbDefinitions(tape);
   const gates: PlacedGate[] = [];
   let clbit = 0;
   tape.forEach((entry, column) => {
@@ -110,6 +199,14 @@ export function tapeToCircuit(n: number, tape: Entry[]): Circuit {
         const base = { column, controls: [], targets: s.targets, clbits: [] };
         gates.push({ ...base, id: `${s.id}a`, gateId: "reset", params: [] });
         gates.push({ ...base, id: `${s.id}b`, gateId: "u", params: [String(theta), String(phi), "0"] });
+        continue;
+      }
+      const arb = s.gateId === "u_arb" ? uarb.get(s.params.join(",")) : undefined;
+      if (arb) {
+        gates.push({
+          id: s.id, gateId: `def:${arb.name}`, column, controls: s.controls, targets: s.targets, clbits: [], params: [],
+          ...(s.controlStates ? { controlStates: s.controlStates } : {}),
+        });
         continue;
       }
       const g: PlacedGate = {
@@ -131,7 +228,7 @@ export function tapeToCircuit(n: number, tape: Entry[]): Circuit {
 
 export function exportQasm3(n: number, tape: Entry[]): string {
   const circuit = tapeToCircuit(n, tape);
-  const defs = definitionsFor(new Set(circuit.gates.map((g) => g.gateId)));
+  const defs = [...definitionsFor(new Set(circuit.gates.map((g) => g.gateId))), ...[...uarbDefinitions(tape).values()].map((d) => d.def)];
   // The emitter declares only a fixed list of Greek names; declare every
   // symbol the tape uses instead (t included, as t_).
   const syms = [...new Set(tape.flatMap((e) => e.flatMap((s) => s.params.flatMap(symbolsOf))))].sort().map(qasmSymbol);

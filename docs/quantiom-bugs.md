@@ -24,6 +24,9 @@ Upstream file paths are relative to that project's `client/src/`.
 | 14 | `sim/workDistribution.ts` | Two-point-measurement work distribution sums over single eigenvectors, dropping the cross terms inside a degenerate level; the measurement projects onto levels: P = ‖Π_m U Π_n|0⟩‖² | numpy with energy projectors | `QC-1 fix`: projector formula |
 | 15 | `sim/floquetSpectrum.ts` | Floquet spacing statistics treat quasi-energies as points on a line: the gap across ±π is dropped, so spacings and ⟨r⟩ depend on where the branch cut falls (and ±π representatives flip between −π and π) | numpy eigenphases on the circle | `QC-1 fix`: phases in (−π, π], circular gaps |
 | 16 | `sim/autocorrelation.ts` | The autocorrelation spectrum runs a length-N DFT over samples taken at t = 2πk/(N−1) (endpoint included): frequencies are off by (N−1)/N, so a pure cos t no longer reads 1 at bin 1 (`tsweep.ts` samples periodically and is right) | numpy `rfft` of one uniform period | `QC-1 fix`: DFT over the N−1 periodic samples |
+| 17 | `sim/router.ts` `routeCircuit` | Routed circuits compute a different operator whenever routing inserts a SWAP or the input has one: inserted SWAPs are labelled with the *logical* qubits sitting on the path instead of the physical ones, and an input SWAP is both emitted and applied to the mapping (swapping twice) | Qiskit `Operator` of input vs output, with the final layout permutation | `QC-1 fix`: physical SWAPs; input SWAPs are virtual (mapping only). `compile.ts` also returns the final mapping; fixture `tools` |
+| 18 | `qasm/emit.ts` (all parameter output) | Integer ratios in angles are exported as written (`1/2`, `2/3*pi`, `(1/2)*(t)`), but OpenQASM 3 divides integers as integers: Qiskit imports `rz(1/2)` as rz(0) and `2/3*pi` as 0. Second-order Trotter circuits and any keyed `2/3π` exported wrong angles | `qiskit.qasm3.loads` of the export vs the simulator | `QC-1 fix` in `src/qasm/fromTape.ts` `qasmParam`: integer literals written as floats; cases `rz-half`, `rz-twothirdspi`, symbolic `(1/3)*θ` |
+| 19 | `sim/trotter.ts` `appendFourthOrder` | The Suzuki coefficient 1 − 4α is mistyped from the 9th digit (−0.6579630807919028; true −0.6579630871775028), so the 4th-order circuit is off by ~1e-8 and no longer a symmetric Suzuki formula | Qiskit `SuzukiTrotter(order=4)` | `QC-1 fix`: correct literal; fixture `synth` |
 
 ## Quirks in the reference tools (not upstream bugs)
 
@@ -33,3 +36,4 @@ Upstream file paths are relative to that project's `client/src/`.
 - `qiskit-qasm3-import` 0.6.0 can't evaluate function calls such as
   `sqrt(2)` in parameters (valid OpenQASM 3). QC-1 folds those to numbers
   on export.
+- `qiskit-qasm3-import` 0.6.0 reads the stdgates `id` gate as `U(0, 0, 0)`.
