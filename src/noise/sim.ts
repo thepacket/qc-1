@@ -176,6 +176,8 @@ export type NoisyStats = {
   /** "density" (exact) or "trajectories" (T samples). */
   method: "density" | "trajectories";
   trajectories: number;
+  /** Workers that ran the trajectories (parallel.ts); absent when they ran in place. */
+  workers?: number;
 };
 
 function blochFromDensity(rho: Float64Array, n: number, q: number) {
@@ -194,6 +196,55 @@ function blochFromDensity(rho: Float64Array, n: number, q: number) {
   return { x, y, z };
 }
 
+/** One chunk of trajectories, as sums: probabilities, Bloch components (x, y, z per qubit), and the count. */
+export type TrajSums = { T: number; probs: Float64Array; bloch: Float64Array };
+
+export function trajectorySums(n: number, tape: Entry[], scope: Scope, m: NoiseModel, T: number, seed: number): TrajSums {
+  const dim = 1 << n;
+  const probs = new Float64Array(dim), bloch = new Float64Array(3 * n);
+  let count = 0;
+  runTrajectories(n, tape, scope, m, (st) => {
+    count++;
+    for (let i = 0; i < dim; i++) probs[i] += st[2 * i] ** 2 + st[2 * i + 1] ** 2;
+    for (let q = 0; q < n; q++) {
+      const mask = 1 << (n - 1 - q);
+      for (let i = 0; i < dim; i++) {
+        if (i & mask) continue;
+        const j = i | mask;
+        const [ar, ai, br, bi] = [st[2 * i], st[2 * i + 1], st[2 * j], st[2 * j + 1]];
+        bloch[3 * q] += 2 * (ar * br + ai * bi);
+        bloch[3 * q + 1] += 2 * (ar * bi - ai * br);
+        bloch[3 * q + 2] += ar * ar + ai * ai - br * br - bi * bi;
+      }
+    }
+  }, { trajectories: T, seed });
+  return { T: count, probs, bloch };
+}
+
+/**
+ * Trajectories always run as TRAJ_CHUNKS chunks with their own seeds, merged
+ * in chunk order, so the result is the same whether the chunks run one after
+ * another (noisyStats) or on parallel workers (parallel.ts).
+ */
+export const TRAJ_CHUNKS = 8;
+
+export function trajectoryChunks(T: number, seed: number): { T: number; seed: number }[] {
+  const base = Math.floor(T / TRAJ_CHUNKS), extra = T % TRAJ_CHUNKS;
+  return Array.from({ length: TRAJ_CHUNKS }, (_, k) => ({ T: base + (k < extra ? 1 : 0), seed: (seed + Math.imul(k, 0x9e3779b9)) >>> 0 })).filter((c) => c.T > 0);
+}
+
+export function mergeSums(n: number, parts: TrajSums[]): NoisyStats {
+  const probs = new Float64Array(1 << n), b = new Float64Array(3 * n);
+  let T = 0;
+  for (const p of parts) {
+    T += p.T;
+    for (let i = 0; i < probs.length; i++) probs[i] += p.probs[i];
+    for (let i = 0; i < b.length; i++) b[i] += p.bloch[i];
+  }
+  for (let i = 0; i < probs.length; i++) probs[i] /= T;
+  return { probs, bloch: Array.from({ length: n }, (_, q) => ({ x: b[3 * q] / T, y: b[3 * q + 1] / T, z: b[3 * q + 2] / T })), method: "trajectories", trajectories: T };
+}
+
 export function noisyStats(n: number, tape: Entry[], scope: Scope, m: NoiseModel, opts: { trajectories?: number; seed?: number } = {}): NoisyStats {
   const dim = 1 << n;
   if (densityOk(n, tape)) {
@@ -202,26 +253,8 @@ export function noisyStats(n: number, tape: Entry[], scope: Scope, m: NoiseModel
     for (let i = 0; i < dim; i++) probs[i] = rho[2 * (i * dim + i)];
     return { probs, bloch: Array.from({ length: n }, (_, q) => blochFromDensity(rho, n, q)), method: "density", trajectories: 0 };
   }
-  const probs = new Float64Array(dim);
-  const acc = Array.from({ length: n }, () => ({ x: 0, y: 0, z: 0 }));
-  let T = 0;
-  runTrajectories(n, tape, scope, m, (st) => {
-    T++;
-    for (let i = 0; i < dim; i++) probs[i] += st[2 * i] ** 2 + st[2 * i + 1] ** 2;
-    for (let q = 0; q < n; q++) {
-      const mask = 1 << (n - 1 - q);
-      for (let i = 0; i < dim; i++) {
-        if (i & mask) continue;
-        const j = i | mask;
-        const [ar, ai, br, bi] = [st[2 * i], st[2 * i + 1], st[2 * j], st[2 * j + 1]];
-        acc[q].x += 2 * (ar * br + ai * bi);
-        acc[q].y += 2 * (ar * bi - ai * br);
-        acc[q].z += ar * ar + ai * ai - br * br - bi * bi;
-      }
-    }
-  }, opts);
-  for (let i = 0; i < dim; i++) probs[i] /= T;
-  return { probs, bloch: acc.map((b) => ({ x: b.x / T, y: b.y / T, z: b.z / T })), method: "trajectories", trajectories: T };
+  const chunks = trajectoryChunks(Math.max(1, opts.trajectories ?? m.trajectories), opts.seed ?? 0x1eaf);
+  return mergeSums(n, chunks.map((c) => trajectorySums(n, tape, scope, m, c.T, c.seed)));
 }
 
 /** Shot counts: final-state samples with readout flips on every bit. */

@@ -11,6 +11,7 @@ import type { ViewData } from "../calc/core";
 import { topK } from "../calc/analysis";
 import { Register } from "../calc/register";
 import { densityOk, noisyDensity, noisyShots, noisyStats, runTrajectories, DENSITY_MAX } from "../noise/sim";
+import { noisyStatsParallel } from "../noise/parallel";
 import { isIdeal, rate, type NoiseModel } from "../noise/model";
 import { noisyExpectation, pec, zne, type ZneFit } from "../noise/mitigation";
 import { hermitianEig } from "../sim/eig";
@@ -18,7 +19,7 @@ import { parsePauliSum } from "../sim/trotter";
 import { pauliSumExpectation } from "../sim/expectation";
 import type { Complex } from "../sim/density";
 
-type Run = (ctx: AnalysisContext, opts: Opts) => AnalysisResult;
+type Run = (ctx: AnalysisContext, opts: Opts) => AnalysisResult | Promise<AnalysisResult>;
 const num = (id: string, key: string, opts: Opts, n: number) => inputValue(ANALYSIS_BY_ID[id].inputs.find((s) => s.key === key)!, opts, n);
 const r4 = (x: number) => x; // full precision: the UI formats numbers
 const ket = (i: number, n: number) => `|${i.toString(2).padStart(n, "0")}⟩`;
@@ -82,11 +83,11 @@ const noteMethod = (method: string) => `Noisy state: ${method}.`;
 
 const KET_ROWS = 32;
 
-export function noisyView(ctx: AnalysisContext, opts: Opts): AnalysisResult {
+export async function noisyView(ctx: AnalysisContext, opts: Opts): Promise<AnalysisResult> {
   const m = model(ctx);
   const n = ctx.n, mode = opts.mode as "prob" | "bloch" | "shots";
-  const stats = noisyStats(n, ctx.tape, ctx.scope, m);
-  const method = stats.method === "density" ? "ρ" : `${stats.trajectories} trajectories`;
+  const stats = await noisyStatsParallel(n, ctx.tape, ctx.scope, m);
+  const method = stats.method === "density" ? "ρ" : `${stats.trajectories} trajectories${stats.workers ? ` · ${stats.workers} cores` : ""}`;
   let view: ViewData;
   if (mode === "bloch") view = { n, mode: "bloch", vectors: stats.bloch };
   else if (mode === "shots") {

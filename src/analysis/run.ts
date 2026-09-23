@@ -1110,11 +1110,7 @@ Object.assign(RUNS, TOOL_RUNS, NOISE_RUNS, BENCH_RUNS, QEC_RUNS, VERIFY_RUNS);
 
 export function runAnalysis(id: string, ctx: AnalysisContext, opts: Opts): AnalysisResult | Promise<AnalysisResult> {
   if (id === "__view") {
-    try {
-      return noisyView(ctx, opts);
-    } catch (e) {
-      return { error: e instanceof Error ? e.message : String(e) };
-    }
+    return noisyView(ctx, opts).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
   }
   const meta = ANALYSIS_BY_ID[id];
   const run = RUNS[id];
