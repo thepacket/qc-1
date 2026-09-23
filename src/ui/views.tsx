@@ -175,7 +175,7 @@ function project(x: number, y: number, z: number): [number, number, number] {
   return [sx, sy, depth * Math.cos(EL) + z * Math.sin(EL)];
 }
 
-function Sphere({ v, r, labels }: { v: Vec3; r: number; labels?: boolean }) {
+function Sphere({ v, r, labels, className }: { v: Vec3; r: number; labels?: boolean; className?: string }) {
   const c = r + (labels ? 14 : 2);
   const P = (x: number, y: number, z: number) => {
     const [sx, sy] = project(x, y, z);
@@ -207,7 +207,13 @@ function Sphere({ v, r, labels }: { v: Vec3; r: number; labels?: boolean }) {
     );
   };
   return (
-    <svg width={2 * c} height={2 * c} viewBox={`0 0 ${2 * c} ${2 * c}`} aria-hidden="true">
+    <svg
+      className={className}
+      width={className ? undefined : 2 * c}
+      height={className ? undefined : 2 * c}
+      viewBox={`0 0 ${2 * c} ${2 * c}`}
+      aria-hidden="true"
+    >
       <circle cx={c} cy={c} r={r} className="sphere" />
       {eq(false)}
       {eq(true)}
@@ -230,7 +236,7 @@ export function BlochView({ calc, data }: ViewProps<"bloch">) {
   return (
     <div className="view bloch">
       <div className="bloch-main">
-        <Sphere v={v} r={62} labels />
+        <Sphere v={v} r={62} labels className="sphere-main" />
         <div className="bloch-read">
           <div className="big">q{calc.sel}</div>
           <div>x {num(v.x)}</div>

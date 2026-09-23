@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent } from "react";
 import { Calculator, SHIFTED, type Mode, type Saved } from "../calc/calculator";
 import { formatEntry } from "../calc/steps";
 import { KEYBOARD, KEYPAD, type KeyDef } from "./keys";
@@ -6,6 +6,18 @@ import { BlochView, CatalogView, KetView, Pending, ProbView, ShotsView, TapeView
 import { createEngine } from "../calc/engine";
 
 export const STORAGE_KEY = "qc1:session:v1";
+const UI_KEY = "qc1:ui:v1";
+
+function loadExpanded(): boolean {
+  try {
+    return localStorage.getItem(UI_KEY) === "expanded";
+  } catch {
+    return false;
+  }
+}
+
+/** Keys that stay reachable while the display is expanded. */
+const MINI_KEYS = KEYPAD.filter((k) => ["left", "right", "undo", "ac"].includes(k.id));
 
 function load(): Saved | null {
   try {
@@ -35,6 +47,30 @@ function buzz() {
 export function App() {
   const [calc] = useState(() => new Calculator(createEngine(), load()));
   const version = useSyncExternalStore(calc.subscribe, calc.getVersion);
+  const [expanded, setExpanded] = useState(loadExpanded);
+  const dragY = useRef<number | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(UI_KEY, expanded ? "expanded" : "normal");
+    } catch {
+      /* storage blocked */
+    }
+  }, [expanded]);
+
+  // The handle under the display: drag down to expand, up to restore, tap to toggle.
+  const onHandleDown = (e: PointerEvent) => {
+    dragY.current = e.clientY;
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+  };
+  const onHandleUp = (e: PointerEvent) => {
+    if (dragY.current === null) return;
+    const dy = e.clientY - dragY.current;
+    dragY.current = null;
+    if (dy > 24) setExpanded(true);
+    else if (dy < -24) setExpanded(false);
+    else if (Math.abs(dy) < 8) setExpanded((x) => !x);
+  };
 
   // Persist the session (tape + settings); replayed on next launch.
   useEffect(() => {
@@ -58,6 +94,10 @@ export function App() {
         return;
       }
       if (e.ctrlKey || e.metaKey) return;
+      if (e.key === "e") {
+        setExpanded((x) => !x);
+        return;
+      }
       const id = e.key === "`" ? "2nd" : KEYBOARD[e.key];
       if (!id) return;
       e.preventDefault();
@@ -91,7 +131,7 @@ export function App() {
     (k.id === "ctrl" && calc.marks.some((m) => m.q === calc.sel));
 
   return (
-    <div className="calc">
+    <div className={`calc${expanded ? " expanded" : ""}`}>
       <header className="brand">
         <span className="logo">QC-1</span>
         <span className="model">QUANTUM CALCULATOR ONE</span>
@@ -107,7 +147,16 @@ export function App() {
             {calc.all && <b>ALL</b>}
             {calc.marks.length > 0 && <b>CTRL</b>}
           </span>
+          <span className="grow" />
           <span>{calc.tape.length} steps</span>
+          <button
+            className="expand-btn"
+            aria-label={expanded ? "Show keypad" : "Expand display"}
+            aria-pressed={expanded}
+            onClick={() => setExpanded((x) => !x)}
+          >
+            {expanded ? "⤡" : "⤢"}
+          </button>
         </div>
 
         <div className="qubits" role="listbox" aria-label="Qubits">
@@ -139,6 +188,17 @@ export function App() {
         </div>
       </section>
 
+      <div
+        className="handle"
+        role="button"
+        aria-label={expanded ? "Show keypad" : "Expand display"}
+        onPointerDown={onHandleDown}
+        onPointerUp={onHandleUp}
+        onPointerCancel={() => (dragY.current = null)}
+      >
+        <span />
+      </div>
+
       <nav className="modes">
         {MODES.map((m) => (
           <button key={m.id} className={calc.mode === m.id ? "on" : ""} onClick={() => { buzz(); calc.setMode(m.id); }}>
@@ -147,7 +207,24 @@ export function App() {
         ))}
       </nav>
 
-      <section className="keypad">
+      <section className="mini-keys" aria-hidden={!expanded}>
+        {MINI_KEYS.map((k) => (
+          <button
+            key={k.id}
+            className={`key ${k.kind}`}
+            aria-label={calc.shift && k.alt ? k.alt : k.aria}
+            tabIndex={expanded ? 0 : -1}
+            onClick={() => { buzz(); calc.press(k.id); }}
+          >
+            {k.label}
+          </button>
+        ))}
+        <button className="key nav" aria-label="Show keypad" tabIndex={expanded ? 0 : -1} onClick={() => setExpanded(false)}>
+          ⌃
+        </button>
+      </section>
+
+      <section className="keypad" aria-hidden={expanded}>
         {KEYPAD.map((k) => (
           <div key={k.id} className={`cell${k.wide ? " wide" : ""}`}>
             <span className={`alt${calc.shift && SHIFTED[k.id] ? " lit" : ""}`}>{k.alt ?? " "}</span>

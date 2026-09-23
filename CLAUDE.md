@@ -11,6 +11,11 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
   (2ND, CTRL marks, ALL) are one-shot. The numeric entry is the argument to the next
   key that takes one (rotations, Q, N, U's `θ,φ,λ`, and the SHOTS tab).
 - Up to 20 qubits (statevector). Big-endian: q0 is the leftmost bit of a ket.
+- **Display:** a dark color graphing screen inside a calculator bezel, no longer a
+  green LCD. It is expandable (⤢ button, drag handle, or the `e` key): the keypad
+  slides away and a mini key strip remains. Chart colors are the validated dark steps of
+  the data-viz reference palette (`--series-1..3` in styles.css, on the `#1a1a19`
+  surface); run the dataviz validator before adding series colors.
 
 ## Layout
 - `src/sim/` is **ported from Quantiom**: `client/src/sim` plus `editor/{types,gates}.ts`.
