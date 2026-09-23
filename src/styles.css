@@ -675,3 +675,12 @@ button {
 .guide-text { margin: 3px 0 0; height: 4.2em; overflow-y: auto; color: var(--ink-dim); font-family: var(--sans); line-height: 1.4; white-space: pre-line; }
 .expanded .guide-text { height: 9em; }
 .guide-start { margin: 0 0 2px; font-family: var(--mono); font-size: 11px; color: var(--ink); background: none; border: 1px solid var(--series-1); border-radius: 3px; padding: 2px 8px; }
+
+/* CATALOG → STATE… / MATRIX… */
+.typed { display: flex; flex-direction: column; gap: 6px; }
+.typed textarea {
+  width: 100%; font-family: var(--mono); font-size: 13px; padding: 5px 7px; border-radius: 4px;
+  border: 1px solid var(--ink-dim); background: #111110; color: var(--ink); resize: vertical;
+}
+.typed textarea:focus { outline: 2px solid var(--series-1); outline-offset: 0; }
+.typed .grow { flex: 1; }

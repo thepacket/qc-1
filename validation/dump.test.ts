@@ -24,6 +24,7 @@ import * as bch from "./cases/groups/bench";
 import * as stb from "./cases/groups/stabilizer";
 import * as vfy from "./cases/groups/verify";
 import * as blk from "./cases/groups/blocks";
+import * as typ from "./cases/groups/typed";
 import { qiskitPython } from "../src/qasm/toQiskit";
 import type { Entry } from "../src/calc/steps";
 import { readFileSync } from "node:fs";
@@ -130,6 +131,7 @@ test("dump validation cases", async () => {
     });
   };
   writeFileSync(new URL("qiskit.cases.json", OUT), JSON.stringify({ group: "qiskit", cases: ["gates", "random-tapes", "symbolic", "classical"].flatMap(py) }));
+  writeFileSync(new URL("typed.cases.json", OUT), JSON.stringify({ group: "typed", cases: typ.cases().map((c) => ({ ...c, qc1: typ.compute(c) })) }));
   writeFileSync(new URL("blocks.cases.json", OUT), JSON.stringify({ group: "blocks", cases: blk.cases().map((c) => ({ ...c, qc1: blk.compute(c) })) }));
   writeFileSync(new URL("verify.cases.json", OUT), JSON.stringify({ group: "verify", cases: await Promise.all(vfy.cases().map(async (c) => ({ ...c, qc1: await vfy.compute(c) }))) }));
   writeFileSync(new URL("stabilizer.cases.json", OUT), JSON.stringify({

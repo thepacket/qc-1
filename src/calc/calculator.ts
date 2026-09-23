@@ -4,6 +4,7 @@ import { evalParam, exprOk, formatEntry, NONUNITARY, type Entry, type Scope, typ
 import { CATALOG, type CatalogItem } from "./catalog";
 import { CUSTOM_PREFIX, defineGate, setCustomGates, type CustomGate } from "./custom";
 import { blockGate, qaoaLayer, type BlockKind } from "./blocks";
+import { matrixGate, parseMatrix, parseState, stateGate } from "./typed";
 import { importQasm } from "../qasm/import";
 import { stepCaptions } from "../qasm/captions";
 import { DEFAULT_NOISE, isIdeal, sanitiseNoise, type NoiseModel } from "../noise/model";
@@ -145,7 +146,7 @@ export class Calculator {
   scrub: number | null = null;
   message: Message | null = null;
   /** CATALOG list open on the LCD, and its highlighted row. */
-  catalog = { open: false, index: 0 };
+  catalog: { open: boolean; index: number; typing: "state" | "matrix" | null } = { open: false, index: 0, typing: null };
   /** The help screen is open. */
   helpOpen = false;
   /**
@@ -720,7 +721,7 @@ export class Calculator {
       case "left": case "n-": this.catalog.index = (this.catalog.index + len - 1) % len; return true;
       case "right": case "n+": this.catalog.index = (this.catalog.index + 1) % len; return true;
       case "eq": this.applyCatalog(this.catalog.index); return true;
-      case "cat": this.catalog.open = false; return true;
+      case "cat": this.catalog.open = false; this.catalog.typing = null; return true;
       case "ac":
         // Never clears the register from inside the catalog.
         if (this.entry.length > 0 || this.marks.length > 0 || this.all) return false;
@@ -765,6 +766,10 @@ export class Calculator {
     const item = this.catalogItems[index];
     if (item.gate === "define") this.define();
     else if (item.gate.startsWith("block:")) this.block(item.gate.slice(6) as BlockKind, item.params);
+    else if (item.gate.startsWith("typed:")) {
+      this.catalog.typing = item.gate.slice(6) as "state" | "matrix";
+      return; // the CATALOG stays open with its text field
+    }
     else this.gate({ gate: item.gate, arity: item.arity, params: item.params });
     this.catalog.open = false;
   }
@@ -806,6 +811,49 @@ export class Calculator {
     this.all = false;
     const entry: Entry = [{ id: newId(), gateId: CUSTOM_PREFIX + def.name, column: this.tape.length, targets: qs, controls: [], clbits: [], params: [] }];
     this.send({ t: "push", entry }, (r) => r.done && this.info(formatEntry(r.done)));
+  }
+
+  /** Cancel the CATALOG's STATE…/MATRIX… text field. */
+  cancelTyped() {
+    this.catalog.typing = null;
+    this.changed();
+  }
+
+  /**
+   * STATE…/MATRIX… (calc/typed.ts): the typed text becomes gate PSIj or Mj,
+   * placed on the CTRL-marked qubits plus the selected one (ascending), or on
+   * q0…q(k−1). A state is "reset, then prepare". Throws with a message the
+   * text field shows; on success the CATALOG closes.
+   */
+  enterTyped(text: string) {
+    const kind = this.catalog.typing;
+    if (!kind) return;
+    const parsed = kind === "state" ? parseState(text) : parseMatrix(text);
+    const k = parsed.k;
+    const qs = this.marks.length ? [...new Set([...this.marks.map((m) => m.q), this.sel])].sort((a, b) => a - b) : [...Array(k).keys()];
+    if (qs.length !== k) throw new Error(`the ${kind} is on ${k} qubit${k > 1 ? "s" : ""}; ${qs.length} marked`);
+    if (k > this.n) throw new Error(`needs ${k} qubits: set N first`);
+    if (this.marks.some((m) => m.anti)) throw new Error("mark with CTRL, not ○CTRL");
+    const prefix = kind === "state" ? "PSI" : "M";
+    let j = 1;
+    while (this.customGates.some((d) => d.name === `${prefix}${j}`)) j++;
+    const def = kind === "state" ? stateGate(`PSI${j}`, parsed as ReturnType<typeof parseState>) : matrixGate(`M${j}`, parsed as ReturnType<typeof parseMatrix>);
+    this.customGates = [...this.customGates, def];
+    setCustomGates(this.customGates);
+    this.send({ t: "gates", defs: this.customGates });
+    this.marks = [];
+    this.all = false;
+    this.pendingIf = null;
+    const col = this.tape.length;
+    if (kind === "state") {
+      this.send({ t: "push", entry: qs.map((q) => ({ id: newId(), gateId: "reset", column: col, targets: [q], controls: [], clbits: [], params: [] })) });
+    }
+    const entry: Entry = [{ id: newId(), gateId: CUSTOM_PREFIX + def.name, column: col, targets: qs, controls: [], clbits: [], params: [] }];
+    const drift = "drift" in parsed && parsed.drift > 1e-12 ? ` (made exactly unitary: it was off by ${parsed.drift.toPrecision(2)})` : "";
+    this.send({ t: "push", entry }, (r) => r.done && this.info(`${formatEntry(r.done)}${drift}`));
+    this.catalog.typing = null;
+    this.catalog.open = false;
+    this.changed();
   }
 
   /** DEFINE: the last k tape entries (entry k, else all) become gate G#. */
@@ -867,7 +915,7 @@ export class Calculator {
         return;
       }
       case "all": this.all = !this.all; return;
-      case "cat": this.catalog.open = true; return;
+      case "cat": this.catalog.open = true; this.catalog.typing = null; return;
       case "if": {
         // Entry "k" or "k,v": the next gate runs only if c[k] == v (v = 1 by default).
         if (this.pendingIf && this.entry.length === 0) {

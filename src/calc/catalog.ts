@@ -60,6 +60,9 @@ export const CATALOG: CatalogItem[] = [
   { gate: "block:iqft", group: "BLOCKS", arity: 0, label: "QFT†", params: [], argNames: [], note: "inverse QFT (the read-out of phase estimation)" },
   { gate: "block:diff", group: "BLOCKS", arity: 0, label: "DIFFUSER", params: [], argNames: [], note: "Grover diffusion 2|s⟩⟨s| − I on the marked qubits (else all)" },
   { gate: "block:qaoa", group: "BLOCKS", arity: 0, label: "QAOA", params: ["π/4", "π/8"], argNames: ["γ", "β"], note: "one MaxCut layer on a ring: RZZ(2γ) per edge, RX(2β) per qubit; enter γ,β" },
+  // Typed on the phone keyboard (calc/typed.ts): a state or a matrix becomes a gate.
+  { gate: "typed:state", group: "TYPE IT", arity: 0, label: "STATE…", params: [], argNames: [], note: "type a state (|00⟩ + |11⟩, or amplitudes): reset, then prepare it on the marked qubits (else q0…)" },
+  { gate: "typed:matrix", group: "TYPE IT", arity: 0, label: "MATRIX…", params: [], argNames: [], note: "type a unitary (rows by ;), up to 16×16: it becomes a gate on the marked qubits (else q0…)" },
   {
     gate: "initialize", group: "STATE PREP", arity: 1, label: "|ψ⟩",
     params: ["1", "0", "0", "0"], argNames: ["α", "β"],

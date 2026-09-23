@@ -339,6 +339,7 @@ export function CatalogView({ calc }: { calc: Calculator }) {
   const items = calc.catalogItems;
   const cur = items[index];
   const partners = cur.arity - 1;
+  if (calc.catalog.typing) return <TypedField calc={calc} kind={calc.catalog.typing} />;
   return (
     <div className="view">
       <div className="view-head cat-head">
@@ -359,6 +360,48 @@ export function CatalogView({ calc }: { calc: Calculator }) {
             </button>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+const TYPED_PRESETS: Record<"state" | "matrix", [string, string][]> = {
+  state: [["Bell", "(|00⟩ + |11⟩)/√2"], ["GHZ₃", "(|000⟩ + |111⟩)/√2"], ["W₃", "|001⟩ + |010⟩ + |100⟩"], ["|+i⟩", "|0⟩ + i|1⟩"]],
+  matrix: [["H", "1/√2, 1/√2; 1/√2, -1/√2"], ["CZ", "1,0,0,0; 0,1,0,0; 0,0,1,0; 0,0,0,-1"], ["iSWAP", "1,0,0,0; 0,0,i,0; 0,i,0,0; 0,0,0,1"], ["√SWAP", "1,0,0,0; 0,(1+i)/2,(1-i)/2,0; 0,(1-i)/2,(1+i)/2,0; 0,0,0,1"]],
+};
+
+/** CATALOG → STATE… / MATRIX…: the phone keyboard's text becomes a gate (calc/typed.ts). */
+function TypedField({ calc, kind }: { calc: Calculator; kind: "state" | "matrix" }) {
+  const [text, setText] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const ok = () => {
+    try {
+      calc.enterTyped(text);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
+  return (
+    <div className="view">
+      <div className="view-head lab-head">
+        <button className="back" onClick={() => calc.cancelTyped()} aria-label="Back to the catalog">‹</button>
+        <span>{kind === "state" ? "Type a state" : "Type a matrix"}</span>
+      </div>
+      <div className="rows typed">
+        <textarea value={text} rows={kind === "matrix" ? 4 : 2} autoFocus spellCheck={false} autoCapitalize="off" autoCorrect="off"
+          placeholder={kind === "state" ? "(|00⟩ + |11⟩)/√2   or   1, 0, 0, i" : "rows by ; or new lines, entries by ,\n0, 1; 1, 0"}
+          aria-label={kind === "state" ? "State" : "Matrix"}
+          onChange={(e) => { setText(e.target.value); setErr(null); }}
+          onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter" && kind === "state") { e.preventDefault(); ok(); } }} />
+        <div className="cut-picker">
+          {TYPED_PRESETS[kind].map(([label, t]) => <button key={label} className="qb" onClick={() => { setText(t); setErr(null); }}>{label}</button>)}
+          <span className="grow" />
+          <button className="qb sel" onClick={ok}>OK</button>
+        </div>
+        {err && <div className="lab-error">E: {err}</div>}
+        <p className="dim note">{kind === "state"
+          ? "Kets |bits⟩ with coefficients (i, √2, fractions), or 2ⁿ amplitudes. Normalised. Goes on the CTRL-marked qubits and the selected one, else q0…, after resetting them."
+          : "A unitary up to 16×16, complex entries like 0.5+0.5i. Close to unitary (1e−3) is enough: it is made exact. Becomes a gate on the CTRL-marked qubits and the selected one, else q0…; the first is the most significant."}</p>
       </div>
     </div>
   );
