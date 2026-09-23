@@ -149,6 +149,11 @@ export class Calculator {
   catalog: { open: boolean; index: number; typing: "state" | "matrix" | null } = { open: false, index: 0, typing: null };
   /** The help screen is open. */
   helpOpen = false;
+  /** LAB results pinned for the session report (newest last, at most 12; this session only). */
+  pins: { title: string; result: AnalysisResult; at: string; steps: number; n: number }[] = [];
+  /** The session report overlay, and the live KET view it shows (fetched on open). */
+  reportOpen = false;
+  reportKet: Extract<ViewData, { mode: "ket" }> | null = null;
   /**
    * Step-through: captions for a loaded example, one per tape entry. It
    * applies while the tape is the one loaded (same step ids); an edit hides
@@ -313,6 +318,7 @@ export class Calculator {
       }
     }
     this.view = v;
+    if (this.reportOpen && v.mode === "ket" && v.at === undefined) this.reportKet = v;
     this.changed();
   }
 
@@ -991,6 +997,29 @@ export class Calculator {
   private resize(n: number) {
     if (n < 1 || n > STAB_MAX) throw new Error(`n must be 1–${STAB_MAX}`);
     this.send({ t: "resize", n }, (r) => this.info(r.n > MAX_QUBITS ? `n = ${r.n} · stabilizer mode (Clifford gates only)` : `n = ${r.n}`));
+  }
+
+  /** Pin the LAB result on screen to the session report. */
+  pinAnalysis() {
+    const a = this.analysis;
+    if (!a?.result || a.result.error) return;
+    const title = ANALYSIS_BY_ID[a.id]?.title ?? a.id;
+    this.pins = [...this.pins.slice(-11), { title, result: a.result, at: new Date().toLocaleTimeString(), steps: this.tape.length, n: this.n }];
+    this.info(`pinned to the report (${this.pins.length}): TAPE ≡ → Report`);
+    this.changed();
+  }
+
+  unpin(i: number) {
+    this.pins = this.pins.filter((_, k) => k !== i);
+    this.changed();
+  }
+
+  /** Open or close the report. Opening asks the core for a KET view of the live state; closing restores the mode's view. */
+  toggleReport() {
+    this.reportOpen = !this.reportOpen;
+    this.reportKet = null;
+    this.send({ t: "view", req: this.reportOpen ? { ...this.viewReq(), mode: "ket", upTo: null } : this.viewReq() });
+    this.changed();
   }
 
   toggleHelp() {

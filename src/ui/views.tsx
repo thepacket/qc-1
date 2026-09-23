@@ -234,6 +234,7 @@ function TapeMenu({ calc, go }: { calc: Calculator; go: (p: TapePane) => void })
     ["Share Qiskit file", "qc1_tape.py", () => { void shareQasm(calc, qiskitPython(calc.n, calc.tape), "qc1_tape.py"); go("list"); }],
     ["Share link", "the tape and symbol values in a URL", () => { void shareLink(); go("list"); }],
     ["QR code", "the share link, for phones pointed at this screen", () => go("qr")],
+    ["Report", `circuit, state${calc.pins.length ? `, ${calc.pins.length} pinned LAB result${calc.pins.length > 1 ? "s" : ""}` : ""}: print or save as PDF`, () => { calc.toggleReport(); go("list"); }],
   ];
   return (
     <div className="rows">

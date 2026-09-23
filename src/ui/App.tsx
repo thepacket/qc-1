@@ -9,6 +9,7 @@ import { ParamView } from "./ParamView";
 import { symbolGlyph } from "../calc/entry";
 import { readShareHash } from "../qasm/share";
 import { HelpView } from "./HelpView";
+import { ReportView } from "./ReportView";
 
 export const STORAGE_KEY = "qc1:session:v1";
 const UI_KEY = "qc1:ui:v1";
@@ -108,7 +109,7 @@ export function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.altKey) return;
+      if (e.altKey || calc.reportOpen) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
         if (e.shiftKey) calc.press("2nd");
@@ -236,6 +237,8 @@ export function App() {
           </bdi>
         </div>
       </section>
+
+      {calc.reportOpen && <ReportView calc={calc} />}
 
       <div
         className="handle"

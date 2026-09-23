@@ -91,6 +91,9 @@ function AnalysisScreen({ calc, meta }: { calc: Calculator; meta: AnalysisMeta }
         ) : (
           a && <span className="dim">{a.ms < 1 ? "<1" : Math.round(a.ms)} ms</span>
         )}
+        {a?.status === "done" && res && !res.error && !stale && (
+          <button className="lab-status" onClick={() => calc.pinAnalysis()} aria-label="Pin this result to the session report">PIN</button>
+        )}
       </div>
       <div className="rows lab-body">
         {meta.inputs.length > 0 && (

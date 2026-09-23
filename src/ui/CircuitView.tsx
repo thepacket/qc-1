@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { Calculator } from "../calc/calculator";
 import { layoutTape, usedQubits, type Placed } from "../calc/diagram";
-import { gateLabel, MEASURE_IDS } from "../calc/steps";
+import { gateLabel, MEASURE_IDS, type Entry } from "../calc/steps";
 
 /** Diagram limits: beyond these the LIST pane is the readable form. */
 export const DIAGRAM_MAX_QUBITS = 128; // wires; the pane scrolls both ways
@@ -24,8 +24,12 @@ const label = (s: Placed["step"]) => (s.gateId === "measure" ? "M" : gateLabel(s
 
 /** TAPE's CIRC pane: the tape drawn as a circuit; tap a gate to scrub to it. */
 export function CircuitView({ calc }: { calc: Calculator }) {
-  const { n, tape } = calc;
-  const at = calc.scrub ?? tape.length;
+  return <CircuitDiagram n={calc.n} tape={calc.tape} scrub={calc.scrub} onTap={(k) => calc.setScrub(k)} />;
+}
+
+/** The diagram itself (also the session report's figure): `scrub` dims what lies ahead; `onTap` gets the step count to scrub to. */
+export function CircuitDiagram({ n, tape, scrub, onTap }: { n: number; tape: Entry[]; scrub: number | null; onTap?: (k: number) => void }) {
+  const at = scrub ?? tape.length;
   const steps = useMemo(() => tape.reduce((k, e) => k + e.length, 0), [tape]);
   // A wide register draws only the wires the tape touches.
   const wires = useMemo(() => (n <= DIAGRAM_MAX_QUBITS ? null : usedQubits(tape)), [n, tape]);
@@ -72,8 +76,8 @@ export function CircuitView({ calc }: { calc: Calculator }) {
           ))}
           {lay.items.map((it, k) => (
             <Gate key={k} it={it} row={(q) => rowOf.get(q)!} x={geo.x[it.col] + geo.w[it.col] / 2} y={y}
-              state={it.entry >= at ? "ahead" : it.entry === at - 1 && calc.scrub !== null ? "at" : ""}
-              onTap={() => calc.setScrub(it.entry + 1)} />
+              state={it.entry >= at ? "ahead" : it.entry === at - 1 && scrub !== null ? "at" : ""}
+              onTap={() => onTap?.(it.entry + 1)} />
           ))}
         </svg>
       </div>

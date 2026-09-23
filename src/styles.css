@@ -684,3 +684,31 @@ button {
 }
 .typed textarea:focus { outline: 2px solid var(--series-1); outline-offset: 0; }
 .typed .grow { flex: 1; }
+
+/* Session report (TAPE ≡ → Report): a light page over the calculator, printable. */
+.report {
+  position: fixed; inset: 0; z-index: 40; overflow-y: auto; background: #fcfcfb; color: #1c1c1a;
+  font-family: var(--sans); -webkit-overflow-scrolling: touch;
+}
+.report-bar { position: sticky; top: 0; display: flex; gap: 8px; justify-content: flex-end; padding: 8px 16px; background: #fcfcfbee; border-bottom: 1px solid #e2e1dc; }
+.report-bar button, .report-unpin { font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 4px; border: 1px solid #b9b7ae; background: #fff; color: #1c1c1a; }
+.report-page { max-width: 760px; margin: 0 auto; padding: 8px 16px 32px; }
+.report h1 { font-size: 20px; margin: 8px 0 2px; }
+.report h2 { font-size: 15px; margin: 20px 0 6px; padding-bottom: 2px; border-bottom: 1px solid #e2e1dc; }
+.report h3 { font-size: 13px; margin: 12px 0 4px; display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
+.report-unpin { margin-left: auto; font-size: 11px; padding: 1px 6px; }
+.report-meta, .report-dim { color: #5e5d58; font-size: 12px; }
+.report-figure { margin: 6px 0; padding: 8px; background: var(--lcd); border-radius: 6px; overflow-x: auto; color: var(--ink); }
+.report-figure .circ { max-height: none; overflow: visible; }
+.report-table { border-collapse: collapse; font-family: var(--mono); font-size: 12px; margin: 4px 0; }
+.report-table th, .report-table td { text-align: left; padding: 2px 12px 2px 0; border-bottom: 1px solid #ecebe6; }
+.report-pre { font-family: var(--mono); font-size: 11px; white-space: pre-wrap; word-break: break-all; background: #f3f2ee; padding: 8px; border-radius: 4px; }
+.report-tape { font-family: var(--mono); font-size: 12px; padding-left: 3.5em; margin: 4px 0; }
+.report-pin { break-inside: avoid; }
+@media print {
+  html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
+  body > :not(.report) { display: none !important; }
+  .report { position: static; overflow: visible; }
+  .report-bar, .report-unpin { display: none; }
+  .report-figure { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
