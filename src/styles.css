@@ -152,7 +152,6 @@ button {
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--ink-faint);
-  border-bottom: 1px solid var(--ink-faint);
   padding: 3px 0;
 }
 .view-head {
