@@ -67,7 +67,12 @@ export const SHIFTED: Partial<Record<KeyId, string>> = {
 export type Memory = { n: number; tape: Entry[]; scope: Scope };
 
 export type Mark = { q: number; anti: boolean };
-export type Message = { text: string; kind: "info" | "error" };
+/**
+ * The entry line's message. "info" is a key's echo (kept for tests and
+ * screen readers, not shown); "note" is shown small (importer warnings,
+ * re-sampled outcomes, confirmations of menu actions); "error" as an error.
+ */
+export type Message = { text: string; kind: "info" | "note" | "error" };
 
 export type LabLevel = "cats" | "list" | "view";
 export type LabState = { level: LabLevel; cat: number; index: number; id: string | null; opts: Record<string, Opts> };
@@ -283,7 +288,7 @@ export class Calculator {
     this.marks = this.marks.filter((m) => m.q < r.n);
     if (r.error) this.error(r.error);
     else report?.(r);
-    if (!r.error && r.notes?.length) this.info(r.notes[r.notes.length - 1]);
+    if (!r.error && r.notes?.length) this.notify(r.notes[r.notes.length - 1]);
     if (changed) {
       this.refreshLiveAnalysis();
       this.requestNoisyView();
@@ -300,7 +305,7 @@ export class Calculator {
     this.redoDepth = r.redo;
     this.symbols = r.symbols;
     this.scope = { ...r.scope, ...this.localScope };
-    if (r.notes?.length) this.info(r.notes[r.notes.length - 1]);
+    if (r.notes?.length) this.notify(r.notes[r.notes.length - 1]);
     if (changed) {
       this.refreshLiveAnalysis();
       this.requestNoisyView();
@@ -715,7 +720,7 @@ export class Calculator {
   }
 
   /** Show a status line from outside the key flow (copy / share results). */
-  notify(text: string, kind: Message["kind"] = "info") {
+  notify(text: string, kind: Message["kind"] = "note") {
     this.message = { text, kind };
     this.changed();
   }
@@ -1025,7 +1030,7 @@ export class Calculator {
     if (!a?.result || a.result.error) return;
     const title = ANALYSIS_BY_ID[a.id]?.title ?? a.id;
     this.pins = [...this.pins.slice(-11), { title, result: a.result, at: new Date().toLocaleTimeString(), steps: this.tape.length, n: this.n }];
-    this.info(`pinned to the report (${this.pins.length}): TAPE ≡ → Report`);
+    this.notify(`pinned to the report (${this.pins.length}): TAPE ≡ → Report`);
     this.changed();
   }
 

@@ -244,8 +244,9 @@ export function App() {
 
         {calc.activeGuide && <GuideBar calc={calc} />}
         {/* The entry line shows only when it has something (a typed number, a message). */}
-        {(calc.entry.length > 0 || calc.message) && (
-          <div className={`entry${calc.message?.kind === "error" && calc.entry.length === 0 ? " err" : ""}`}>
+        {/* The typed entry; else an error, or a small note. Keys' own echoes ("info") aren't shown. */}
+        {(calc.entry.length > 0 || (calc.message && calc.message.kind !== "info")) && (
+          <div className={`entry${calc.entry.length === 0 ? (calc.message?.kind === "error" ? " err" : " note") : ""}`}>
             <bdi>
               {calc.entry.length > 0 ? calc.entryText : calc.message ? (calc.message.kind === "error" ? `E: ${calc.message.text}` : calc.message.text) : " "}
             </bdi>
