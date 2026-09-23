@@ -69,6 +69,13 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
   - Analyses may be async (the optimiser); the worker awaits, and InlineEngine replies at once when the analysis is synchronous.
   - LAB inputs add a `pauli` text field (phone keyboard, `pauliPresets.ts`) and a `symbol` picker. Results can offer `apply` (set symbol values). A `paths` chart shows Bloch trajectories.
   - Fixtures: `metrology` and `metrology-symbolic`. Bugs #10–#12 are the Pauli-sum exponents, the QFI-matrix eigenvalues, and the optimiser stopping at a stationary start.
+- **Operator & spectrum (Phase 5a).**
+  - Coverage: unitary, PTM, operator entanglement, Floquet, the Hamiltonian-spectrum family (DOS, level statistics, SFF, Krylov, diagonal ensemble, effective temperature, ETH, eigenstate entanglement, work distribution), Berry phase, Chern number, ZX.
+  - `namedCircuit` (`src/calc/lower.ts`) maps base+controls to named ids (cx…) for structural modules; `fromTape` shares its `NAMED` table.
+  - Unitary-based analyses refuse tapes with measurements, resets or preps.
+  - Per-eigenstate analyses (ETH, effective temperature, eigenstate entanglement) refuse degenerate H.
+  - Fixtures: `spectrum-circuits`, `-hamiltonians` (degenerate H included), `-geometry`. Tests also cover the QWZ Chern phase diagram and ZX structure.
+  - Bugs #13–#15: `hermitianEig` duplicated eigenvectors in degenerate levels; the work distribution needs level projectors; Floquet statistics must be circular.
 - `src/qasm/fromTape.ts` turns the tape into OpenQASM 3. It uses stdgates names where
   they exist and `ctrl @`/`negctrl @` otherwise, adds exact `gate` definitions for
   non-stdgates (sy, sxdg, iswap, rxx, ryy, rzz), and folds `sqrt(...)` params to numbers.

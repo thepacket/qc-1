@@ -166,6 +166,59 @@ ANALYSES.push(
     summary: "Inverse participation ratio, participation ratio and entropies of the basis distribution; plus its growth along the tape." },
 );
 
+// Phase 5a: operator & spectrum (validated: spectrum-circuits, -hamiltonians, -geometry).
+const H = { kind: "pauli" as const, key: "obs", label: "H" };
+const twoSym = [
+  { kind: "symbol" as const, key: "s1", label: "x", fallback: "first" as const },
+  { kind: "symbol" as const, key: "s2", label: "y", fallback: "second" as const },
+];
+ANALYSES.push(
+  { id: "unitary", title: "Unitary matrix", category: "operator", mode: "live", maxQubits: 6, inputs: [],
+    summary: "The tape's whole operator U in the computational basis: colour = phase, opacity = |Uᵢⱼ|." },
+  { id: "ptm", title: "Pauli transfer matrix", category: "operator", mode: "live", maxQubits: 3, inputs: [],
+    summary: "Rᵢⱼ = Tr(Pᵢ U Pⱼ U†)/2ⁿ: what the circuit does to each Pauli; a Clifford is a signed permutation." },
+  { id: "opent", title: "Operator entanglement", category: "operator", mode: "live", maxQubits: 6, minQubits: 2, inputs: [],
+    summary: "Operator-Schmidt spectrum of U across the middle cut: 0 for a product, 1 ebit for a CNOT." },
+  { id: "floquet", title: "Floquet spectrum", category: "operator", mode: "run", maxQubits: 6, inputs: [],
+    summary: "Eigenphases of U on the unit circle, with circular level-spacing statistics." },
+  { id: "hamspectrum", title: "Hamiltonian spectrum", category: "operator", mode: "live", maxQubits: 6, inputs: [H],
+    summary: "Exact energy levels of a Pauli-sum H, the ground energy and gap, with ⟨H⟩ of the current state." },
+  { id: "dos", title: "Density of states", category: "operator", mode: "live", maxQubits: 6, inputs: [H],
+    summary: "Histogram of H's energy levels." },
+  { id: "levelstats", title: "Level statistics", category: "operator", mode: "live", maxQubits: 6, minQubits: 2, inputs: [H],
+    summary: "Gap ratio ⟨r⟩ of H's spectrum: 0.386 Poisson (integrable), 0.531 GOE (chaotic)." },
+  { id: "sff", title: "Spectral form factor", category: "operator", mode: "live", maxQubits: 6, inputs: [H],
+    summary: "|Σ e^(−iEt)|²/D² on log-log axes: dip, ramp, plateau." },
+  { id: "krylov", title: "Krylov complexity", category: "operator", mode: "live", maxQubits: 6, inputs: [H],
+    summary: "Lanczos coefficients bₙ of H from the current state, and the spread complexity C(t)." },
+  { id: "diagens", title: "Diagonal ensemble", category: "operator", mode: "live", maxQubits: 6, inputs: [H],
+    summary: "The state's weight on each energy level of H, ⟨H⟩, ΔE and the effective dimension." },
+  { id: "efftemp", title: "Effective temperature", category: "operator", mode: "live", maxQubits: 6, inputs: [H],
+    summary: "Boltzmann fit ln p = c − βE to the energy populations (non-degenerate H)." },
+  { id: "eth", title: "ETH matrix elements", category: "operator", mode: "run", maxQubits: 5, inputs: [
+      H, { kind: "pauli", key: "o", label: "O" },
+    ],
+    summary: "|⟨Eₘ|O|Eₙ⟩|² against ω = Eₘ − Eₙ, and the diagonal ⟨Eₙ|O|Eₙ⟩ (non-degenerate H)." },
+  { id: "eigent", title: "Eigenstate entanglement", category: "operator", mode: "run", maxQubits: 6, minQubits: 2, inputs: [H],
+    summary: "Half-chain entropy of every eigenstate of H against its energy: volume-law arch vs area law." },
+  { id: "workdist", title: "Work distribution", category: "operator", mode: "run", maxQubits: 5, inputs: [H],
+    summary: "Two-point-measurement work W = Eₘ − Eₙ for the tape as a quench from |0…0⟩ (energy-level projectors)." },
+  { id: "berry", title: "Berry phase", category: "operator", mode: "run", maxQubits: 12, inputs: [
+      ...twoSym,
+      { kind: "choice", key: "radius", label: "loop", fallback: 0.5, options: [
+        { label: "±0.25", value: 0.25 }, { label: "±0.5", value: 0.5 }, { label: "±π/2", value: Math.PI / 2 },
+      ] },
+    ],
+    summary: "Geometric phase around a square loop in two symbols, centred on their current values (discrete Wilson loop)." },
+  { id: "chern", title: "Chern number", category: "operator", mode: "run", maxQubits: 12, inputs: [
+      ...twoSym,
+      { kind: "choice", key: "grid", label: "grid", fallback: 12, options: [{ label: "8", value: 8 }, { label: "12", value: 12 }, { label: "24", value: 24 }] },
+    ],
+    summary: "Berry flux over the torus of two symbols in [0, 2π): an integer for a topological band." },
+  { id: "zx", title: "ZX diagram", category: "structure", mode: "live", maxQubits: 20, inputs: [],
+    summary: "The tape as a ZX-calculus diagram: green Z and red X spiders, Hadamard boxes." },
+);
+
 export const ANALYSIS_BY_ID: Record<string, AnalysisMeta> = Object.fromEntries(ANALYSES.map((a) => [a.id, a]));
 
 /** Default bipartition: the first half of the register. */

@@ -11,6 +11,7 @@ import * as ent from "./cases/groups/entanglement";
 import * as st2 from "./cases/groups/state2";
 import * as sym from "./cases/groups/symbolic";
 import * as met from "./cases/groups/metrology";
+import * as spc from "./cases/groups/spectrum";
 
 const OUT = new URL("./out/", import.meta.url);
 
@@ -58,6 +59,19 @@ test("dump validation cases", async () => {
       symbolic: await Promise.all(met.symCases().map(async (c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: await met.computeSym(c) }))),
       pathPoints: met.PATH_POINTS,
       grid: met.LANDSCAPE_GRID,
+    }),
+  );
+  const circs = spc.circCases();
+  writeFileSync(
+    new URL("spectrum.cases.json", OUT),
+    JSON.stringify({
+      group: "spectrum",
+      circuits: circs.map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: spc.computeCirc(c) })),
+      hams: spc.hamCases().map((h) => {
+        const st = circs.find((c) => c.n === h.n && c.id.startsWith("rand"))!;
+        return { ...h, stateId: st.id, stateQasm: exportQasm3(st.n, st.tape), qc1: spc.computeHam(h, st) };
+      }),
+      geom: spc.geomCases().map((g) => ({ ...g, qasm: exportQasm3(g.n, g.tape), qc1: spc.computeGeom(g) })),
     }),
   );
 });

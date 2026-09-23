@@ -52,7 +52,25 @@ import { quantumGeometricTensor } from "../sim/qgt";
 import { blochTrajectories } from "../sim/blochPath";
 import { participation, participationSweep } from "../sim/participation";
 import { barrenPlateauDiagnostic, computeLandscape, optimizeExpectation } from "../sim/optimize";
-import { lowerTape } from "../calc/lower";
+import { lowerTape, namedCircuit } from "../calc/lower";
+import { buildUnitary } from "../sim/unitary";
+import { pauliTransferMatrix } from "../sim/ptm";
+import { operatorEntanglement } from "../sim/operatorEntanglement";
+import { floquetSpectrum } from "../sim/floquetSpectrum";
+import { hamiltonianSpectrum } from "../sim/hamSpectrum";
+import { densityOfStates } from "../sim/densityOfStates";
+import { levelStatistics, POISSON_R, GOE_R } from "../sim/levelStatistics";
+import { spectralFormFactor } from "../sim/spectralFormFactor";
+import { krylovComplexity } from "../sim/krylov";
+import { ethOffDiagonal } from "../sim/ethOffDiagonal";
+import { diagonalEnsemble } from "../sim/diagonalEnsemble";
+import { effectiveTemperature } from "../sim/effectiveTemperature";
+import { eigenstateEntanglement } from "../sim/eigenstateEntanglement";
+import { workDistribution } from "../sim/workDistribution";
+import { berryPhase } from "../sim/berryPhase";
+import { chernNumber } from "../sim/chernNumber";
+import { zxDiagram } from "../sim/zx";
+import { NONUNITARY } from "../calc/steps";
 import { symbolsOf } from "../calc/steps";
 import { symbolGlyph } from "../calc/entry";
 
@@ -79,8 +97,8 @@ function amplitudeRows(ctx: AnalysisContext): number[] {
 type Run = (ctx: AnalysisContext, opts: Opts) => AnalysisResult | Promise<AnalysisResult>;
 
 /** The observable input, parsed; throws a readable error for bad text. */
-function observable(opts: Opts, n: number) {
-  const text = pauliValue(opts, "obs", n);
+function observable(opts: Opts, n: number, key = "obs") {
+  const text = pauliValue(opts, key, n);
   const terms = parsePauliSum(text);
   if (terms[0].paulis.length !== n) throw new Error(`Pauli strings need ${n} letters (one per qubit), got ${terms[0].paulis.length}`);
   return terms;
@@ -679,6 +697,219 @@ Object.assign(RUNS, {
         { label: "PR / 2ⁿ", value: r3(p.fraction) }, { label: "Shannon (nats)", value: r3(p.shannon) },
       ],
       charts: sweep ? [{ kind: "lines", x: sweep.pr.map((_, i) => i + 1), xLabel: "step", yLabel: "PR", series: [{ name: "PR", y: sweep.pr }], yMin: 1 }] : [],
+    };
+  },
+} satisfies Record<string, Run>);
+
+/** Unitary-based analyses need a tape without measurements, resets or state preps. */
+function requireUnitary(ctx: AnalysisContext) {
+  if (ctx.tape.some((e) => e.some((s) => NONUNITARY.has(s.gateId)))) {
+    throw new Error("the tape isn't unitary (it measures, resets or prepares a state)");
+  }
+}
+const basisLabels = (n: number) => Array.from({ length: 1 << n }, (_, i) => i.toString(2).padStart(n, "0"));
+/** Two symbol inputs (s1, s2) of an analysis, resolved against the tape. */
+function twoSymbols(id: string, ctx: AnalysisContext, opts: Opts): [string, string] {
+  const syms = symbolsOfTape(ctx);
+  if (syms.length < 2) throw new Error("needs two symbols in the tape (e.g. θ and φ)");
+  const meta = ANALYSIS_BY_ID[id];
+  const pick = (k: string) => symbolValue(meta.inputs.find((i) => i.key === k) as Extract<typeof meta.inputs[number], { kind: "symbol" }>, opts, syms);
+  const a = pick("s1"), b = pick("s2");
+  if (a === b) throw new Error("pick two different symbols");
+  return [a, b];
+}
+/** Group energies into levels (value, degeneracy). */
+function levelsOf(E: number[]) {
+  const out: { e: number; g: number }[] = [];
+  for (const e of E) {
+    const last = out[out.length - 1];
+    if (last && Math.abs(last.e - e) < 1e-8) last.g++;
+    else out.push({ e, g: 1 });
+  }
+  return out;
+}
+const isDegenerate = (E: number[]) => levelsOf(E).some((l) => l.g > 1);
+
+Object.assign(RUNS, {
+  unitary(ctx) {
+    requireUnitary(ctx);
+    const U = buildUnitary(lowerTape(ctx.n, ctx.tape), ctx.scope, [])!;
+    const d = U.dim, L = basisLabels(ctx.n);
+    const re = Array.from({ length: d }, (_, i) => Array.from({ length: d }, (_, j) => U.mag[i * d + j] * Math.cos(U.phase[i * d + j])));
+    const im = Array.from({ length: d }, (_, i) => Array.from({ length: d }, (_, j) => U.mag[i * d + j] * Math.sin(U.phase[i * d + j])));
+    return { charts: [{ kind: "heatmap", scale: "complex", rows: L, cols: L, values: re, imag: im, title: "U: rows = output, cols = input" }] };
+  },
+
+  ptm(ctx) {
+    requireUnitary(ctx);
+    const res = pauliTransferMatrix(lowerTape(ctx.n, ctx.tape), ctx.scope, [])!;
+    return { charts: [{ kind: "heatmap", scale: "div", min: -1, max: 1, rows: res.labels, cols: res.labels, values: res.R, title: "R_ij (row i = output Pauli)" }] };
+  },
+
+  opent(ctx) {
+    requireUnitary(ctx);
+    const res = operatorEntanglement(lowerTape(ctx.n, ctx.tape), ctx.scope, [])!;
+    return {
+      scalars: [{ label: "E_op", value: r3(res.entropy), unit: "ebits" }, { label: "cut", value: `q0…q${res.cutA - 1} | rest` }],
+      charts: [{ kind: "bars", title: "operator-Schmidt coefficients", labels: res.spectrum.map((_, i) => `λ${i + 1}`), values: res.spectrum, max: 1 }],
+    };
+  },
+
+  floquet(ctx) {
+    requireUnitary(ctx);
+    const res = floquetSpectrum(lowerTape(ctx.n, ctx.tape), ctx.scope, [])!;
+    return {
+      scalars: [{ label: "⟨r⟩ (circular)", value: r3(res.meanR) }, { label: "Poisson", value: 0.386 }, { label: "COE", value: 0.527 }],
+      charts: [{ kind: "phases", phases: res.quasiEnergies }],
+    };
+  },
+
+  hamspectrum(ctx, opts) {
+    const terms = observable(opts, ctx.n);
+    const res = hamiltonianSpectrum(terms, ctx.n)!;
+    const e = pauliSumExpectation(ctx.state, ctx.n, terms);
+    const lv = levelsOf(res.energies);
+    return {
+      scalars: [
+        { label: "ground E₀", value: r3(res.ground) }, { label: "gap E₁ − E₀", value: r3(lv.length > 1 ? lv[1].e - lv[0].e : 0) },
+        { label: "⟨H⟩ of the state", value: r3(e) }, { label: "levels (degenerate)", value: `${lv.length} (${lv.filter((l) => l.g > 1).length})` },
+      ],
+      charts: [{ kind: "levels", energies: res.energies, marker: { label: "⟨H⟩", value: e } }],
+    };
+  },
+
+  dos(ctx, opts) {
+    const res = densityOfStates(hamiltonianSpectrum(observable(opts, ctx.n), ctx.n)!.energies)!;
+    return { charts: [{ kind: "hist", centers: res.centers, values: res.counts, xLabel: "E", yLabel: "levels" }] };
+  },
+
+  levelstats(ctx, opts) {
+    const res = levelStatistics(hamiltonianSpectrum(observable(opts, ctx.n), ctx.n)!.energies)!;
+    const centers = res.hist.map((_, k) => (k + 0.5) / res.bins);
+    return {
+      scalars: [
+        { label: "⟨r⟩", value: r3(res.meanRatio) }, { label: "Poisson", value: r3(POISSON_R) }, { label: "GOE", value: r3(GOE_R) },
+        { label: "degenerate gaps", value: `${Math.round(res.degenerateFraction * 100)}%` },
+      ],
+      charts: [{ kind: "hist", centers, values: res.hist, xLabel: "r", yLabel: "P(r)", curve: { name: "Poisson 2/(1+r)²", y: centers.map((r) => 2 / (1 + r) ** 2) } }],
+      notes: res.degenerateFraction > 0 ? ["Degeneracies (symmetries) pull ⟨r⟩ down; restrict to one symmetry sector for a clean chaos test."] : [],
+    };
+  },
+
+  sff(ctx, opts) {
+    const res = spectralFormFactor(hamiltonianSpectrum(observable(opts, ctx.n), ctx.n)!.energies, 120)!;
+    return {
+      scalars: [{ label: "plateau", value: r3(res.plateau) }, { label: "Heisenberg time", value: r3(res.heisenbergTime) }],
+      charts: [{ kind: "lines", x: res.t, xLabel: "t (log)", yLabel: "SFF (log)", logX: true, logY: true,
+        series: [{ name: "SFF", y: res.sff.map((v) => Math.max(v, 1e-12)) }, { name: "plateau", y: res.t.map(() => res.plateau), dashed: true }] }],
+    };
+  },
+
+  krylov(ctx, opts) {
+    const res = krylovComplexity(observable(opts, ctx.n), ctx.state, ctx.n)!;
+    return {
+      scalars: [{ label: "Krylov dimension", value: res.krylovDim }, { label: "max C(t)", value: r3(res.maxComplexity) }],
+      charts: [
+        { kind: "bars", title: "Lanczos bₙ", labels: res.b.map((_, i) => `b${i + 1}`), values: res.b },
+        { kind: "lines", title: "spread complexity", x: res.times, xLabel: "t", yLabel: "C(t)", series: [{ name: "C(t)", y: res.complexity }], yMin: 0 },
+      ],
+    };
+  },
+
+  diagens(ctx, opts) {
+    const res = diagonalEnsemble(observable(opts, ctx.n), ctx.state, ctx.n)!;
+    const lv: { e: number; w: number }[] = [];
+    res.energies.forEach((e, k) => {
+      const last = lv[lv.length - 1];
+      if (last && Math.abs(last.e - e) < 1e-8) last.w += res.populations[k];
+      else lv.push({ e, w: res.populations[k] });
+    });
+    const dEff = 1 / lv.reduce((s, l) => s + l.w * l.w, 0);
+    return {
+      scalars: [
+        { label: "⟨H⟩", value: r3(res.meanEnergy) }, { label: "ΔE", value: r3(res.energySpread) },
+        { label: "effective dimension (levels)", value: r3(dEff) },
+      ],
+      charts: [{ kind: "scatter", x: lv.map((l) => l.e), y: lv.map((l) => l.w), xLabel: "E", yLabel: "weight" }],
+    };
+  },
+
+  efftemp(ctx, opts) {
+    const terms = observable(opts, ctx.n);
+    const E = hamiltonianSpectrum(terms, ctx.n)!.energies;
+    if (isDegenerate(E)) return { error: "H has degenerate levels: per-eigenstate populations aren't defined; use a generic H" };
+    const res = effectiveTemperature(diagonalEnsemble(terms, ctx.state, ctx.n)!);
+    const pts = res.energies.map((e, k) => [e, res.logPop[k]] as const).filter(([, y]) => Number.isFinite(y));
+    return {
+      scalars: [{ label: "β", value: r3(res.beta) }, { label: "T = 1/β", value: Number.isFinite(res.temperature) ? r3(res.temperature) : "∞" }, { label: "R²", value: r3(res.r2) }],
+      charts: [{ kind: "scatter", x: pts.map((p) => p[0]), y: pts.map((p) => p[1]), xLabel: "E", yLabel: "ln pₖ",
+        fit: { a: res.intercept, b: -res.beta, label: `β = ${r3(res.beta)}` } }],
+    };
+  },
+
+  eth(ctx, opts) {
+    const terms = observable(opts, ctx.n);
+    if (isDegenerate(hamiltonianSpectrum(terms, ctx.n)!.energies)) return { error: "H has degenerate levels: use a generic H" };
+    const res = ethOffDiagonal(terms, observable(opts, ctx.n, "o"), ctx.n)!;
+    const pts = res.offDiag.filter((p) => p.mag2 > 1e-14);
+    return {
+      scalars: [{ label: "mean |O_mn|²", value: res.meanOffDiag.toExponential(2) }],
+      charts: [
+        { kind: "scatter", title: "off-diagonal", x: pts.map((p) => p.omega), y: pts.map((p) => Math.log10(p.mag2)), xLabel: "ω = Eₘ − Eₙ", yLabel: "log₁₀ |O_mn|²" },
+        { kind: "scatter", title: "diagonal", x: res.diag.map((p) => p.energy), y: res.diag.map((p) => p.value), xLabel: "E", yLabel: "⟨E|O|E⟩" },
+      ],
+    };
+  },
+
+  eigent(ctx, opts) {
+    const terms = observable(opts, ctx.n);
+    if (isDegenerate(hamiltonianSpectrum(terms, ctx.n)!.energies)) return { error: "H has degenerate levels: eigenstates aren't unique; use a generic H" };
+    const res = eigenstateEntanglement(terms, ctx.n)!;
+    return {
+      scalars: [{ label: "max (Page ceiling)", value: res.maxEntropy, unit: "bits" }],
+      charts: [{ kind: "scatter", x: res.energies, y: res.entropies, xLabel: "E", yLabel: "S(half) bits" }],
+    };
+  },
+
+  workdist(ctx, opts) {
+    requireUnitary(ctx);
+    const res = workDistribution(observable(opts, ctx.n), lowerTape(ctx.n, ctx.tape), ctx.scope, [])!;
+    return {
+      scalars: [{ label: "⟨W⟩", value: r3(res.meanWork) }, { label: "Var(W)", value: r3(res.variance) }],
+      charts: [{ kind: "hist", centers: res.works, values: res.probs, xLabel: "W", yLabel: "P(W)" }],
+    };
+  },
+
+  berry(ctx, opts) {
+    const [a, b] = twoSymbols("berry", ctx, opts);
+    const res = berryPhase(lowerTape(ctx.n, ctx.tape), ctx.scope, [], a, b, num("berry", "radius", opts, ctx.n), 16)!;
+    return {
+      scalars: [
+        { label: "γ", value: `${r3(res.gamma)} = ${r3(res.gamma / Math.PI)}π` },
+        { label: "|Π⟨ψₖ|ψₖ₊₁⟩|", value: r3(res.overlapMagnitude) },
+        { label: "loop", value: `${symbolGlyph(a)}, ${symbolGlyph(b)} around (${r3(ctx.scope[a] ?? 0)}, ${r3(ctx.scope[b] ?? 0)})` },
+      ],
+      notes: res.overlapMagnitude < 0.5 ? ["Small overlap product: the loop is too coarse or crosses a degeneracy."] : [],
+    };
+  },
+
+  chern(ctx, opts) {
+    const [a, b] = twoSymbols("chern", ctx, opts);
+    const grid = num("chern", "grid", opts, ctx.n);
+    const res = chernNumber(lowerTape(ctx.n, ctx.tape), ctx.scope, [], a, b, grid)!;
+    const lab = (k: number) => (k % Math.max(1, Math.floor(grid / 4)) === 0 ? `${r3((2 * k) / grid)}π` : "");
+    return {
+      scalars: [{ label: "Chern number C", value: r3(res.chern) }],
+      charts: [{ kind: "heatmap", scale: "div", min: -Math.PI, max: Math.PI, rows: Array.from({ length: grid }, (_, k) => lab(k)),
+        cols: Array.from({ length: grid }, (_, k) => lab(k)), values: res.curvature, title: `Berry flux: rows ${symbolGlyph(a)}, cols ${symbolGlyph(b)}` }],
+    };
+  },
+
+  zx(ctx) {
+    const res = zxDiagram(namedCircuit(ctx.n, ctx.tape));
+    return {
+      scalars: [{ label: "fusable spider pairs", value: res.fusableHint }],
+      charts: [{ kind: "zx", numQubits: res.numQubits, numCols: res.numCols, nodes: res.nodes, edges: res.edges }],
     };
   },
 } satisfies Record<string, Run>);

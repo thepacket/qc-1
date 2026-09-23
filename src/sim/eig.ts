@@ -63,21 +63,40 @@ export function hermitianEig(H: Complex[][]): { values: number[]; vectors: Compl
   }
   const { values, vectors } = jacobiSym(M);
   const order = Array.from({ length: 2 * d }, (_, i) => i).sort((p, q) => values[p] - values[q]);
+  // QC-1 fix (docs/quantiom-bugs.md #13): each eigenvalue of H appears twice
+  // in the embedding, as u+iw and i(u+iw). Taking every other sorted vector
+  // is only right for a non-degenerate H; in a degenerate cluster it can
+  // return the same complex vector twice and miss another. Instead, for
+  // each cluster of 2g equal embedding eigenvalues, Gram–Schmidt the 2g
+  // complex candidates u+iw down to g orthonormal eigenvectors.
+  const span = Math.max(1, ...values.map(Math.abs));
+  const tol = 1e-9 * span;
   const outVals: number[] = [];
   const outVecs: Complex[][] = [];
-  for (let k = 0; k < 2 * d; k += 2) {
-    const col = order[k];
-    outVals.push(values[col]);
-    const v: Complex[] = new Array(d);
-    let norm = 0;
-    for (let i = 0; i < d; i++) {
-      const re = vectors[i][col], im = vectors[i + d][col];
-      v[i] = { re, im };
-      norm += re * re + im * im;
+  for (let start = 0; start < 2 * d; ) {
+    let end = start + 1;
+    while (end < 2 * d && values[order[end]] - values[order[start]] < tol) end++;
+    const want = Math.round((end - start) / 2);
+    const lambda = order.slice(start, end).reduce((s, c) => s + values[c], 0) / (end - start);
+    const kept: Complex[][] = [];
+    for (let k = start; k < end && kept.length < want; k++) {
+      const col = order[k];
+      const v: Complex[] = Array.from({ length: d }, (_, i) => ({ re: vectors[i][col], im: vectors[i + d][col] }));
+      for (const u of kept) {
+        // v −= ⟨u|v⟩ u
+        let pr = 0, pi = 0;
+        for (let i = 0; i < d; i++) { pr += u[i].re * v[i].re + u[i].im * v[i].im; pi += u[i].re * v[i].im - u[i].im * v[i].re; }
+        for (let i = 0; i < d; i++) { v[i].re -= pr * u[i].re - pi * u[i].im; v[i].im -= pr * u[i].im + pi * u[i].re; }
+      }
+      let norm = 0;
+      for (let i = 0; i < d; i++) norm += v[i].re * v[i].re + v[i].im * v[i].im;
+      if (norm < 1e-12) continue; // i·(a vector already kept)
+      const inv = 1 / Math.sqrt(norm);
+      for (let i = 0; i < d; i++) { v[i].re *= inv; v[i].im *= inv; }
+      kept.push(v);
     }
-    const inv = norm > 1e-300 ? 1 / Math.sqrt(norm) : 0;
-    for (let i = 0; i < d; i++) { v[i].re *= inv; v[i].im *= inv; }
-    outVecs.push(v);
+    for (const v of kept) { outVals.push(lambda); outVecs.push(v); }
+    start = end;
   }
   return { values: outVals, vectors: outVecs };
 }

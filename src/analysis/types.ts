@@ -70,12 +70,24 @@ export type Chart =
       curve?: { name: string; y: number[] };
     }
   | { kind: "stars"; title?: string; stars: { theta: number; phi: number }[] }
+  /** Energy-level diagram: one line per level (degeneracy shown), optional marker. */
+  | { kind: "levels"; title?: string; energies: number[]; marker?: { label: string; value: number } }
+  /** Points on the unit circle (Floquet eigenphases). */
+  | { kind: "phases"; title?: string; phases: number[] }
+  /** ZX diagram on the qubit × step grid. */
+  | {
+      kind: "zx"; title?: string; numQubits: number; numCols: number;
+      nodes: { kind: "Z" | "X" | "H" | "box"; qubit: number; col: number; phase: string; label?: string }[];
+      edges: { q1: number; q2: number; col: number; hadamard: boolean }[];
+    }
   /** Paths on the Bloch sphere (Bloch trajectory over t). */
   | { kind: "paths"; title?: string; paths: { label: string; points: { x: number; y: number; z: number }[] }[] }
   | {
       kind: "lines"; title?: string; x: number[]; xLabel: string; yLabel: string;
       series: { name: string; y: number[]; dashed?: boolean }[];
       yMin?: number; yMax?: number; xTicks?: string[];
+      /** Logarithmic axes (values must be > 0). */
+      logX?: boolean; logY?: boolean;
     }
   | { kind: "table"; title?: string; headers: string[]; rows: (string | number)[][] }
   | { kind: "disks"; title?: string; disks: { label: string; re: number; im: number }[] }

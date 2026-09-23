@@ -1,6 +1,7 @@
 import type { Circuit, PlacedGate } from "../sim/types";
 import { evalParam, initAngles, MACROS, MEASURE_IDS, symbolsOf, type Entry } from "../calc/steps";
 import { emitQasm3 } from "./emit";
+import { NAMED } from "../calc/lower";
 
 /**
  * Tape → OpenQASM 3.
@@ -16,18 +17,6 @@ import { emitQasm3 } from "./emit";
  * so the file loads in any OpenQASM 3 toolchain.
  */
 
-/** Named controlled forms in stdgates.inc: base id → control count → name. */
-const NAMED: Record<string, Record<number, string>> = {
-  x: { 1: "cx", 2: "ccx" },
-  y: { 1: "cy" },
-  z: { 1: "cz" },
-  h: { 1: "ch" },
-  rx: { 1: "crx" },
-  ry: { 1: "cry" },
-  rz: { 1: "crz" },
-  p: { 1: "cp" },
-  swap: { 1: "cswap" },
-};
 
 /** Macro gates (rccx, rcccx) written out from the same sequence the simulator runs. */
 function macroDefinition(name: string): string {

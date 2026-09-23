@@ -120,10 +120,12 @@ const SERIES = ["var(--series-1)", "var(--series-2)", "var(--series-3)"];
 function Lines({ c }: { c: Extract<Chart, { kind: "lines" }> }) {
   const [pick, setPick] = useState<number | null>(null);
   const W = 300, H = 170, L = 34, B = 26, T = 8, Rm = 8;
-  const xs = c.x;
-  const all = c.series.flatMap((s) => s.y).filter(Number.isFinite);
-  const y0 = c.yMin ?? Math.min(...all, 0);
-  const y1 = c.yMax ?? Math.max(...all, y0 + 1e-9);
+  const tx = (x: number) => (c.logX ? Math.log10(x) : x);
+  const ty = (y: number) => (c.logY ? Math.log10(y) : y);
+  const xs = c.x.map(tx);
+  const all = c.series.flatMap((s) => s.y.map(ty)).filter(Number.isFinite);
+  const y0 = c.yMin !== undefined ? ty(c.yMin) : Math.min(...all, c.logY ? Infinity : 0);
+  const y1 = c.yMax !== undefined ? ty(c.yMax) : Math.max(...all, y0 + 1e-9);
   const x0 = Math.min(...xs), x1 = Math.max(...xs, x0 + 1e-9);
   const px = (x: number) => L + ((x - x0) / (x1 - x0)) * (W - L - Rm);
   const py = (y: number) => T + (1 - (y - y0) / (y1 - y0 || 1)) * (H - T - B);
@@ -135,23 +137,24 @@ function Lines({ c }: { c: Extract<Chart, { kind: "lines" }> }) {
         {yTicks.map((t) => (
           <g key={t}>
             <line x1={L} x2={W - Rm} y1={py(t)} y2={py(t)} className="grid" />
-            <text x={L - 4} y={py(t)} className="tick" textAnchor="end" dominantBaseline="middle">{fmt(t, 2)}</text>
+            <text x={L - 4} y={py(t)} className="tick" textAnchor="end" dominantBaseline="middle">{c.logY ? `1e${Math.round(t)}` : fmt(t, 2)}</text>
           </g>
         ))}
         {xs.map((x, i) =>
           i % tickEvery === 0 ? (
-            <text key={i} x={px(x)} y={H - B + 12} className="tick" textAnchor="middle">{c.xTicks?.[i] ?? fmt(x, 2)}</text>
+            <text key={i} x={px(x)} y={H - B + 12} className="tick" textAnchor="middle">{c.xTicks?.[i] ?? (c.logX ? `1e${Math.round(x)}` : fmt(x, 2))}</text>
           ) : null,
         )}
         <text x={W - Rm} y={H - 2} className="axis-name" textAnchor="end">{c.xLabel}</text>
         {c.series.map((s, k) => {
-          const pts = xs.map((x, i) => (Number.isFinite(s.y[i]) ? `${px(x)},${py(s.y[i])}` : null)).filter(Boolean);
+          const ys = s.y.map(ty);
+          const pts = xs.map((x, i) => (Number.isFinite(ys[i]) ? `${px(x)},${py(ys[i])}` : null)).filter(Boolean);
           return (
             <g key={s.name}>
               <polyline points={pts.join(" ")} fill="none" stroke={SERIES[k % 3]} strokeWidth={2}
                 strokeDasharray={s.dashed ? "5 4" : undefined} strokeLinejoin="round" />
-              {!s.dashed && xs.map((x, i) => Number.isFinite(s.y[i]) && (
-                <circle key={i} cx={px(x)} cy={py(s.y[i])} r={2.5} fill={SERIES[k % 3]} stroke="var(--lcd)" strokeWidth={1} />
+              {!s.dashed && xs.length <= 80 && xs.map((x, i) => Number.isFinite(ys[i]) && (
+                <circle key={i} cx={px(x)} cy={py(ys[i])} r={2.5} fill={SERIES[k % 3]} stroke="var(--lcd)" strokeWidth={1} />
               ))}
             </g>
           );
@@ -170,7 +173,7 @@ function Lines({ c }: { c: Extract<Chart, { kind: "lines" }> }) {
         </div>
       )}
       <Readout
-        text={pick === null ? null : `${c.xLabel} ${c.xTicks?.[pick] ?? fmt(xs[pick])}: ${c.series.map((s) => `${s.name} ${fmt(s.y[pick])}`).join(" · ")}`}
+        text={pick === null ? null : `${c.xLabel} ${c.xTicks?.[pick] ?? fmt(c.x[pick])}: ${c.series.map((s) => `${s.name} ${fmt(s.y[pick])}`).join(" · ")}`}
         hint={`${c.yLabel} · tap for values`}
       />
     </Frame>
@@ -383,6 +386,110 @@ function Paths({ c }: { c: Extract<Chart, { kind: "paths" }> }) {
   );
 }
 
+// ─── Energy levels ───────────────────────────────────────────────────
+function Levels({ c }: { c: Extract<Chart, { kind: "levels" }> }) {
+  const [pick, setPick] = useState<string | null>(null);
+  const W = 300, H = 180, L = 40, T = 8, B = 8;
+  const lv: { e: number; g: number }[] = [];
+  for (const e of c.energies) {
+    const last = lv[lv.length - 1];
+    if (last && Math.abs(last.e - e) < 1e-8) last.g++;
+    else lv.push({ e, g: 1 });
+  }
+  const all = [...c.energies, ...(c.marker ? [c.marker.value] : [])];
+  const lo = Math.min(...all), hi = Math.max(...all, lo + 1e-9);
+  const py = (e: number) => T + (1 - (e - lo) / (hi - lo)) * (H - T - B);
+  const maxG = Math.max(...lv.map((l) => l.g));
+  return (
+    <Frame title={c.title}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="lines-svg" role="img" aria-label="energy levels">
+        {[lo, (lo + hi) / 2, hi].map((e) => (
+          <text key={e} x={L - 4} y={py(e)} className="tick" textAnchor="end" dominantBaseline="middle">{fmt(e, 2)}</text>
+        ))}
+        {lv.map((l) => (
+          <g key={l.e} onClick={() => setPick(`E = ${fmt(l.e, 4)}${l.g > 1 ? ` (×${l.g})` : ""}`)}>
+            <line x1={L + 6} x2={L + 6 + (W - L - 60) * (0.35 + (0.65 * l.g) / maxG)} y1={py(l.e)} y2={py(l.e)} stroke="var(--series-1)" strokeWidth={2} />
+            <rect x={L} y={py(l.e) - 4} width={W - L} height={8} fill="transparent" />
+            {l.g > 1 && <text x={W - 8} y={py(l.e)} className="tick" textAnchor="end" dominantBaseline="middle">×{l.g}</text>}
+          </g>
+        ))}
+        {c.marker && (
+          <g>
+            <line x1={L} x2={W - 30} y1={py(c.marker.value)} y2={py(c.marker.value)} stroke="var(--series-2)" strokeDasharray="5 4" strokeWidth={1.5} />
+            <text x={W - 28} y={py(c.marker.value)} className="tick" dominantBaseline="middle">{c.marker.label}</text>
+          </g>
+        )}
+      </svg>
+      <Readout text={pick} hint={`${lv.length} levels · bar length = degeneracy · tap a level`} />
+    </Frame>
+  );
+}
+
+// ─── Eigenphases on the unit circle ─────────────────────────────────
+function Phases({ c }: { c: Extract<Chart, { kind: "phases" }> }) {
+  const [pick, setPick] = useState<string | null>(null);
+  const S = 200, m = S / 2, R = 78;
+  return (
+    <Frame title={c.title}>
+      <svg viewBox={`0 0 ${S} ${S}`} className="qsphere" role="img" aria-label="eigenphases">
+        <circle cx={m} cy={m} r={R} className="sphere" />
+        <line x1={m - R - 6} x2={m + R + 6} y1={m} y2={m} className="axis" />
+        <line x1={m} x2={m} y1={m - R - 6} y2={m + R + 6} className="axis" />
+        <text x={m + R + 4} y={m - 4} className="axis-label">0</text>
+        <text x={m - R - 4} y={m - 4} className="axis-label">π</text>
+        {c.phases.map((th, i) => (
+          <circle key={i} cx={m + R * Math.cos(th)} cy={m - R * Math.sin(th)} r={5} fill="var(--series-2)" fillOpacity={0.85}
+            stroke="var(--lcd)" strokeWidth={1.5} onClick={() => setPick(`θ = ${fmt(th / Math.PI, 3)}π`)} />
+        ))}
+      </svg>
+      <Readout text={pick} hint={`${c.phases.length} eigenphases · tap one`} />
+    </Frame>
+  );
+}
+
+// ─── ZX diagram ──────────────────────────────────────────────────────
+function Zx({ c }: { c: Extract<Chart, { kind: "zx" }> }) {
+  const [pick, setPick] = useState<string | null>(null);
+  const cw = 34, rh = 30, L = 26, T = 16;
+  const W = L + Math.max(1, c.numCols) * cw + 16, H = T + c.numQubits * rh;
+  const x = (col: number) => L + (col + 0.5) * cw;
+  const y = (q: number) => T + q * rh;
+  return (
+    <Frame title={c.title}>
+      <div className="zx-wrap">
+        <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} role="img" aria-label="ZX diagram">
+          {Array.from({ length: c.numQubits }, (_, q) => (
+            <g key={q}>
+              <text x={4} y={y(q)} className="tick" dominantBaseline="middle">q{q}</text>
+              <line x1={L} x2={W - 8} y1={y(q)} y2={y(q)} className="zx-wire" />
+            </g>
+          ))}
+          {c.edges.map((e, i) => (
+            <line key={i} x1={x(e.col)} x2={x(e.col)} y1={y(e.q1)} y2={y(e.q2)} className={e.hadamard ? "zx-edge had" : "zx-edge"} />
+          ))}
+          {c.nodes.map((nd, i) => {
+            const cx = x(nd.col), cy = y(nd.qubit);
+            const info = `${nd.kind === "box" ? nd.label : nd.kind === "H" ? "Hadamard" : `${nd.kind} spider`}${nd.phase ? ` (${nd.phase})` : ""} on q${nd.qubit}`;
+            return (
+              <g key={i} onClick={() => setPick(info)}>
+                {nd.kind === "H" || nd.kind === "box" ? (
+                  <rect x={cx - 9} y={cy - 9} width={18} height={18} rx={2} className={nd.kind === "H" ? "zx-h" : "zx-box"} />
+                ) : (
+                  <circle cx={cx} cy={cy} r={9} className={nd.kind === "Z" ? "zx-z" : "zx-x"} />
+                )}
+                {(nd.phase || nd.kind === "box") && (
+                  <text x={cx} y={cy - 12} className="tick" textAnchor="middle">{nd.kind === "box" ? nd.label : nd.phase}</text>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+      <Readout text={pick} hint="green Z · red X spiders · yellow Hadamard · dashed = Hadamard edge · tap a node" />
+    </Frame>
+  );
+}
+
 export function ChartView({ chart }: { chart: Chart }) {
   switch (chart.kind) {
     case "heatmap": return <Heatmap c={chart} />;
@@ -395,5 +502,8 @@ export function ChartView({ chart }: { chart: Chart }) {
     case "hist": return <Hist c={chart} />;
     case "stars": return <Stars c={chart} />;
     case "paths": return <Paths c={chart} />;
+    case "levels": return <Levels c={chart} />;
+    case "phases": return <Phases c={chart} />;
+    case "zx": return <Zx c={chart} />;
   }
 }

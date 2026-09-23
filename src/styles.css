@@ -588,3 +588,13 @@ button {
 }
 .pauli-field input:focus { outline: 2px solid var(--series-1); outline-offset: 0; }
 .lab-status.apply { align-self: flex-start; border-color: var(--series-1); color: var(--ink); padding: 3px 8px; font-size: 11px; }
+
+/* ZX diagram: spider colours follow the ZX convention (green Z, red X, yellow H). */
+.zx-wrap { overflow-x: auto; }
+.zx-wire { stroke: var(--ink-muted); stroke-width: 1; }
+.zx-edge { stroke: var(--ink-dim); stroke-width: 1.5; }
+.zx-edge.had { stroke: #d9b54a; stroke-dasharray: 4 3; }
+.zx-z { fill: #3fae6a; stroke: var(--lcd); stroke-width: 1.5; }
+.zx-x { fill: #d9534f; stroke: var(--lcd); stroke-width: 1.5; }
+.zx-h { fill: #d9b54a; stroke: var(--lcd); stroke-width: 1.5; }
+.zx-box { fill: var(--grid); stroke: var(--ink-dim); stroke-width: 1; }

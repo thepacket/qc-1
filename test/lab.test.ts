@@ -37,6 +37,13 @@ describe("LAB framework", () => {
       c.setSymbol("theta", 0.4);
       c.setSymbol("t", 0.9);
       c.setMode("lab");
+      // Hamiltonian-based analyses need a generic (non-degenerate) H.
+      if (a.inputs.some((i) => i.kind === "pauli")) {
+        const P = (q: number, p: string) => Array.from({ length: n }, (_, k) => (k === q ? p : "I")).join("");
+        const H = [...Array(n).keys()].map((q) => `${(0.37 + 0.11 * q).toFixed(2)}*${P(q, "X")} + ${(0.29 - 0.07 * q).toFixed(2)}*${P(q, "Z")}`).join(" + ")
+          + (n > 1 ? ` + 0.53*${"Z".repeat(2)}${"I".repeat(n - 2)} + 0.41*${"Y".repeat(2)}${"I".repeat(n - 2)}` : "");
+        c.setLabOpts(a.id, { obs: H });
+      }
       c.openAnalysis(a.id);
       for (let i = 0; i < 200 && c.analysis?.status !== "done"; i++) await new Promise((r) => setTimeout(r, 0));
       expect(c.n, a.id).toBe(n);
