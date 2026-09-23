@@ -298,15 +298,17 @@ button {
 /* ── Keypad ────────────────────────────────────────────────── */
 .keypad {
   flex: 0 0 auto;
-  height: 55%;
+  /* 8 rows of a 13px 2ND label over a 26px key (the mode buttons' height). */
+  height: calc(8 * 39px + 7 * 2px);
   min-height: 0;
   transition: height 0.25s ease, opacity 0.2s ease;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  grid-template-rows: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 39px);
   column-gap: 8px;
   row-gap: 2px;
 }
+.keypad .key { flex: 0 0 26px; height: 26px; border-radius: 8px; }
 .cell {
   display: flex;
   flex-direction: column;
