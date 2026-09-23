@@ -10,5 +10,6 @@ Dockerfile
 fly.toml
 .dockerignore
 validation
+!validation/cases
 test
 !test/fixtures
