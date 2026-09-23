@@ -26,7 +26,8 @@ import { customOf, defineGate, type CustomGate } from "../calc/custom";
 import { buildMatrix } from "../sim/matrices";
 import { isSafeExpr } from "../sim/expr";
 
-export type ImportResult = { n: number; tape: Entry[]; gates: CustomGate[]; notes: string[] };
+/** `lines[i]` is the source line of the statement that made tape entry i (step-through captions). */
+export type ImportResult = { n: number; tape: Entry[]; gates: CustomGate[]; notes: string[]; lines: number[] };
 
 export class QasmImportError extends Error {
   constructor(message: string, readonly line: number) {
@@ -628,6 +629,7 @@ export function importQasm(src: string, existing: CustomGate[] = []): ImportResu
 
   // The program.
   const tape: Entry[] = [];
+  const lines: number[] = [];
   const writer = new Map<number, { q: number; gen: number }>(); // program bit → qubit that wrote it
   const gen = new Array<number>(n).fill(0); // measurements of each qubit so far
   const run = (ss: Stmt[], cond: { clbit: number; value: number } | null) => {
@@ -659,6 +661,7 @@ export function importQasm(src: string, existing: CustomGate[] = []): ImportResu
           const o = qs.length === 1 ? noted(s.line) : undefined;
           if (o !== undefined) st.outcome = o;
           tape.push([cond ? { ...st, condition: cond } : st]);
+          lines.push(s.line);
           if (s.k === "measure") {
             gen[q]++;
             if (cs.length) writer.set(cs[i], { q, gen: gen[q] });
@@ -668,6 +671,7 @@ export function importQasm(src: string, existing: CustomGate[] = []): ImportResu
       }
       for (const e of emit(s, (a) => resolveQ(a, s.line), new Map(), s.line)) {
         tape.push(cond ? e.map((x) => ({ ...x, condition: cond })) : e);
+        lines.push(s.line);
       }
     }
   };
@@ -678,7 +682,7 @@ export function importQasm(src: string, existing: CustomGate[] = []): ImportResu
   for (const s of tape.flat().concat(created.flatMap((d) => d.tape.flat()))) {
     for (const x of s.params) if (Number.isNaN(evalParam(x, scope))) throw new QasmImportError(`can't evaluate ${x}`, 1);
   }
-  return { n, tape, gates: created, notes };
+  return { n, tape, gates: created, notes, lines };
 
   function matchesNative(def: GateDef, body: (qs: number[], pm: Map<string, string>) => Step[]): boolean {
     const k = def.qubits.length;

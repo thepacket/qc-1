@@ -632,3 +632,46 @@ button {
 .help p, .help li { font-size: 11px; line-height: 1.45; margin: 3px 0; }
 .help ul { margin: 2px 0; padding-left: 16px; }
 .help-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 2px 8px; font-size: 11px; }
+
+/* TAPE → CIRC: the tape as a circuit diagram */
+.circ { display: flex; flex: 1; min-height: 0; overflow-y: auto; font-family: var(--mono); font-size: 11px; }
+.circ-labels { flex: none; }
+.circ-labels text { fill: var(--ink-muted); font-size: 10px; }
+.circ-scroll { flex: 1; min-width: 0; overflow-x: auto; }
+.circ svg { display: block; }
+.circ .wire { stroke: var(--ink-muted); stroke-width: 1; }
+.circ .link { stroke: var(--ink-dim); stroke-width: 1.5; }
+.circ .hit { fill: transparent; }
+.circ .ctl { fill: var(--ink-dim); stroke: var(--ink-dim); stroke-width: 1.5; }
+.circ .ctl.open { fill: var(--lcd); }
+.circ .oplus { fill: var(--lcd); stroke: var(--ink-dim); stroke-width: 1.5; }
+.circ .swapx { fill: var(--ink-dim); font-size: 16px; }
+.circ .box { fill: var(--lcd-hi); stroke: var(--ink-dim); stroke-width: 1; }
+.circ .box.meas { stroke: var(--amber); }
+.circ .box.cond { stroke-dasharray: 3 2; }
+.circ .glabel { fill: var(--ink); }
+.circ .outcome, .circ .iflabel { fill: var(--amber); font-size: 9px; }
+.circ .gate { cursor: pointer; }
+.circ .gate.ahead { opacity: 0.3; }
+.circ .gate.at .box, .circ .gate.at .oplus, .circ .gate.at .ctl { stroke: var(--series-1); stroke-width: 2; }
+.circ .gate.at .link { stroke: var(--series-1); }
+
+/* TAPE ≡ → QR code: full screen, dark on white (scanners need the contrast, whatever the theme) */
+.qr-overlay {
+  position: fixed; inset: 0; z-index: 50; background: #fff; color: #111;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  padding: 16px; font-family: var(--sans); text-align: center;
+}
+.qr-overlay .qr { width: min(100%, 72vh); height: auto; aspect-ratio: 1; }
+.qr-overlay p { margin: 0; font-size: 15px; }
+.qr-overlay .qr-small { font-size: 12px; color: #555; }
+
+/* Step-through guide (replaces the tape strip) */
+.guide { border-top: 1px solid var(--grid); padding-top: 3px; font-size: 11px; flex: none; }
+.guide-head { display: flex; align-items: center; gap: 6px; }
+.guide-head button { min-width: 28px; font-family: var(--mono); color: var(--ink); background: none; border: 1px solid var(--ink-faint); border-radius: 3px; padding: 1px 4px; }
+.guide-head button:disabled { opacity: 0.3; }
+.guide-step { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--series-1); font-family: var(--mono); }
+.guide-text { margin: 3px 0 0; height: 4.2em; overflow-y: auto; color: var(--ink-dim); font-family: var(--sans); line-height: 1.4; white-space: pre-line; }
+.expanded .guide-text { height: 9em; }
+.guide-start { margin: 0 0 2px; font-family: var(--mono); font-size: 11px; color: var(--ink); background: none; border: 1px solid var(--series-1); border-radius: 3px; padding: 2px 8px; }

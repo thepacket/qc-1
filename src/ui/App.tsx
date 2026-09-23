@@ -66,15 +66,18 @@ export function App() {
 
   // A share link (#q=…) opens as an undoable replace of the saved session.
   useEffect(() => {
-    const shared = readShareHash(location.hash);
-    if (!shared) return;
+    if (!/^#[qz]=/.test(location.hash)) return;
+    const hash = location.hash;
     history.replaceState(null, "", location.pathname + location.search);
-    try {
-      calc.loadQasm(shared.qasm, "shared link", shared.scope);
-      calc.setMode("tape");
-    } catch (e) {
-      calc.notify(`link: ${e instanceof Error ? e.message : String(e)}`, "error");
-    }
+    void readShareHash(hash).then((shared) => {
+      if (!shared) return calc.notify("link: unreadable", "error");
+      try {
+        calc.loadQasm(shared.qasm, "shared link", shared.scope);
+        calc.setMode("tape");
+      } catch (e) {
+        calc.notify(`link: ${e instanceof Error ? e.message : String(e)}`, "error");
+      }
+    });
   }, [calc]);
 
   // The handle under the display: drag down to expand, up to restore, tap to toggle.
@@ -222,9 +225,11 @@ export function App() {
 
         {view}
 
-        <div className="tape-strip">
-          {last.length === 0 ? <span className="dim">ready</span> : last.map((e, i) => <span key={i}>{formatEntry(e)}</span>)}
-        </div>
+        {calc.activeGuide ? <GuideBar calc={calc} /> : (
+          <div className="tape-strip">
+            {last.length === 0 ? <span className="dim">ready</span> : last.map((e, i) => <span key={i}>{formatEntry(e)}</span>)}
+          </div>
+        )}
         <div className={`entry${calc.message?.kind === "error" && calc.entry.length === 0 ? " err" : ""}`}>
           <bdi>
             {calc.entry.length > 0 ? calc.entryText : calc.message ? (calc.message.kind === "error" ? `E: ${calc.message.text}` : calc.message.text) : " "}
@@ -285,3 +290,27 @@ export function App() {
     </div>
   );
 }
+
+/**
+ * Step-through (an example loaded with "▶ step through"): the step the views
+ * show and the program's comment for it. ◀ ▶ move the scrub; ✕ ends it.
+ */
+function GuideBar({ calc }: { calc: Calculator }) {
+  const g = calc.activeGuide!;
+  const N = calc.tape.length;
+  const at = calc.scrub ?? N;
+  const text = at === 0 ? g.intro : g.captions[at - 1];
+  return (
+    <div className="guide" aria-live="polite">
+      <div className="guide-head">
+        <button onClick={() => calc.setScrub(at - 1)} disabled={at === 0} aria-label="Previous step">◀</button>
+        <span className="guide-step">{at === 0 ? g.title : `${at}/${N} · ${formatEntry(calc.tape[at - 1])}`}</span>
+        <button onClick={() => calc.setScrub(at + 1)} disabled={at >= N} aria-label="Next step">▶</button>
+        <button onClick={() => calc.endGuide()} aria-label="End step-through">✕</button>
+      </div>
+      {/* fixed height: the buttons stay put while captions come and go */}
+      <p className="guide-text">{text || <span className="dim">·</span>}</p>
+    </div>
+  );
+}
+

@@ -4,6 +4,7 @@ import { evalParam, exprOk, formatEntry, NONUNITARY, type Entry, type Scope, typ
 import { CATALOG, type CatalogItem } from "./catalog";
 import { CUSTOM_PREFIX, defineGate, setCustomGates, type CustomGate } from "./custom";
 import { importQasm } from "../qasm/import";
+import { stepCaptions } from "../qasm/captions";
 import { DEFAULT_NOISE, isIdeal, sanitiseNoise, type NoiseModel } from "../noise/model";
 import { ANALYSIS_BY_ID, CATEGORIES, analysesIn } from "../analysis/catalog";
 import type { AnalysisReply, AnalysisResult, Opts, Proposal } from "../analysis/types";
@@ -112,6 +113,8 @@ const BUSY_DELAY = 120;
  * keeps a mirror of its register — n, tape, redo depth — plus the latest
  * view summary, updated as replies arrive.
  */
+const tapeIds = (tape: Entry[]) => tape.map((e) => e.map((s) => s.id).join(",")).join(";");
+
 export class Calculator {
   n: number;
   tape: Entry[];
@@ -144,6 +147,12 @@ export class Calculator {
   catalog = { open: false, index: 0 };
   /** The help screen is open. */
   helpOpen = false;
+  /**
+   * Step-through: captions for a loaded example, one per tape entry. It
+   * applies while the tape is the one loaded (same step ids); an edit hides
+   * it and UNDO brings it back.
+   */
+  guide: { title: string; intro: string; captions: string[]; ids: string } | null = null;
   /** Custom gates defined with DEFINE (G1, G2, …). */
   customGates: CustomGate[] = [];
   /** The noise model; when on, PROB/BLOCH/SHOTS and the noise analyses use it. */
@@ -226,8 +235,14 @@ export class Calculator {
 
   /** Send a command; `report` runs with its reply unless the reply is an error. */
   private send(cmd: Cmd, report?: (r: Result) => void) {
-    // Editing the tape ends a scrub: views go back to the live state.
-    if (this.scrub !== null && cmd.t !== "view" && cmd.t !== "scope") {
+    if (this.scrub !== null && (cmd.t === "push" || cmd.t === "repeat")) {
+      // While scrubbed, a gate goes in at the scrub point and the views follow it.
+      const at = this.scrub;
+      this.scrub = at + 1;
+      this.send({ t: "view", req: this.viewReq() });
+      cmd = { t: "insert", at, entry: cmd.t === "push" ? cmd.entry : null };
+    } else if (this.scrub !== null && cmd.t !== "view" && cmd.t !== "scope" && cmd.t !== "insert" && cmd.t !== "delete") {
+      // Any other edit ends a scrub: views go back to the live state.
       this.scrub = null;
       this.send({ t: "view", req: this.viewReq() });
     }
@@ -305,6 +320,19 @@ export class Calculator {
     if (next === this.scrub) return;
     this.scrub = next;
     this.send({ t: "view", req: this.viewReq() });
+    this.changed();
+  }
+
+  /** Remove the entry the scrubber stands after (the last one when live); undoable. */
+  deleteStep() {
+    const at = this.scrub ?? this.tape.length;
+    if (at === 0) return;
+    if (this.scrub !== null) {
+      this.scrub = at - 1;
+      this.send({ t: "view", req: this.viewReq() });
+    }
+    const gone = this.tape[at - 1];
+    this.send({ t: "delete", at: at - 1 }, () => this.info(`deleted ${at}: ${formatEntry(gone)} (UNDO restores)`));
     this.changed();
   }
 
@@ -540,8 +568,9 @@ export class Calculator {
    * values (others start at 0). Returns the importer's notes, or throws its
    * error (with the line).
    */
-  loadQasm(src: string, label: string, scope: Scope = {}): string[] {
+  loadQasm(src: string, label: string, scope: Scope = {}, guide?: { title: string; intro: string }): string[] {
     const r = importQasm(src, this.customGates);
+    this.guide = guide ? { ...guide, captions: stepCaptions(src, r.lines), ids: tapeIds(r.tape) } : null;
     if (r.gates.length) {
       this.customGates = [...this.customGates, ...r.gates];
       setCustomGates(this.customGates);
@@ -549,8 +578,24 @@ export class Calculator {
     }
     this.sel = Math.min(this.sel, r.n - 1);
     this.send({ t: "replace", n: r.n, tape: r.tape, scope: { ...scope }, label }, () => this.info(`${label}: ${r.tape.length} steps, n=${r.n}`));
+    if (guide && r.tape.length) {
+      // Start before the first step (set directly: the mirrored tape isn't updated yet).
+      this.scrub = 0;
+      this.send({ t: "view", req: this.viewReq() });
+    }
     this.changed();
     return r.notes;
+  }
+
+  /** The step-through guide, while the tape is still the one it was made for. */
+  get activeGuide() {
+    return this.guide && this.guide.ids === tapeIds(this.tape) ? this.guide : null;
+  }
+
+  endGuide() {
+    this.guide = null;
+    this.setScrub(null);
+    this.changed();
   }
 
   /** Replace the tape by a circuit tool's verified output (one undoable step). */

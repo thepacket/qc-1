@@ -129,10 +129,15 @@ export class StabilizerRegister {
     return { n: this.n, tape: [...this.tape], scope: { ...this.scope } };
   }
 
+  /** Swap in new contents; built aside first, so a refused (non-Clifford) tape leaves the register as it was. */
   private load(c: Contents) {
-    this.n = c.n;
-    this.scope = { ...c.scope };
-    this.rebuild(c.tape);
+    const next = new StabilizerRegister(c.n, c.tape, c.scope);
+    this.n = next.n;
+    this.scope = next.scope;
+    this.tab = next.tab;
+    this.cbits = next.cbits;
+    this.tape = next.tape;
+    this.notes = next.notes;
   }
 
   resize(n: number): void {

@@ -44,6 +44,10 @@ export type Cmd =
   | { t: "scope"; values: Scope }
   /** Swap in whole new contents as one undoable operation. */
   | { t: "replace"; n: number; tape: Entry[]; scope: Scope; label: string }
+  /** Insert an entry before tape index `at` (null: a copy of the entry before it, the = key); undoable. */
+  | { t: "insert"; at: number; entry: Entry | null }
+  /** Remove the entry at tape index `at`; undoable. */
+  | { t: "delete"; at: number }
   | { t: "view"; req: ViewReq }
   /** Custom gate definitions (set before a load/replace that uses them). */
   | { t: "gates"; defs: CustomGate[] };
@@ -135,6 +139,23 @@ export class Core {
             this.switchTo(registerFor(top.after), [...this.reg.ops, top], this.reg.redoOps.slice(0, -1));
             op = top;
           } else op = this.reg.redo();
+          break;
+        }
+        case "insert": {
+          const tape = this.reg.tape;
+          if (!(cmd.at >= 0 && cmd.at <= tape.length)) throw new Error(`no step ${cmd.at}`);
+          const prev = tape[cmd.at - 1];
+          const entry = cmd.entry ?? prev?.map((s) => ({ ...s, id: `r${repeatId++}`, outcome: undefined }));
+          if (!entry) throw new Error("nothing to repeat");
+          this.check(entry);
+          this.reg.replace({ n: this.reg.n, tape: [...tape.slice(0, cmd.at), entry, ...tape.slice(cmd.at)], scope: this.reg.scope }, `insert at ${cmd.at + 1}`);
+          done = this.reg.tape[cmd.at];
+          break;
+        }
+        case "delete": {
+          const tape = this.reg.tape;
+          if (!(cmd.at >= 0 && cmd.at < tape.length)) throw new Error(`no step ${cmd.at + 1}`);
+          this.reg.replace({ n: this.reg.n, tape: tape.filter((_, i) => i !== cmd.at), scope: this.reg.scope }, `delete step ${cmd.at + 1}`);
           break;
         }
         case "replace":

@@ -22,7 +22,11 @@ export function HelpView({ calc }: { calc: Calculator }) {
         </div>
         <p><b>t</b> and <b>VAR</b> (repeat to cycle θ φ λ α β γ δ τ ω) put symbols into angles; tap the symbol badge for sliders and t playback. <b>STO</b>/<b>RCL</b> with a digit 1–9 store and recall whole tapes. <b>IF</b> with k (or k,v) makes the next gate run only when bit c[k] = v; measuring qubit q writes c[q]. <b>CAT</b> lists every other gate, custom gates and DEFINE.</p>
         <h3>Views</h3>
-        <p><b>KET</b> amplitudes · <b>PROB</b> probabilities · <b>BLOCH</b> one sphere per qubit · <b>SHOTS</b> sampled counts (tap again to re-roll) · <b>TAPE</b> the recorded steps, a scrubber to look at the state after any step, and ≡ for examples, OpenQASM import/export, Qiskit (Python) export and share links · <b>LAB</b> analyses and tools.</p>
+        <p><b>KET</b> amplitudes · <b>PROB</b> probabilities · <b>BLOCH</b> one sphere per qubit · <b>SHOTS</b> sampled counts (tap again to re-roll) · <b>TAPE</b> the recorded steps (LIST, or CIRC as a circuit diagram), a scrubber to look at the state after any step, and ≡ for examples, OpenQASM import/export, Qiskit (Python) export, share links and QR codes · <b>LAB</b> analyses and tools.</p>
+        <h3>Editing the tape</h3>
+        <p>Scrub back (drag the slider, or tap a step or a gate in CIRC): gate keys now go in at that point, and the views follow. <b>DEL</b> removes the step before the scrub point (the last one when live). Later measurements keep their recorded outcomes unless one has become impossible. UNDO takes back each edit.</p>
+        <h3>Examples, step by step</h3>
+        <p>TAPE ≡ → Examples: tap a program, then <b>▶ step through</b>. It loads at the start; ◀ ▶ under the display walk the steps with the program's own comments, in any view (KET, PROB, BLOCH…). ✕ ends it.</p>
         <h3>LAB</h3>
         <ul>
           {CATEGORIES.map((c) => <li key={c.id}>{c.label} <span className="dim">· {ANALYSES.filter((a) => a.category === c.id).length}</span></li>)}

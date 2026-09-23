@@ -1,9 +1,11 @@
+import { CircuitView } from "./CircuitView";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Calculator } from "../calc/calculator";
 import { KET_ROWS, type ViewData } from "../calc/core";
 import { formatEntry } from "../calc/steps";
 import { exportQasm3 } from "../qasm/fromTape";
 import { shareHash } from "../qasm/share";
+import { makeQr, qrPath, QR_MAX } from "../qasm/qr";
 import { qiskitPython } from "../qasm/toQiskit";
 import { EXAMPLE_CATEGORIES, describeProgram, loadExample } from "../examples";
 import type { Vec3 } from "../calc/analysis";
@@ -112,7 +114,7 @@ async function shareQasm(calc: Calculator, text: string, name = "qc1-tape.qasm")
   calc.notify(`saved ${name}`);
 }
 
-type TapePane = "list" | "qasm" | "menu" | "examples" | "import";
+type TapePane = "list" | "circ" | "qasm" | "menu" | "examples" | "import" | "qr";
 
 export function TapeView({ calc }: { calc: Calculator }) {
   const [pane, setPane] = useState<TapePane>("list");
@@ -134,22 +136,26 @@ export function TapeView({ calc }: { calc: Calculator }) {
         <span>{tape.length} steps</span>
         <span className="lcd-btns">
           {tab("list", "LIST")}
+          {tab("circ", "CIRC")}
           {tab("qasm", "QASM")}
           {tab("menu", "≡")}
         </span>
       </div>
       {pane === "menu" && <TapeMenu calc={calc} go={setPane} />}
+      {pane === "qr" && <QrPane calc={calc} done={() => setPane("menu")} />}
       {pane === "examples" && <ExamplesPane calc={calc} done={() => setPane("list")} />}
       {pane === "import" && <ImportPane calc={calc} done={() => setPane("list")} />}
-      {pane === "list" && tape.length > 0 && (
+      {(pane === "list" || pane === "circ") && tape.length > 0 && (
         <div className="scrubber">
           <button onClick={() => calc.setScrub(at - 1)} disabled={at === 0} aria-label="Step back">◀</button>
           <input type="range" min={0} max={tape.length} value={at} aria-label="Show the state after step"
             onChange={(e) => calc.setScrub(Number(e.target.value))} />
           <button onClick={() => calc.setScrub(at + 1)} disabled={at >= tape.length} aria-label="Step forward">▶</button>
-          <span className="dim">{calc.scrub === null ? "live" : `after ${at}`}</span>
+          <span className="dim">{calc.scrub === null ? "live" : `@${at} · insert`}</span>
+          <button className="del" onClick={() => calc.deleteStep()} disabled={at === 0} aria-label={`Delete step ${at}`}>DEL</button>
         </div>
       )}
+      {pane === "circ" && <CircuitView calc={calc} />}
       {pane === "qasm" && <pre className="rows qasm">{text}</pre>}
       {pane === "list" && (
         <div className="rows">
@@ -168,11 +174,42 @@ export function TapeView({ calc }: { calc: Calculator }) {
   );
 }
 
+/** The share link of the current tape (compressed, see qasm/share.ts). */
+const shareUrl = async (calc: Calculator) => `${location.origin}${location.pathname}${await shareHash(calc.n, calc.tape, calc.scope)}`;
+
+/**
+ * TAPE ≡ → QR code: the share link as a QR code, full screen (it's for the
+ * phones pointed at this one), dark on white whatever the theme; tap to close.
+ */
+function QrPane({ calc, done }: { calc: Calculator; done: () => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void shareUrl(calc).then((u) => live && setUrl(u));
+    return () => { live = false; };
+  }, [calc, calc.n, calc.tape, calc.scope]);
+  const qr = useMemo(() => (url ? makeQr(url) : null), [url]);
+  if (!url) return <div className="rows dim">…</div>;
+  if (!qr) {
+    return <div className="rows dim">This tape's link is {url.length} characters; a QR code holds at most {QR_MAX.L}. Use Share link or Share QASM file instead.</div>;
+  }
+  const side = qr.size + 8;
+  return (
+    <div className="qr-overlay" role="dialog" aria-label="QR code of the share link" onClick={done}>
+      <svg className="qr" viewBox={`0 0 ${side} ${side}`} role="img" aria-label="QR code" shapeRendering="crispEdges">
+        <rect width={side} height={side} fill="#fff" />
+        <path d={qrPath(qr)} fill="#000" />
+      </svg>
+      <p>Scan to open this tape in QC-1: {calc.tape.length} steps, n={calc.n}.</p>
+      <p className="qr-small">{url.length} characters · QR version {qr.version} · tap to close</p>
+    </div>
+  );
+}
+
 function TapeMenu({ calc, go }: { calc: Calculator; go: (p: TapePane) => void }) {
   const qasm = () => exportQasm3(calc.n, calc.tape);
-  const link = () => `${location.origin}${location.pathname}${shareHash(calc.n, calc.tape, calc.scope)}`;
   const shareLink = async () => {
-    const url = link();
+    const url = await shareUrl(calc);
     try {
       if (navigator.share) {
         await navigator.share({ url, title: "QC-1 tape" });
@@ -196,6 +233,7 @@ function TapeMenu({ calc, go }: { calc: Calculator; go: (p: TapePane) => void })
     ["Copy Qiskit (Python)", "a script that builds the QuantumCircuit", () => { void copyText(calc, qiskitPython(calc.n, calc.tape), "Qiskit script copied"); go("list"); }],
     ["Share Qiskit file", "qc1_tape.py", () => { void shareQasm(calc, qiskitPython(calc.n, calc.tape), "qc1_tape.py"); go("list"); }],
     ["Share link", "the tape and symbol values in a URL", () => { void shareLink(); go("list"); }],
+    ["QR code", "the share link, for phones pointed at this screen", () => go("qr")],
   ];
   return (
     <div className="rows">
@@ -224,6 +262,17 @@ function ExamplesPane({ calc, done }: { calc: Calculator; done: () => void }) {
     }
     setLit({ file, text: await loadExample(file) });
   };
+  // Load it scrubbed to the start, with the program's comments as captions (App's GuideBar).
+  const stepThrough = (label: string) => {
+    if (!lit) return;
+    try {
+      calc.loadQasm(lit.text, lit.file.replace(/\.qasm$/, ""), {}, { title: label, intro: describeProgram(lit.text) });
+      calc.setMode("ket");
+      done();
+    } catch (e) {
+      calc.notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
   return (
     <div className="rows">
       {EXAMPLE_CATEGORIES.map((c) => (
@@ -235,9 +284,10 @@ function ExamplesPane({ calc, done }: { calc: Calculator; done: () => void }) {
                 <span>{it.label}</span>
               </button>
               {lit?.file === it.file && (
-                <p className="dim note example-desc" ref={(el) => el?.scrollIntoView({ block: "nearest" })}>
-                  {describeProgram(lit.text) || lit.file}
-                  {"\n"}<b>tap the name again to load (UNDO restores)</b>
+                <p className="dim note example-desc" ref={(el) => el?.previousElementSibling?.scrollIntoView({ block: "start" })}>
+                  <button className="guide-start" onClick={() => stepThrough(it.label)}>▶ step through</button>
+                  {" "}<b>or tap the name again to load (UNDO restores)</b>
+                  {"\n\n"}{describeProgram(lit.text) || lit.file}
                 </p>
               )}
             </div>

@@ -77,13 +77,13 @@ qubit[3] q; bell q[0], q[2]; rzz(0.4) q[0], q[1];`);
 import { shareHash, readShareHash } from "../src/qasm/share";
 
 describe("share links", () => {
-  test("#q= carries the program and symbol values; reading it back imports the same tape", () => {
+  test("#z= carries the compressed program and symbol values; reading it back imports the same tape", async () => {
     const fx = loadFixture<Case>("symbolic");
     const c = fx.cases[0] as Case;
     const scope = { theta: 0.37, phi: -1.2, lambda: 2.1, t: 1.1 };
-    const hash = shareHash(c.n, c.tape, scope);
-    expect(hash.startsWith("#q=")).toBe(true);
-    const back = readShareHash(hash)!;
+    const hash = await shareHash(c.n, c.tape, scope);
+    expect(hash.startsWith("#z=")).toBe(true);
+    const back = (await readShareHash(hash))!;
     expect(back.scope).toEqual(scope);
     expect(back.qasm).toBe(exportQasm3(c.n, c.tape));
     const r = importQasm(back.qasm);
@@ -93,9 +93,21 @@ describe("share links", () => {
     expect(err).toBeLessThan(1e-10);
   });
 
-  test("garbage in the fragment is ignored", () => {
-    expect(readShareHash("#q=%%%")).toBeNull();
-    expect(readShareHash("#x=1")).toBeNull();
-    expect(readShareHash("#q=AAAA&v=__proto__:1,theta:2").scope).toEqual({ theta: 2 });
+  test("links from before compression (#q=, plain text) still open", async () => {
+    const text = exportQasm3(2, [[{ id: "a", gateId: "h", column: 0, controls: [], targets: [0], clbits: [], params: [] }]]);
+    const q = btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    expect((await readShareHash(`#q=${q}&v=theta:2`))).toEqual({ qasm: text, scope: { theta: 2 } });
+  });
+
+  test("garbage in the fragment is ignored; a link can't inflate past 1 MB", async () => {
+    expect(await readShareHash("#q=%%%")).toBeNull();
+    expect(await readShareHash("#z=AAAA")).toBeNull();
+    expect(await readShareHash("#x=1")).toBeNull();
+    expect((await readShareHash("#q=AAAA&v=__proto__:1,theta:2"))!.scope).toEqual({ theta: 2 });
+    // 2 MB of spaces deflates to a few KB: refused.
+    const bomb = new Uint8Array(await new Response(new Blob([" ".repeat(2 << 20)]).stream().pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer());
+    let bin = "";
+    for (const b of bomb) bin += String.fromCharCode(b);
+    expect(await readShareHash(`#z=${btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`)).toBeNull();
   });
 });

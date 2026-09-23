@@ -290,9 +290,15 @@ const LABEL: Record<string, string> = {
   initialize: "|ψ⟩",
 };
 
+/** Imported symbols keep their ASCII names; show them as the VAR key's glyphs. */
+const GLYPH: Record<string, string> = {
+  theta: "θ", phi: "φ", lambda: "λ", alpha: "α", beta: "β", gamma: "γ", delta: "δ", tau: "τ", omega: "ω",
+};
+
 /** Pretty-print an expression the way it was keyed in (π/4, 3π/4, √(2)). */
 export function prettyExpr(e: string): string {
   return e
+    .replace(/\b(theta|phi|lambda|alpha|beta|gamma|delta|tau|omega)\b/g, (g) => GLYPH[g])
     .replace(/(\d|\)|π)\*(π|t\b|[θφλαβγδτω]|sin\(|cos\(|exp\(|sqrt\()/g, "$1$2")
     .replace(/(\d|\))\*π/g, "$1π")
     .replace(/(\d|\)|π)\*\(/g, "$1(")
@@ -302,18 +308,23 @@ export function prettyExpr(e: string): string {
     .replace(/-/g, "−");
 }
 
-/** Short tape label: "H q0", "CX q0→q2", "RZ(π÷4) q1", "M q1=0". */
-export function formatStep(s: Step): string {
+/** The gate's name and arguments, without controls or qubits: "RZ(π÷4)", "G1", "|ψ⟩(0.707,0.707)". */
+export function gateLabel(s: Step): string {
   const base = LABEL[s.gateId] ?? (s.gateId.startsWith(CUSTOM_PREFIX) ? s.gateId.slice(CUSTOM_PREFIX.length) : s.gateId.toUpperCase());
-  const cs = s.controls.map((_, i) => (s.controlStates?.[i] === false ? "○" : "C")).join("");
   const args = s.gateId === "initialize"
     ? `(${s.params[0].replace(/[()\s]/g, "").split(",").map((x) => String(+(+x).toFixed(3))).join(",")})`.replace(/-/g, "−")
     : s.params.length ? `(${s.params.map(prettyExpr).join(",")})` : "";
+  return base + args;
+}
+
+/** Short tape label: "H q0", "CX q0→q2", "RZ(π÷4) q1", "M q1=0". */
+export function formatStep(s: Step): string {
+  const cs = s.controls.map((_, i) => (s.controlStates?.[i] === false ? "○" : "C")).join("");
   const ctrl = s.controls.length ? s.controls.map((q) => `q${q}`).join(",") + "→" : "";
   const tgt = s.targets.map((q) => `q${q}`).join(",");
   const out = s.outcome !== undefined && MEASURE_IDS.has(s.gateId) && s.gateId !== "reset" ? `=${s.outcome}` : "";
   const cond = s.condition ? `IF c${s.condition.clbit}=${s.condition.value}: ` : "";
-  return `${cond}${cs}${base}${args} ${ctrl}${tgt}${out}`;
+  return `${cond}${cs}${gateLabel(s)} ${ctrl}${tgt}${out}`;
 }
 
 export function formatEntry(e: Entry): string {
