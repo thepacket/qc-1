@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import type { Chart } from "../../analysis/types";
 import { divColor, fmt, fmtC, phaseColor, seqColor } from "./colors";
 import { project } from "./sphere";
+import { elementToSvg, saveSvg } from "../svgExport";
 
 /** Tap-to-read line shown under a chart (phones have no hover). */
 function Readout({ text, hint }: { text: string | null; hint: string }) {
@@ -9,8 +10,11 @@ function Readout({ text, hint }: { text: string | null; hint: string }) {
 }
 
 function Frame({ title, children }: { title?: string; children: ReactNode }) {
+  const fig = useRef<HTMLElement>(null);
+  const save = () => fig.current && void saveSvg(elementToSvg(fig.current), `qc1-${(title ?? "chart").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "chart"}.svg`);
   return (
-    <figure className="chart">
+    <figure className="chart" ref={fig}>
+      <button className="svg-btn" onClick={save} aria-label={`Save ${title ?? "the chart"} as SVG`}>SVG</button>
       {title && <figcaption>{title}</figcaption>}
       {children}
     </figure>

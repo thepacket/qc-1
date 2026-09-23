@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import type { Calculator } from "../calc/calculator";
 import { layoutTape, usedQubits, type Placed } from "../calc/diagram";
 import { gateLabel, MEASURE_IDS, type Entry } from "../calc/steps";
+import { elementToSvg, saveSvg } from "./svgExport";
 
 /** Diagram limits: beyond these the LIST pane is the readable form. */
 export const DIAGRAM_MAX_QUBITS = 128; // wires; the pane scrolls both ways
@@ -62,15 +63,19 @@ export function CircuitDiagram({ n, tape, scrub, onTap }: { n: number; tape: Ent
   const W = geo.x[geo.x.length - 1];
   const y = (r: number) => TOP + r * ROW + ROW / 2;
   const rowOf = new Map(lay.wires.map((q, r) => [q, r]));
+  const root = useRef<HTMLDivElement>(null);
+  const main = useRef<SVGSVGElement>(null);
+  const save = () => root.current && main.current && void saveSvg(elementToSvg(root.current, [main.current]), "qc1-circuit.svg");
   return (
-    <div className="circ">
+    <div className="circ" ref={root}>
+      <button className="svg-btn" onClick={save} aria-label="Save the circuit as SVG">SVG</button>
       <svg className="circ-labels" width={30} height={H} aria-hidden>
         {lay.wires.map((q, r) => (
           <text key={q} x={26} y={y(r) + 4} textAnchor="end">q{q}</text>
         ))}
       </svg>
       <div className="circ-scroll" ref={box}>
-        <svg width={W} height={H} role="img" aria-label={`Circuit: ${tape.length} steps on ${n} qubits`}>
+        <svg ref={main} width={W} height={H} role="img" aria-label={`Circuit: ${tape.length} steps on ${n} qubits`}>
           {lay.wires.map((q, r) => (
             <line key={q} className="wire" x1={0} x2={W} y1={y(r)} y2={y(r)} />
           ))}

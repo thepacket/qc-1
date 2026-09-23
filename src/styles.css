@@ -767,3 +767,13 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .calc.landscape .keypad, .calc.landscape .lcd, .calc.landscape .modes { transition: none; }
 }
+
+/* SVG export buttons (a chart's frame, the circuit diagram): small, top right, out of the exported image. */
+.chart, .circ { position: relative; }
+.svg-btn {
+  position: absolute; top: 0; right: 0; z-index: 1;
+  font-family: var(--mono); font-size: 9px; padding: 0 4px; border-radius: 3px;
+  color: var(--ink-muted); border: 1px solid var(--ink-faint); background: var(--lcd);
+}
+.svg-btn:active { color: var(--ink); }
+.report .svg-btn { display: none; }
