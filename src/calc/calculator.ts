@@ -1,4 +1,5 @@
 import { MAX_QUBITS } from "./register";
+import { STAB_MAX } from "../stab/register";
 import { evalParam, exprOk, formatEntry, NONUNITARY, type Entry, type Scope, type Step } from "./steps";
 import { CATALOG, type CatalogItem } from "./catalog";
 import { CUSTOM_PREFIX, defineGate, setCustomGates, type CustomGate } from "./custom";
@@ -761,7 +762,7 @@ export class Calculator {
         return;
       }
       case "n": {
-        if (this.entry.length === 0) return this.error(`enter 1–${MAX_QUBITS}, then N`);
+        if (this.entry.length === 0) return this.error(`enter 1–${STAB_MAX}, then N (above ${MAX_QUBITS}: Clifford tapes)`);
         const v = this.takeInt();
         if (v !== null) this.resize(v);
         return;
@@ -850,8 +851,13 @@ export class Calculator {
   }
 
   private resize(n: number) {
-    if (n < 1 || n > MAX_QUBITS) throw new Error(`n must be 1–${MAX_QUBITS}`);
-    this.send({ t: "resize", n }, (r) => this.info(`n = ${r.n}`));
+    if (n < 1 || n > STAB_MAX) throw new Error(`n must be 1–${STAB_MAX}`);
+    this.send({ t: "resize", n }, (r) => this.info(r.n > MAX_QUBITS ? `n = ${r.n} · stabilizer mode (Clifford gates only)` : `n = ${r.n}`));
+  }
+
+  /** Above 20 qubits the register is a stabilizer tableau. */
+  get stabilizerMode(): boolean {
+    return this.n > MAX_QUBITS;
   }
 
   private gate(k: GateKey) {

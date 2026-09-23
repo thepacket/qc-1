@@ -57,7 +57,8 @@ export function gateCases(): Case[] {
     const [th, ph, la, al] = [r.next() * Math.PI, r.next() * 6 - 3, r.next() * 6 - 3, r.next() * 6 - 3];
     const c = Math.cos(th / 2), s = Math.sin(th / 2);
     const cell = (m: number, a: number) => [m * Math.cos(a), m * Math.sin(a)];
-    return [...cell(c, al), ...cell(-s, al + la), ...cell(s, al + ph), ...cell(c, al + ph + la)].map((x) => x.toPrecision(17));
+    // 15 digits: the last bits of cos/sin differ between platforms' libm.
+    return [...cell(c, al), ...cell(-s, al + la), ...cell(s, al + ph), ...cell(c, al + ph + la)].map((x) => x.toPrecision(15));
   };
   const special: Record<string, string[]> = {
     offdiag: ["0", "0", "0.6", "0.8", "0", "1", "0", "0"],

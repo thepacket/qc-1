@@ -1,4 +1,6 @@
-import { Register } from "./register";
+import { MAX_QUBITS, Register, type Contents } from "./register";
+import { StabilizerRegister, STAB_MAX } from "../stab/register";
+import type { Stabilizer } from "../sim/stabilizer";
 import { bloch, sampleState, topK, type Vec3 } from "./analysis";
 import type { Entry, Scope } from "./steps";
 import type { Op } from "./register";
@@ -15,11 +17,17 @@ export type Mode = "ket" | "prob" | "bloch" | "shots" | "tape" | "lab";
 /** `upTo`: show the state after that many tape entries (TAPE scrubber); null = the end. */
 export type ViewReq = { mode: Mode; shots: number; shotSeed: number; upTo?: number | null };
 
-export type ViewData = { n: number; /** Scrubbed to this many entries (else the end). */ at?: number } & (
-  | { mode: "ket"; rows: { i: number; re: number; im: number }[]; nonzero: number }
-  | { mode: "prob"; rows: { i: number; p: number }[]; complete: boolean }
+export type ViewData = {
+  n: number;
+  /** Scrubbed to this many entries (else the end). */
+  at?: number;
+  /** Stabilizer mode (n > 20): generators, marginals, bitstring shots. */
+  stab?: boolean;
+} & (
+  | { mode: "ket"; rows: { i: number; re: number; im: number }[]; nonzero: number; generators?: string[] }
+  | { mode: "prob"; rows: { i: number; p: number }[]; complete: boolean; marginals?: number[] }
   | { mode: "bloch"; vectors: Vec3[] }
-  | { mode: "shots"; rows: { i: number; count: number }[]; distinct: number; shots: number }
+  | { mode: "shots"; rows: { i: number; count: number; bits?: string }[]; distinct: number; shots: number }
   | { mode: "tape" }
   | { mode: "lab" }
 );
@@ -63,8 +71,19 @@ const BAR_ROWS = 32;
 
 let repeatId = 0;
 
+type AnyRegister = Register | StabilizerRegister;
+const stabFor = (n: number) => n > MAX_QUBITS;
+/** The register kind for these contents: statevector up to 20 qubits, stabilizer tableau above. */
+function registerFor(c: Contents): AnyRegister {
+  return stabFor(c.n) ? new StabilizerRegister(c.n, c.tape, c.scope) : new Register(c.n, c.tape, c.scope);
+}
+
+const STAB_ROWS = 128;
+/** Work budget for sampling shots from a tableau (each shot measures every qubit, O(n²) each). */
+const SHOT_BUDGET = 3e8;
+
 export class Core {
-  reg = new Register(2);
+  reg: AnyRegister = new Register(2);
   rev = 0;
   /** Symbol values waiting to be applied (a slider sends a burst). */
   private pendingScope: Scope | null = null;
@@ -101,17 +120,43 @@ export class Core {
           done = this.reg.push(last.map((s) => ({ ...s, id: `r${repeatId++}`, column: col, outcome: undefined })));
           break;
         }
-        case "undo": op = this.reg.undo(); break;
-        case "redo": op = this.reg.redo(); break;
+        case "undo": {
+          // An undo that crosses 20 qubits changes the register kind: rebuild from the op's contents.
+          const top = this.reg.ops[this.reg.ops.length - 1];
+          if (top?.k === "replace" && stabFor(top.before.n) !== this.isStab) {
+            this.switchTo(registerFor(top.before), this.reg.ops.slice(0, -1), [...this.reg.redoOps, top]);
+            op = top;
+          } else op = this.reg.undo();
+          break;
+        }
+        case "redo": {
+          const top = this.reg.redoOps[this.reg.redoOps.length - 1];
+          if (top?.k === "replace" && stabFor(top.after.n) !== this.isStab) {
+            this.switchTo(registerFor(top.after), [...this.reg.ops, top], this.reg.redoOps.slice(0, -1));
+            op = top;
+          } else op = this.reg.redo();
+          break;
+        }
         case "replace":
           this.check2(cmd.n, cmd.tape);
-          this.reg.replace({ n: cmd.n, tape: cmd.tape, scope: cmd.scope }, cmd.label);
+          if (stabFor(cmd.n) !== this.isStab) {
+            const before = this.reg.contents();
+            const next = registerFor({ n: cmd.n, tape: cmd.tape, scope: cmd.scope });
+            this.switchTo(next, [...this.reg.ops, { k: "replace", before, after: next.contents(), label: cmd.label }], []);
+          } else this.reg.replace({ n: cmd.n, tape: cmd.tape, scope: cmd.scope }, cmd.label);
           break;
-        case "resize": this.reg.resize(cmd.n); break;
+        case "resize":
+          if (cmd.n < 1 || cmd.n > STAB_MAX) throw new Error(`n must be 1–${STAB_MAX}`);
+          if (stabFor(cmd.n) !== this.isStab) {
+            const used = Math.max(-1, ...this.reg.tape.flat().flatMap((s) => [...s.controls, ...s.targets]));
+            if (cmd.n <= used) throw new Error(`q${used} in use`);
+            this.switchTo(registerFor({ n: cmd.n, tape: this.reg.tape, scope: this.reg.scope }), this.reg.ops, this.reg.redoOps);
+          } else this.reg.resize(cmd.n);
+          break;
         case "clear": this.reg.clear(); break;
         case "load":
           try {
-            this.reg = new Register(cmd.n, cmd.tape, cmd.scope);
+            this.reg = registerFor({ n: cmd.n, tape: cmd.tape, scope: cmd.scope ?? {} });
           } catch {
             this.reg = new Register(2);
             throw new Error("saved session unreadable");
@@ -136,18 +181,30 @@ export class Core {
     };
   }
 
+  get isStab(): boolean {
+    return this.reg instanceof StabilizerRegister;
+  }
+
+  /** Swap in a register of the other kind, carrying the undo and redo history. */
+  private switchTo(next: AnyRegister, ops: Op[], redo: Op[]) {
+    next.ops = ops;
+    next.redoOps = redo;
+    this.reg = next;
+  }
+
   /** A replacement tape must fit its register. */
   private check2(n: number, tape: Entry[]) {
-    if (n < 1 || n > 20) throw new Error("n must be 1–20");
+    if (n < 1 || n > STAB_MAX) throw new Error(`n must be 1–${STAB_MAX}`);
     for (const e of tape) for (const s of e) for (const q of [...s.controls, ...s.targets]) {
       if (q >= n) throw new Error(`no q${q} (n=${n})`);
     }
   }
 
   /** A private copy of the register for the analysis worker. */
-  snapshot(): { rev: number; n: number; tape: Entry[]; scope: Scope; state: Float64Array; gates: CustomGate[] } {
+  snapshot(): { rev: number; n: number; tape: Entry[]; scope: Scope; state: Float64Array; gates: CustomGate[]; stab: boolean } {
     this.flush();
-    return { rev: this.rev, n: this.reg.n, tape: this.reg.tape, scope: { ...this.reg.scope }, state: this.reg.state.slice(), gates: customGates() };
+    const state = this.reg instanceof Register ? this.reg.state.slice() : new Float64Array(0);
+    return { rev: this.rev, n: this.reg.n, tape: this.reg.tape, scope: { ...this.reg.scope }, state, gates: customGates(), stab: this.isStab };
   }
 
   /** Reject steps that address qubits outside the register (a resize may have raced ahead). */
@@ -161,8 +218,38 @@ export class Core {
     this.flush();
     const len = this.reg.tape.length;
     const at = req.upTo != null && req.upTo < len ? Math.max(0, req.upTo) : undefined;
-    const data = this.viewOf(req, at === undefined ? this.reg.state : this.reg.stateAt(at));
+    const reg = this.reg;
+    const data = reg instanceof StabilizerRegister
+      ? this.stabView(req, at === undefined ? reg.tab : reg.tableauAt(at))
+      : this.viewOf(req, at === undefined ? reg.state : reg.stateAt(at));
     return at === undefined ? data : { ...data, at };
+  }
+
+  /** Views of a stabilizer state: generators, per-qubit P(1), exact Bloch vectors, sampled bitstrings. */
+  private stabView(req: ViewReq, tab: Stabilizer): ViewData {
+    const n = this.reg.n;
+    const single = (q: number, p: "X" | "Y" | "Z") => tab.pauliExpectation(Array.from({ length: n }, (_, i) => (i === q ? p : "I")));
+    switch (req.mode) {
+      case "ket": return { n, stab: true, mode: "ket", rows: [], nonzero: 0, generators: tab.stabilizers().slice(0, STAB_ROWS) };
+      case "prob": return { n, stab: true, mode: "prob", rows: [], complete: false, marginals: Array.from({ length: Math.min(n, STAB_ROWS) }, (_, q) => (1 - single(q, "Z")) / 2) };
+      case "bloch": return { n, stab: true, mode: "bloch", vectors: Array.from({ length: Math.min(n, 32) }, (_, q) => ({ x: single(q, "X"), y: single(q, "Y"), z: single(q, "Z") })) };
+      case "shots": {
+        const shots = Math.max(1, Math.min(req.shots, Math.floor(SHOT_BUDGET / (n * n * n))));
+        let seed = 0x5407 + req.shotSeed;
+        const rng = () => ((seed = (Math.imul(seed ^ (seed >>> 15), 0x2c1b3c6d) + 0x6d2b79f5) >>> 0) / 2 ** 32);
+        const counts = new Map<string, number>();
+        for (let s = 0; s < shots; s++) {
+          const t = tab.clone();
+          let bits = "";
+          for (let q = 0; q < n; q++) bits += t.measureZ(q, rng);
+          counts.set(bits, (counts.get(bits) ?? 0) + 1);
+        }
+        const rows = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+        return { n, stab: true, mode: "shots", shots, distinct: rows.length, rows: rows.slice(0, BAR_ROWS).map(([bits, count], i) => ({ i, count, bits })) };
+      }
+      case "tape": return { n, mode: "tape" };
+      case "lab": return { n, mode: "lab" };
+    }
   }
 
   private viewOf(req: ViewReq, state: Float64Array): ViewData {

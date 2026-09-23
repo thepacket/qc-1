@@ -157,6 +157,16 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
   - `src/analysis/benchRuns.ts` is the LAB "Characterization & benchmarking" category, plus a random Clifford tool.
   - Fixture `bench`: circuits re-run from their exports through Aer errors; scipy `curve_fit`; closed forms for T1/T2; binomial tail.
   - Bug #24: upper-case U1/U2/U3 in the export.
+- **Stabilizer mode (Phase 10).**
+  - Above 20 qubits (up to 1024) the register is `src/stab/register.ts`, a StabilizerRegister (Aaronson–Gottesman tableau) with the same contract as `Register`: tape, ops, recorded outcomes, cbits, IF.
+    - Clifford tapes only; symbols are refused.
+  - `src/stab/clifford.ts` enumerates the 1q (24) and 2q (11 520) Clifford groups over H/S/CX (≈0.15 s, lazily). Any step on ≤ 2 qubits whose matrix is Clifford maps to a shortest H/S/CX sequence.
+  - `Core` picks the register kind with `registerFor(contents)`. Undo, redo, replace and resize that cross 20 qubits rebuild the other kind from the target contents and carry the history.
+  - Stabilizer views: KET shows generators, PROB shows P(qᵢ=1), BLOCH shows exact vectors (first 32), SHOTS shows bitstrings sampled under a work budget. The qubit bar shows a window above 64.
+  - LAB analyses with maxQubits 1024 (structural, noise model, benchmarks) run in stabilizer mode; the stabilizer tableau analysis uses the StabilizerRegister.
+  - Fixture `stabilizer`:
+    - Qiskit StabilizerState of each export up to n = 200, with the Clifford built per instruction because `Clifford(circuit)` maps ecr/dcx/iswap by name;
+    - post-selected statevectors for measured tapes.
 - `src/qasm/fromTape.ts` turns the tape into OpenQASM 3. It uses stdgates names where
   they exist and `ctrl @`/`negctrl @` otherwise, adds exact `gate` definitions for
   non-stdgates (sy, sxdg, iswap, rxx, ryy, rzz), and folds `sqrt(...)` params to numbers.

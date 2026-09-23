@@ -199,7 +199,8 @@ export function App() {
         </div>
 
         <div className="qubits" role="listbox" aria-label="Qubits">
-          {[...Array(n).keys()].map((q) => {
+          {n > 64 && calc.sel > 16 && <span className="dim qb-more">q0…</span>}
+          {(n > 64 ? [...Array(33).keys()].map((k) => calc.sel - 16 + k).filter((q) => q >= 0 && q < n) : [...Array(n).keys()]).map((q) => {
             const mark = calc.marks.find((m) => m.q === q);
             return (
               <button
@@ -213,6 +214,7 @@ export function App() {
               </button>
             );
           })}
+          {n > 64 && calc.sel < n - 17 && <span className="dim qb-more">…q{n - 1}</span>}
         </div>
 
         {view}

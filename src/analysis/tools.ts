@@ -12,7 +12,7 @@ import { equivalent, FULL_MAX } from "../calc/equiv";
 import { circuitResources, type CircuitResources } from "../calc/resources";
 import { lowerTape, namedCircuit } from "../calc/lower";
 import { Register } from "../calc/register";
-import { applyStep, MEASURE_IDS, NONUNITARY, stepSymbols, type Entry, type Scope } from "../calc/steps";
+import { applyStep, NONUNITARY, stepSymbols, type Entry, type Scope } from "../calc/steps";
 import { optimiseCircuit } from "../sim/optimisePasses";
 import { transpile, type TranspileTarget } from "../sim/transpile";
 import { routeCircuit, countConnectivityViolations } from "../sim/router";
@@ -23,7 +23,7 @@ import { statePrepCircuit, parseTargetState } from "../sim/statePrep";
 import { synthesizeUnitary, type Cx } from "../sim/unitarySynth";
 import { interactionGraph } from "../sim/interaction";
 import { tannerGraph } from "../sim/tanner";
-import { Stabilizer } from "../sim/stabilizer";
+import { StabilizerRegister } from "../stab/register";
 import { branchTree } from "../calc/branches";
 import { hermitianEig } from "../sim/eig";
 import { pauliSparse } from "../sim/pauliMatrix";
@@ -140,43 +140,13 @@ function opDistance(U: Float64Array[], V: Float64Array[]): number {
 
 // ─── Stabilizer tableau of a Clifford tape ─────────────────────────────
 
-/** Generators of a Clifford tape's state, measurements forced to their recorded outcomes; null if not Clifford. */
+/** Generators of a Clifford tape's state (stabilizer register: every Clifford gate, recorded outcomes); null if not Clifford. */
 export function cliffordGenerators(n: number, tape: Entry[]): string[] | null {
-  const tab = new Stabilizer(n);
-  const forced = (o: number | undefined) => () => (o === 1 ? 0.9 : 0.1);
-  for (const s of tape.flat()) {
-    if (s.controlStates?.some((on) => !on)) return null;
-    const [t] = s.targets, k = s.controls.length;
-    if (MEASURE_IDS.has(s.gateId)) {
-      if (s.gateId === "reset") { tab.resetQubit(t, forced(s.outcome)); continue; }
-      if (s.gateId === "measure_x") { tab.h(t); tab.measureZ(t, forced(s.outcome)); tab.h(t); continue; }
-      if (s.gateId === "measure_y") { tab.sdg(t); tab.h(t); tab.measureZ(t, forced(s.outcome)); tab.h(t); tab.s(t); continue; }
-      tab.measureZ(t, forced(s.outcome));
-      continue;
-    }
-    if (s.gateId === "init0") { tab.resetQubit(t, forced(s.outcome)); continue; }
-    if (s.gateId === "init1") { tab.resetQubit(t, forced(s.outcome)); tab.x(t); continue; }
-    if (k === 0) {
-      switch (s.gateId) {
-        case "i": continue;
-        case "x": tab.x(t); continue;
-        case "y": tab.y(t); continue;
-        case "z": tab.z(t); continue;
-        case "h": tab.h(t); continue;
-        case "s": tab.s(t); continue;
-        case "sdg": tab.sdg(t); continue;
-        case "sx": tab.sx(t); continue;
-        case "sxdg": tab.sxdg(t); continue;
-        case "swap": tab.swap(s.targets[0], s.targets[1]); continue;
-      }
-      return null;
-    }
-    if (k === 1 && s.gateId === "x") { tab.cnot(s.controls[0], t); continue; }
-    if (k === 1 && s.gateId === "y") { tab.cy(s.controls[0], t); continue; }
-    if (k === 1 && s.gateId === "z") { tab.cz(s.controls[0], t); continue; }
+  try {
+    return new StabilizerRegister(n, tape).tab.stabilizers();
+  } catch {
     return null;
   }
-  return tab.stabilizers();
 }
 
 // ─── The runs ──────────────────────────────────────────────────────────
@@ -441,7 +411,7 @@ export const TOOL_RUNS: Record<string, Run> = {
     if (!g) {
       return {
         scalars: [{ label: "Clifford tape", value: "no" }],
-        notes: ["Only for Clifford tapes: Paulis, H, S, S†, √X, √X†, SWAP, CX, CY, CZ, measurements, resets, |0⟩/|1⟩ prep."],
+        notes: ["Only for Clifford tapes (every gate Clifford, no symbols): Paulis, H, S, √X, √Y, SWAP, iSWAP, CX, CZ, ECR, rotations by multiples of π/2, measurements, resets, preps."],
       };
     }
     return {

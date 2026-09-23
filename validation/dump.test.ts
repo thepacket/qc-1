@@ -21,6 +21,7 @@ import * as exm from "./cases/groups/examples";
 import * as nse from "./cases/groups/noise";
 import * as nsa from "./cases/groups/noiseAnalyses";
 import * as bch from "./cases/groups/bench";
+import * as stb from "./cases/groups/stabilizer";
 
 const OUT = new URL("./out/", import.meta.url);
 
@@ -115,6 +116,11 @@ test("dump validation cases", async () => {
     JSON.stringify({ group: "noise-analyses", cases: nsa.cases().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: nsa.compute(c) })), calibration: nsa.calibration() }),
   );
   writeFileSync(new URL("bench.cases.json", OUT), JSON.stringify({ group: "bench", qc1: bch.compute() }));
+  writeFileSync(new URL("stabilizer.cases.json", OUT), JSON.stringify({
+    group: "stabilizer",
+    large: stb.largeCases().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: stb.compute(c) })),
+    small: stb.smallCases().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: stb.compute(c) })),
+  }));
   writeFileSync(
     new URL("examples.cases.json", OUT),
     JSON.stringify({ group: "examples", cases: exm.exampleFiles().map((f) => ({ id: f, ...exm.compute(f) })) }),

@@ -413,7 +413,8 @@ export function importQasm(src: string, existing: CustomGate[] = []): ImportResu
   const qbase = new Map<string, { at: number; size: number }>();
   let n = 0;
   for (const r of p.qregs) { qbase.set(r.name, { at: n, size: r.size }); n += r.size; }
-  if (n > 20) throw new QasmImportError(`${n} qubits (QC-1 simulates up to 20)`, 1);
+  // Above 20 qubits QC-1 runs Clifford programs on a stabilizer tableau (the register decides).
+  if (n > 1024) throw new QasmImportError(`${n} qubits (QC-1 goes up to 1024, Clifford only above 20)`, 1);
   const cbase = new Map<string, { at: number; size: number }>();
   let nc = 0;
   for (const r of p.cregs) { cbase.set(r.name, { at: nc, size: r.size }); nc += r.size; }

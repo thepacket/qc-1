@@ -21,6 +21,18 @@ export function Pending() {
 
 export function KetView({ data }: ViewProps<"ket">) {
   const { n, rows, nonzero } = data;
+  if (data.generators) {
+    return (
+      <div className="view">
+        <div className="view-head">stabilizer state · {n} generators{n > data.generators.length ? ` (first ${data.generators.length})` : ""}</div>
+        <div className="rows">
+          {data.generators.map((g, i) => (
+            <div className="row gen-row" key={i}><span className="dim">g{i + 1}</span><span className="ket">{g}</span></div>
+          ))}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="view">
       <div className="view-head">
@@ -59,12 +71,16 @@ function Bars({ items, head }: { items: { label: string; p: number; note: string
 }
 
 export function ProbView({ data }: ViewProps<"prob">) {
+  if (data.marginals) {
+    const items = data.marginals.map((p, q) => ({ label: `q${q}`, p, note: pct(p) }));
+    return <Bars items={items} head={`P(qᵢ = 1) · stabilizer state${data.n > items.length ? ` · first ${items.length} qubits` : ""}`} />;
+  }
   const items = data.rows.map(({ i, p }) => ({ label: ket(i, data.n), p, note: pct(p) }));
   return <Bars items={items} head={data.complete ? "P(basis)" : `most likely ${items.length}`} />;
 }
 
 export function ShotsView({ data }: ViewProps<"shots">) {
-  const items = data.rows.map(({ i, count }) => ({ label: ket(i, data.n), p: count, note: String(count) }));
+  const items = data.rows.map(({ i, count, bits }) => ({ label: bits ? (bits.length > 24 ? `${bits.slice(0, 24)}…` : bits) : ket(i, data.n), p: count, note: String(count) }));
   return <Bars items={items} head={`${data.shots.toLocaleString()} shots · ${data.distinct} outcomes · tap SHOTS to re-roll`} />;
 }
 

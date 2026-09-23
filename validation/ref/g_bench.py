@@ -130,7 +130,7 @@ def main():
         {"id": "rb", "survival": surv, "p": p, "A": A, "B": B, "interleaved": surv_i},
         {"id": "unitarity", "purity": pur, "u": uu},
         {"id": "t1t2", "T1": -1 / np.log(1 - gad), "T2": -2 / np.log(1 - gpd)},
-    ], {"abs": 1e-6})
+    ], {"abs": 1e-6, "p": 1e-6, "A": 1e-6, "B": 1e-6, "u": 1e-6})  # fits converge to ~1e-9 across platforms
 
 
 if __name__ == "__main__":

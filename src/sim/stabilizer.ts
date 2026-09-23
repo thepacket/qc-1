@@ -39,6 +39,13 @@ export class Stabilizer {
     }
   }
 
+  /** QC-1: an independent copy (scrubbing, sampling, trial pushes). */
+  clone(): Stabilizer {
+    const c = new Stabilizer(this.n);
+    c.tab.set(this.tab);
+    return c;
+  }
+
   // ─── Cell accessors ──────────────────────────────────────────────────
 
   private idx(row: number, col: number): number {

@@ -19,7 +19,11 @@ export const CATEGORIES: { id: Category; label: string }[] = [
 
 const cut = { kind: "cut" as const, key: "cut", label: "A" };
 
-/** Every analysis the LAB offers. Compute functions live in run.ts (analysis worker). */
+/**
+ * Every analysis the LAB offers. Compute functions live in run.ts (analysis
+ * worker). maxQubits 1024: the analysis doesn't read the statevector (the
+ * structural ones, the benchmarks), so it also runs in stabilizer mode.
+ */
 export const ANALYSES: AnalysisMeta[] = [
   { id: "statevector", title: "Statevector", category: "state", mode: "live", maxQubits: 20, inputs: [],
     summary: "Amplitudes as numbers: real, imaginary, magnitude, phase, probability." },
@@ -215,7 +219,7 @@ ANALYSES.push(
       { kind: "choice", key: "grid", label: "grid", fallback: 12, options: [{ label: "8", value: 8 }, { label: "12", value: 12 }, { label: "24", value: 24 }] },
     ],
     summary: "Berry flux over the torus of two symbols in [0, 2π): an integer for a topological band." },
-  { id: "zx", title: "ZX diagram", category: "structure", mode: "live", maxQubits: 20, inputs: [],
+  { id: "zx", title: "ZX diagram", category: "structure", mode: "live", maxQubits: 1024, inputs: [],
     summary: "The tape as a ZX-calculus diagram: green Z and red X spiders, Hadamard boxes." },
 );
 
@@ -257,7 +261,7 @@ ANALYSES.push(
     summary: "Each qubit's entanglement entropy after every tape step: the entanglement front." },
   { id: "asymmetry", title: "Entanglement asymmetry", category: "dynamics", mode: "live", maxQubits: 12, minQubits: 2, inputs: [],
     summary: "How much the first half breaks the excitation-number symmetry, after every step (quantum Mpemba)." },
-  { id: "lightcone", title: "Light cone", category: "structure", mode: "live", maxQubits: 20, inputs: [
+  { id: "lightcone", title: "Light cone", category: "structure", mode: "live", maxQubits: 1024, inputs: [
       { kind: "qubit", key: "q", label: "qubit", fallback: "first" },
       { kind: "choice", key: "dir", label: "cone", fallback: 0, options: [{ label: "backward", value: 0 }, { label: "forward", value: 1 }] },
     ],
@@ -296,23 +300,23 @@ ANALYSES.push(
     summary: "A circuit that prepares a target state (or the current one) from |0…0⟩ with RY, RZ and CX." },
   { id: "synth", title: "Unitary synthesis", category: "tools", mode: "run", maxQubits: 4, inputs: [],
     summary: "Re-synthesise the tape's unitary from two-level controlled 2×2 gates (exact, not gate-optimal)." },
-  { id: "resources", title: "Resources", category: "structure", mode: "live", maxQubits: 20, inputs: [
+  { id: "resources", title: "Resources", category: "structure", mode: "live", maxQubits: 1024, inputs: [
       { kind: "choice", key: "coupling", label: "check map", fallback: 0, options: [{ label: "none", value: 0 }, { label: "line", value: 1 }, { label: "ring", value: 2 }, { label: "grid", value: 3 }] },
     ],
     summary: "Gate counts, depth, T count and T-depth, CX and Clifford counts, as Qiskit counts the exported circuit." },
-  { id: "interaction", title: "Interaction graph", category: "structure", mode: "live", maxQubits: 20, minQubits: 2, inputs: [],
+  { id: "interaction", title: "Interaction graph", category: "structure", mode: "live", maxQubits: 1024, minQubits: 2, inputs: [],
     summary: "How many gates act on each pair of qubits: the connectivity a device needs." },
-  { id: "tanner", title: "Tanner graph", category: "structure", mode: "live", maxQubits: 20, inputs: [],
+  { id: "tanner", title: "Tanner graph", category: "structure", mode: "live", maxQubits: 1024, inputs: [],
     summary: "Measurements (checks) against the qubits in each one's backward light cone." },
   { id: "branches", title: "Measurement branches", category: "measurement", mode: "live", maxQubits: 12, inputs: [],
     summary: "Every measurement history with its probability: the tree a program's mid-circuit measurements and IF gates produce." },
-  { id: "tableau", title: "Stabilizer tableau", category: "structure", mode: "live", maxQubits: 20, inputs: [],
+  { id: "tableau", title: "Stabilizer tableau", category: "structure", mode: "live", maxQubits: 1024, inputs: [],
     summary: "For Clifford tapes: the n Pauli operators that fix the state (Bell → +XX, +ZZ)." },
 );
 
 // Phase 8: noise (validated: fixtures noise, noise-analyses). All need the noise model on.
 ANALYSES.push(
-  { id: "noisemodel", title: "Noise model", category: "noise", mode: "live", maxQubits: 20, inputs: [],
+  { id: "noisemodel", title: "Noise model", category: "noise", mode: "live", maxQubits: 1024, inputs: [],
     summary: "Turn noise on and set its rates: depolarizing, T1/T2 damping, readout, crosstalk; device presets and calibration files." },
   { id: "impact", title: "Noise impact", category: "noise", mode: "live", maxQubits: 10, inputs: [],
     summary: "Fidelity and trace distance of the noisy state to the ideal one, its purity and entropy." },
@@ -324,7 +328,7 @@ ANALYSES.push(
     summary: "I(A⟩B) = S(B) − S(AB) of the noisy state: positive means quantum correlations survive." },
   { id: "noisycoherence", title: "Noisy coherence", category: "noise", mode: "live", maxQubits: 8, inputs: [],
     summary: "Computational-basis coherence (l1 and relative entropy) of the noisy state against the ideal one." },
-  { id: "paulibudget", title: "Pauli error budget", category: "noise", mode: "live", maxQubits: 20, inputs: [],
+  { id: "paulibudget", title: "Pauli error budget", category: "noise", mode: "live", maxQubits: 1024, inputs: [],
     summary: "Each qubit's X, Y, Z error probability per gate (Pauli-twirled channels) and its readout error." },
   { id: "readout", title: "Readout mitigation", category: "noise", mode: "live", maxQubits: 12, inputs: [],
     summary: "Measured probabilities with readout error, and recovered by inverting the confusion matrix." },
@@ -340,27 +344,27 @@ ANALYSES.push(
 
 // Phase 9: characterization & benchmarking (validated: fixture bench). Protocols run on the noise model.
 ANALYSES.push(
-  { id: "rb", title: "Randomized benchmarking", category: "bench", mode: "run", maxQubits: 20, inputs: [
+  { id: "rb", title: "Randomized benchmarking", category: "bench", mode: "run", maxQubits: 1024, inputs: [
       { kind: "choice", key: "interleave", label: "interleave", fallback: 0, options: [{ label: "none", value: 0 }, { label: "X", value: 1 }, { label: "H", value: 2 }, { label: "S", value: 3 }, { label: "√X", value: 4 }] },
       { kind: "choice", key: "sequences", label: "sequences", fallback: 12, options: [{ label: "6", value: 6 }, { label: "12", value: 12 }, { label: "30", value: 30 }] },
     ],
     summary: "Error per Clifford from the survival decay of random Clifford sequences; interleaved RB isolates one gate's error." },
-  { id: "unitarity", title: "Unitarity", category: "bench", mode: "run", maxQubits: 20, inputs: [],
+  { id: "unitarity", title: "Unitarity", category: "bench", mode: "run", maxQubits: 1024, inputs: [],
     summary: "How coherent the noise is: the decay of the Bloch length under random Cliffords." },
-  { id: "qv", title: "Quantum volume", category: "bench", mode: "run", maxQubits: 20, inputs: [
+  { id: "qv", title: "Quantum volume", category: "bench", mode: "run", maxQubits: 1024, inputs: [
       { kind: "choice", key: "width", label: "up to", fallback: 4, options: [{ label: "3", value: 3 }, { label: "4", value: 4 }, { label: "5", value: 5 }] },
       { kind: "choice", key: "circuits", label: "circuits", fallback: 20, options: [{ label: "10", value: 10 }, { label: "20", value: 20 }, { label: "50", value: 50 }] },
     ],
     summary: "Heavy-output probability of random square circuits of SU(4) blocks; QV = 2^width of the largest passing size." },
-  { id: "xeb", title: "Cross-entropy benchmarking", category: "bench", mode: "run", maxQubits: 20, inputs: [
+  { id: "xeb", title: "Cross-entropy benchmarking", category: "bench", mode: "run", maxQubits: 1024, inputs: [
       { kind: "choice", key: "qubits", label: "qubits", fallback: 3, options: [{ label: "2", value: 2 }, { label: "3", value: 3 }, { label: "4", value: 4 }] },
     ],
     summary: "Linear XEB fidelity of random circuits against their depth, and the fidelity per cycle." },
-  { id: "mirror", title: "Mirror circuits", category: "bench", mode: "run", maxQubits: 20, inputs: [],
+  { id: "mirror", title: "Mirror circuits", category: "bench", mode: "run", maxQubits: 1024, inputs: [],
     summary: "Success probability of random Clifford circuits followed by their inverse, by width and depth." },
-  { id: "t1t2", title: "T1 / T2 experiments", category: "bench", mode: "run", maxQubits: 20, inputs: [],
+  { id: "t1t2", title: "T1 / T2 experiments", category: "bench", mode: "run", maxQubits: 1024, inputs: [],
     summary: "Relaxation, Ramsey and echo decays over idle gates, with fitted T1, T2*, T2." },
-  { id: "qec", title: "Repetition code", category: "bench", mode: "run", maxQubits: 20, inputs: [
+  { id: "qec", title: "Repetition code", category: "bench", mode: "run", maxQubits: 1024, inputs: [
       { kind: "choice", key: "shots", label: "shots", fallback: 2000, options: [{ label: "500", value: 500 }, { label: "2k", value: 2000 }, { label: "10k", value: 10000 }] },
     ],
     summary: "Logical error rate of the bit-flip code for d = 3, 5, 7 against the physical flip rate: exact and decoded." },
