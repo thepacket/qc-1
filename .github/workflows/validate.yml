@@ -1,0 +1,81 @@
+name: Validate
+
+# Regenerates the Qiskit / numpy reference fixtures with the pinned stack
+# (validation/requirements.txt) and fails if any value drifts by more than
+# 1e-10 from the committed ones (not byte-for-byte: LAPACK builds differ in
+# the last digit across platforms). It never commits.
+#
+# It takes minutes, so it runs only when something the fixtures depend on
+# changes (plus weekly, and by hand): the simulator and everything that
+# computes, the importer/exporter, the examples, the validation itself.
+# UI-only pushes skip it; ci.yml's test job still replays the committed
+# fixtures on every push.
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "src/sim/**"
+      - "src/calc/**"
+      - "src/qasm/**"
+      - "src/noise/**"
+      - "src/stab/**"
+      - "src/analysis/**"
+      - "examples/**"
+      - "validation/**"
+      - "test/fixtures/**"
+      - "test/validated/**"
+      - "package-lock.json"
+      - ".github/workflows/validate.yml"
+  pull_request:
+    paths:
+      - "src/sim/**"
+      - "src/calc/**"
+      - "src/qasm/**"
+      - "src/noise/**"
+      - "src/stab/**"
+      - "src/analysis/**"
+      - "examples/**"
+      - "validation/**"
+      - "test/fixtures/**"
+      - "test/validated/**"
+      - "package-lock.json"
+      - ".github/workflows/validate.yml"
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+      - uses: actions/setup-python@v7
+        id: py
+        with:
+          python-version: "3.13"
+      - run: npm ci
+      # The reference stack (qiskit, aer, numpy, scipy) is the slow install: cache the whole venv.
+      - name: Cached reference stack
+        id: venv
+        uses: actions/cache@v6
+        with:
+          path: validation/.venv
+          key: venv-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-${{ hashFiles('validation/requirements.txt') }}
+      - name: Reference stack
+        if: steps.venv.outputs.cache-hit != 'true'
+        run: |
+          python -m venv validation/.venv
+          validation/.venv/bin/pip install -r validation/requirements.txt
+      - name: Keep the committed fixtures
+        run: cp -r test/fixtures "$RUNNER_TEMP/committed"
+      - run: npm run validate
+      - name: Fixtures must not drift (numerically, 1e-10)
+        run: validation/.venv/bin/python validation/ref/drift.py "$RUNNER_TEMP/committed" test/fixtures

@@ -201,4 +201,4 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
 ## Commands
 - `npm run dev` / `npm test` / `npm run build` / `npm run icons` (needs rsvg-convert)
 - `npm run validate`: regenerate Qiskit/numpy reference fixtures (needs `validation/.venv`; see validation/README.md)
-- CI (`.github/workflows/ci.yml`): `test` on every push; `validate` regenerates fixtures and fails on drift
+- CI: `ci.yml` (`test`: typecheck, Vitest with the committed fixtures, build) on every push. `validate.yml` regenerates the fixtures and fails on drift, but only when fixture-relevant paths change (src/{sim,calc,qasm,noise,stab,analysis}, examples, validation, fixtures, lockfile), weekly, or by hand; its Python venv is cached. Add a path there if new computing code lives elsewhere.
