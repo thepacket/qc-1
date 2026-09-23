@@ -7,6 +7,8 @@ import { useState } from "react";
 import type { AnalysisMeta, InputSpec } from "../../analysis/types";
 import { ChartView } from "../charts/Charts";
 import { fmt } from "../charts/colors";
+import { NOISE_PRESETS, type NoiseModel } from "../../noise/model";
+import { importIbmBackend } from "../../noise/ibm";
 
 /** LAB: category list → analysis list → analysis screen. */
 export function LabView({ calc }: { calc: Calculator }) {
@@ -72,6 +74,7 @@ function List({ calc }: { calc: Calculator }) {
 }
 
 function AnalysisScreen({ calc, meta }: { calc: Calculator; meta: AnalysisMeta }) {
+  if (meta.id === "noisemodel") return <NoiseSettings calc={calc} />;
   const a = calc.analysis?.id === meta.id ? calc.analysis : null;
   const res = a?.result;
   const stale = a && a.rev !== calc.rev;
@@ -266,5 +269,82 @@ function StateField({ calc, meta, spec }: { calc: Calculator; meta: AnalysisMeta
         ))}
       </div>
     </div>
+  );
+}
+
+/** The noise model: on/off, presets, rates (phone keyboard), a device calibration file. */
+function NoiseSettings({ calc }: { calc: Calculator }) {
+  const m = calc.noise;
+  const file = useRef<HTMLInputElement>(null);
+  const fields: [keyof NoiseModel, string, string][] = [
+    ["p1", "1-qubit depolarizing λ₁", "ρ → (1−λ)ρ + λ·I/2 after each 1-qubit gate"],
+    ["p2", "2-qubit depolarizing λ₂", "after each 2-qubit gate (λ₂ on each qubit for 3+)"],
+    ["ad", "amplitude damping γ (T1)", "after each gate, on each of its qubits"],
+    ["pd", "phase damping γ (T2)", "after each gate, on each of its qubits"],
+    ["readout", "readout flip p", "each measured bit flips with probability p"],
+    ["crosstalk", "crosstalk λ", "depolarizing on coupling neighbours of a 2-qubit gate"],
+    ["trajectories", "trajectories", "when ρ is too big, or the tape measures"],
+  ];
+  return (
+    <div className="view">
+      <div className="view-head lab-head">
+        <button className="back" onClick={() => calc.labBack()} aria-label="Back to list">‹</button>
+        <span>Noise model</span>
+        <span className="grow" />
+        <button className={`lab-status${m.enabled ? " apply" : ""}`} onClick={() => calc.setNoise({ enabled: !m.enabled })} aria-pressed={m.enabled}>
+          {m.enabled ? "ON" : "OFF"}
+        </button>
+      </div>
+      <div className="rows lab-body">
+        <div className="cut-picker">
+          <span className="dim">preset</span>
+          {NOISE_PRESETS.map((p) => (
+            <button key={p.id} className="qb" onClick={() => calc.setNoise({ ...p.rates, perQubit: undefined, perGate: undefined, coupling: undefined, source: p.label })}>{p.label}</button>
+          ))}
+        </div>
+        {m.source && <p className="dim note">rates from {m.source}{m.perQubit ? ` · ${m.perQubit.length} calibrated qubits` : ""}</p>}
+        {fields.map(([key, label, note]) => (
+          <NumberRow key={key} label={label} note={note} value={m[key] as number}
+            onCommit={(v) => calc.setNoise({ [key]: key === "trajectories" ? Math.round(v) : v } as Partial<NoiseModel>)} />
+        ))}
+        <div className="lcd-btns">
+          <button onClick={() => file.current?.click()}>DEVICE FILE…</button>
+          {(m.perQubit || m.perGate) && <button onClick={() => calc.setNoise({ perQubit: undefined, perGate: undefined, coupling: undefined, source: undefined })}>CLEAR CALIBRATION</button>}
+        </div>
+        <input ref={file} type="file" accept=".json,application/json" hidden onChange={async (e) => {
+          const f = e.target.files?.[0];
+          if (!f) return;
+          try {
+            calc.setNoise(importIbmBackend(await f.text()));
+            calc.notify(`noise from ${f.name}`);
+          } catch (err) {
+            calc.notify(err instanceof Error ? err.message : String(err), "error");
+          }
+        }} />
+        <p className="dim note">
+          Qiskit Aer's conventions (depolarizing_error, amplitude/phase_damping_error). With noise on, PROB, BLOCH, SHOTS and the Noise & error
+          analyses use the exact density matrix (unitary tapes, n ≤ 10) or trajectories; KET, TAPE and the other analyses stay ideal.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function NumberRow({ label, note, value, onCommit }: { label: string; note: string; value: number; onCommit: (v: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft !== null) {
+      const v = Number(draft);
+      if (Number.isFinite(v) && v >= 0) onCommit(v);
+    }
+    setDraft(null);
+  };
+  return (
+    <label className="noise-row">
+      <span>{label}<span className="dim"> · {note}</span></span>
+      <input value={draft ?? String(value)} inputMode="decimal" enterKeyHint="done" aria-label={label}
+        onChange={(e) => setDraft(e.target.value)} onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); e.stopPropagation(); }} />
+    </label>
   );
 }

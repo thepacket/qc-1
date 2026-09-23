@@ -16,7 +16,7 @@ self.onmessage = (e: MessageEvent<{ port: MessagePort }>) => {
     const { req, snap } = m.data;
     setCustomGates(snap.gates);
     const t0 = performance.now();
-    const result = await runAnalysis(req.id, { n: snap.n, state: snap.state, tape: snap.tape, scope: snap.scope }, req.opts);
+    const result = await runAnalysis(req.id, { n: snap.n, state: snap.state, tape: snap.tape, scope: snap.scope, noise: req.noise }, req.opts);
     const reply: AnalysisReply = { seq: req.seq, rev: snap.rev, id: req.id, result, ms: performance.now() - t0 };
     (self as DedicatedWorkerGlobalScope).postMessage(reply);
   };

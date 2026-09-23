@@ -1,4 +1,4 @@
-import { MEASURE_IDS, NONUNITARY, applyStep, initAngles, stepSymbols, type Entry, type Scope, type Step } from "./steps";
+import { MEASURE_IDS, NONUNITARY, applyStep, exportedSteps as exported, stepSymbols, type Entry, type Scope, type Step } from "./steps";
 
 /**
  * Circuit resources of a tape, with Qiskit's definitions (validated against
@@ -111,26 +111,6 @@ function isClifford(s: Step, scope: Scope): boolean {
     }
   }
   return true;
-}
-
-/** The instructions a step exports as (measure_x → h, measure, h; preps → reset + gates). */
-function exported(s: Step): Step[] {
-  const one = (gateId: string, params: string[] = []): Step => ({ ...s, gateId, params, controls: [], controlStates: undefined });
-  switch (s.gateId) {
-    case "measure_x": return [one("h"), one("measure"), one("h")];
-    case "measure_y": return [one("sdg"), one("h"), one("measure"), one("h"), one("s")];
-    case "init0": return [one("reset")];
-    case "init1": return [one("reset"), one("x")];
-    case "initplus": return [one("reset"), one("h")];
-    case "initminus": return [one("reset"), one("x"), one("h")];
-    case "initiplus": return [one("reset"), one("h"), one("s")];
-    case "initiminus": return [one("reset"), one("h"), one("sdg")];
-    case "initialize": {
-      const { theta, phi } = initAngles(s.params[0]);
-      return [one("reset"), one("u", [String(theta), String(phi), "0"])];
-    }
-  }
-  return [s];
 }
 
 export function circuitResources(n: number, tape: Entry[], scope: Scope = {}): CircuitResources {

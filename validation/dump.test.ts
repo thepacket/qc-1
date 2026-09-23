@@ -18,6 +18,8 @@ import * as tls from "./cases/groups/tools";
 import * as syn from "./cases/groups/synth";
 import * as cls from "./cases/groups/classical";
 import * as exm from "./cases/groups/examples";
+import * as nse from "./cases/groups/noise";
+import * as nsa from "./cases/groups/noiseAnalyses";
 
 const OUT = new URL("./out/", import.meta.url);
 
@@ -95,6 +97,21 @@ test("dump validation cases", async () => {
       cases: tls.cases().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: tls.compute(c) })),
       structure: tls.structureCases().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: tls.computeStructure(c) })),
     }),
+  );
+  writeFileSync(
+    new URL("noise.cases.json", OUT),
+    JSON.stringify({
+      group: "noise",
+      unitary: nse.unitaryCases().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: nse.computeUnitary(c) })),
+      classical: nse.classicalCases().map((c) => {
+        const qc1 = nse.computeClassical(c);
+        return { ...c, tape: qc1.tape, qasm: exportQasm3(c.n, qc1.tape), qc1 };
+      }),
+    }),
+  );
+  writeFileSync(
+    new URL("noise-analyses.cases.json", OUT),
+    JSON.stringify({ group: "noise-analyses", cases: nsa.cases().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: nsa.compute(c) })), calibration: nsa.calibration() }),
   );
   writeFileSync(
     new URL("examples.cases.json", OUT),

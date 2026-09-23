@@ -622,3 +622,6 @@ button {
 .import-pane { display: flex; flex-direction: column; gap: 6px; }
 .import-pane textarea { width: 100%; min-height: 9em; flex: 1; font: 11px var(--mono); background: transparent; color: var(--ink);
   border: 1px solid var(--grid); border-radius: 4px; padding: 6px; resize: none; }
+.noise-flag { color: var(--series-2); }
+.noise-row { display: grid; grid-template-columns: 1fr 5.5em; gap: 6px; align-items: center; font-size: 11px; }
+.noise-row input { font: 12px var(--mono); background: transparent; color: var(--ink); border: 1px solid var(--grid); border-radius: 3px; padding: 3px 4px; text-align: right; }

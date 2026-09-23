@@ -36,6 +36,7 @@ describe("LAB framework", () => {
       keys(c, "2nd", ",", "ry", "2nd", ".", "rz");
       c.setSymbol("theta", 0.4);
       c.setSymbol("t", 0.9);
+      if (a.category === "noise") c.setNoise({ enabled: true, p1: 0.02, p2: 0.05, ad: 0.01, pd: 0.01, readout: 0.02, trajectories: 64 });
       c.setMode("lab");
       // Hamiltonian-based analyses need a generic (non-degenerate) H.
       if (a.inputs.some((i) => i.kind === "pauli")) {

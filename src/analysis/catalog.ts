@@ -310,6 +310,34 @@ ANALYSES.push(
     summary: "For Clifford tapes: the n Pauli operators that fix the state (Bell → +XX, +ZZ)." },
 );
 
+// Phase 8: noise (validated: fixtures noise, noise-analyses). All need the noise model on.
+ANALYSES.push(
+  { id: "noisemodel", title: "Noise model", category: "noise", mode: "live", maxQubits: 20, inputs: [],
+    summary: "Turn noise on and set its rates: depolarizing, T1/T2 damping, readout, crosstalk; device presets and calibration files." },
+  { id: "impact", title: "Noise impact", category: "noise", mode: "live", maxQubits: 10, inputs: [],
+    summary: "Fidelity and trace distance of the noisy state to the ideal one, its purity and entropy." },
+  { id: "decoherence", title: "Decoherence by depth", category: "noise", mode: "run", maxQubits: 6, inputs: [],
+    summary: "Fidelity to the ideal state and purity after every step: how noise accumulates along the tape." },
+  { id: "mixedspectrum", title: "Mixed-state spectrum", category: "noise", mode: "live", maxQubits: 8, inputs: [],
+    summary: "Eigenvalues of the noisy ρ, its purity, effective rank and entropy." },
+  { id: "coherentinfo", title: "Coherent information", category: "noise", mode: "live", maxQubits: 8, minQubits: 2, inputs: [cut],
+    summary: "I(A⟩B) = S(B) − S(AB) of the noisy state: positive means quantum correlations survive." },
+  { id: "noisycoherence", title: "Noisy coherence", category: "noise", mode: "live", maxQubits: 8, inputs: [],
+    summary: "Computational-basis coherence (l1 and relative entropy) of the noisy state against the ideal one." },
+  { id: "paulibudget", title: "Pauli error budget", category: "noise", mode: "live", maxQubits: 20, inputs: [],
+    summary: "Each qubit's X, Y, Z error probability per gate (Pauli-twirled channels) and its readout error." },
+  { id: "readout", title: "Readout mitigation", category: "noise", mode: "live", maxQubits: 12, inputs: [],
+    summary: "Measured probabilities with readout error, and recovered by inverting the confusion matrix." },
+  { id: "mitigated", title: "Mitigated expectation", category: "noise", mode: "run", maxQubits: 12, inputs: [
+      obs,
+      { kind: "choice", key: "method", label: "", fallback: 1, options: [
+        { label: "ZNE linear", value: 0 }, { label: "ZNE Richardson", value: 1 }, { label: "ZNE exp", value: 2 }, { label: "PEC", value: 3 },
+      ] },
+      { kind: "choice", key: "samples", label: "PEC samples", fallback: 4000, options: [{ label: "1k", value: 1000 }, { label: "4k", value: 4000 }, { label: "16k", value: 16000 }] },
+    ],
+    summary: "⟨H⟩ ideal, noisy, and mitigated by zero-noise extrapolation or probabilistic error cancellation." },
+);
+
 export const ANALYSIS_BY_ID: Record<string, AnalysisMeta> = Object.fromEntries(ANALYSES.map((a) => [a.id, a]));
 
 /** Default bipartition: the first half of the register. */

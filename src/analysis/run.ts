@@ -88,6 +88,7 @@ import { computeLightCone } from "../sim/lightcone";
 import { stepSymbols } from "../calc/steps";
 import { symbolGlyph } from "../calc/entry";
 import { TOOL_RUNS } from "./tools";
+import { NOISE_RUNS, noisyView } from "./noiseRuns";
 
 const ROWS = 64;
 const ket = (i: number, n: number) => `|${i.toString(2).padStart(n, "0")}⟩`;
@@ -1102,9 +1103,16 @@ Object.assign(RUNS, {
   },
 } satisfies Record<string, Run>);
 
-Object.assign(RUNS, TOOL_RUNS);
+Object.assign(RUNS, TOOL_RUNS, NOISE_RUNS);
 
 export function runAnalysis(id: string, ctx: AnalysisContext, opts: Opts): AnalysisResult | Promise<AnalysisResult> {
+  if (id === "__view") {
+    try {
+      return noisyView(ctx, opts);
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
+  }
   const meta = ANALYSIS_BY_ID[id];
   const run = RUNS[id];
   if (!meta || !run) return { error: `unknown analysis ${id}` };

@@ -3,6 +3,7 @@ import { evalParam, exprOk, formatEntry, NONUNITARY, type Entry, type Scope, typ
 import { CATALOG, type CatalogItem } from "./catalog";
 import { CUSTOM_PREFIX, defineGate, setCustomGates, type CustomGate } from "./custom";
 import { importQasm } from "../qasm/import";
+import { DEFAULT_NOISE, isIdeal, sanitiseNoise, type NoiseModel } from "../noise/model";
 import { ANALYSIS_BY_ID, CATEGORIES, analysesIn } from "../analysis/catalog";
 import type { AnalysisReply, AnalysisResult, Opts, Proposal } from "../analysis/types";
 import { splitArgs, TOKENS, toDisplay, VARS, varToken, symbolGlyph, type Token } from "./entry";
@@ -72,6 +73,8 @@ export type Saved = {
   lab?: LabState; scope?: Scope; memory?: Record<number, Memory>;
   /** Custom gates (DEFINE). */
   gates?: CustomGate[];
+  /** The noise model (LAB → Noise). */
+  noise?: NoiseModel;
 };
 
 /** t playback on the PARAM screen: pull-based (next frame after the last view). */
@@ -140,6 +143,11 @@ export class Calculator {
   catalog = { open: false, index: 0 };
   /** Custom gates defined with DEFINE (G1, G2, …). */
   customGates: CustomGate[] = [];
+  /** The noise model; when on, PROB/BLOCH/SHOTS and the noise analyses use it. */
+  noise: NoiseModel = { ...DEFAULT_NOISE };
+  /** The latest noisy PROB/BLOCH/SHOTS view (computed in the analysis worker). */
+  noisyView: { view: NonNullable<AnalysisResult["view"]> | null; error?: string; rev: number; seq: number } | null = null;
+  private vSeq = 0;
   /** LAB browser position and per-analysis options. */
   lab: LabState = { level: "cats", cat: 0, index: 0, id: null, opts: {} };
   analysis: AnalysisView | null = null;
@@ -173,6 +181,7 @@ export class Calculator {
       if (saved.scope) this.scope = { ...saved.scope };
       if (saved.memory) this.memory = saved.memory;
       if (Array.isArray(saved.gates)) this.customGates = saved.gates;
+      if (saved.noise) this.noise = sanitiseNoise(saved.noise);
     }
     this.send({ t: "view", req: this.viewReq() });
     // Definitions go first: the saved tape may use them.
@@ -200,7 +209,7 @@ export class Calculator {
   save(): Saved {
     return {
       v: 1, n: this.n, sel: this.sel, mode: this.mode, shots: this.shots, tape: this.tape,
-      lab: this.lab, scope: this.scope, memory: this.memory, gates: this.customGates,
+      lab: this.lab, scope: this.scope, memory: this.memory, gates: this.customGates, noise: this.noise,
     };
   }
 
@@ -248,7 +257,10 @@ export class Calculator {
     if (r.error) this.error(r.error);
     else report?.(r);
     if (!r.error && r.notes?.length) this.info(r.notes[r.notes.length - 1]);
-    if (changed) this.refreshLiveAnalysis();
+    if (changed) {
+      this.refreshLiveAnalysis();
+      this.requestNoisyView();
+    }
     this.changed();
   }
 
@@ -262,7 +274,10 @@ export class Calculator {
     this.symbols = r.symbols;
     this.scope = { ...r.scope, ...this.localScope };
     if (r.notes?.length) this.info(r.notes[r.notes.length - 1]);
-    if (changed) this.refreshLiveAnalysis();
+    if (changed) {
+      this.refreshLiveAnalysis();
+      this.requestNoisyView();
+    }
     this.changed();
   }
 
@@ -304,6 +319,7 @@ export class Calculator {
     if (m === "shots" && this.mode === "shots") this.shotSeed++;
     this.mode = m;
     this.send({ t: "view", req: this.viewReq() });
+    this.requestNoisyView();
     if (m === "lab" && this.lab.level === "view") this.requestAnalysis();
     this.changed();
   }
@@ -372,7 +388,28 @@ export class Calculator {
     this.aInflight = { seq, at: now };
     this.aPending = false;
     this.analysis = { id, status: "busy", result: this.analysis?.id === id ? this.analysis.result : null, rev: this.analysis?.rev ?? -1, ms: 0 };
-    this.engine.analyze({ seq, id, opts: this.labOpts(id) });
+    this.engine.analyze({ seq, id, opts: this.labOpts(id), noise: this.noiseOn ? this.noise : undefined });
+  }
+
+  /** True when the noise model is on and does something. */
+  get noiseOn(): boolean {
+    return !isIdeal(this.noise);
+  }
+
+  /** Change the noise model (sanitised); views and the open analysis follow. */
+  setNoise(patch: Partial<NoiseModel>) {
+    this.noise = sanitiseNoise({ ...this.noise, ...patch });
+    this.noisyView = null;
+    this.requestNoisyView();
+    if (this.mode === "lab") this.requestAnalysis();
+    this.changed();
+  }
+
+  /** PROB/BLOCH/SHOTS under noise: computed off the key path, in the analysis worker. */
+  private requestNoisyView() {
+    if (!this.noiseOn || !["prob", "bloch", "shots"].includes(this.mode)) return;
+    const seq = ++this.vSeq;
+    this.engine.analyze({ seq, id: "__view", opts: { mode: this.mode, shots: this.shots, seed: this.shotSeed }, noise: this.noise });
   }
 
   cancelAnalysis() {
@@ -393,6 +430,11 @@ export class Calculator {
   }
 
   private onAnalysis(r: AnalysisReply) {
+    if (r.id === "__view") {
+      if (r.seq === this.vSeq) this.noisyView = { view: r.result.view ?? null, error: r.result.error, rev: r.rev, seq: r.seq };
+      this.changed();
+      return;
+    }
     if (this.aInflight?.seq === r.seq) this.aInflight = null;
     // Ignore replies for another analysis or one superseded by a newer reply.
     if (r.id === this.lab.id && r.seq >= (this.lastShownSeq ?? 0)) {

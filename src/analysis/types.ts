@@ -5,6 +5,8 @@
  * the analysis worker, so the numerics stay out of the main bundle.
  */
 import type { Entry } from "../calc/steps";
+import type { NoiseModel } from "../noise/model";
+import type { ViewData } from "../calc/core";
 
 export type Category =
   | "state" | "measurement" | "phase" | "metrology" | "entanglement" | "dynamics"
@@ -111,6 +113,8 @@ export type AnalysisResult = {
   apply?: { label: string; scope: Record<string, number> };
   /** A circuit tool's output: offered as an undoable whole-tape replace. */
   proposal?: Proposal;
+  /** A noisy PROB/BLOCH/SHOTS view (request "__view"), and how it was computed. */
+  view?: ViewData & { method: string };
 };
 
 /**
@@ -126,8 +130,8 @@ export type Proposal = {
   check: string;
 };
 
-/** What an analysis sees: a private copy of the register. */
-export type AnalysisContext = { n: number; state: Float64Array; tape: Entry[]; scope: Record<string, number> };
+/** What an analysis sees: a private copy of the register, and the noise model (if on). */
+export type AnalysisContext = { n: number; state: Float64Array; tape: Entry[]; scope: Record<string, number>; noise?: NoiseModel };
 
-export type AnalysisRequest = { seq: number; id: string; opts: Opts };
+export type AnalysisRequest = { seq: number; id: string; opts: Opts; noise?: NoiseModel };
 export type AnalysisReply = { seq: number; rev: number; id: string; result: AnalysisResult; ms: number };

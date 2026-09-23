@@ -124,6 +124,27 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
     - `classical`: independent interpreter, branch enumerator, and Aer counts at 5σ.
     - `examples`: Qiskit reads each original, with normalisations documented in `g_examples.py`.
     - Export → import round trips cover every fixture group (`test/import.test.ts`).
+- **Noise (Phase 8).**
+  - `src/noise/model.ts` uses Qiskit Aer's conventions: depolarizing λ as in `depolarizing_error`, amplitude/phase damping, readout flips, crosstalk on coupling neighbours. It supports per-qubit and per-gate overrides and upstream's presets (converted).
+    - Noise follows the exported program: every unitary QASM instruction gets depolarizing by size, then AD and PD on each qubit, then crosstalk (`channels.ts`).
+  - `src/noise/sim.ts`:
+    - The exact density matrix covers unitary tapes up to n ≤ 10.
+    - Trajectories sample every channel and each measurement afresh, apply readout flips, and evaluate IF on the noisy bits.
+  - `src/noise/mitigation.ts`:
+    - ZNE: linear, Richardson, or exponential through the scales 1/2/3.
+    - PEC: noisy trajectories plus reverse-order quasi-probabilistic inverses; amplitude damping uses reset channels.
+    - `pecDensity` must return the ideal ρ.
+  - `src/noise/ibm.ts` imports device calibration: damping equals Aer's `thermal_relaxation_error`, and depolarizing makes up the rest of `gate_error`.
+  - UI:
+    - LAB "Noise & error" → Noise model: on/off, presets, rates, device file.
+    - A NOISE flag appears in the header.
+    - PROB/BLOCH/SHOTS come from the analysis worker (request id `__view`, `Calculator.noisyView`); KET, TAPE and the other analyses stay ideal.
+    - `AnalysisRequest.noise` carries the model to the worker.
+  - Analyses: noise impact, decoherence by depth, mixed-state spectrum, coherent information, noisy coherence, Pauli budget, readout mitigation, mitigated expectation (ZNE/PEC).
+  - Fixtures:
+    - `noise`: exact ρ against Kraus maps built from Aer errors; trajectories within 5σ; measured programs against AerSimulator.
+    - `noise-analyses`: Qiskit quantum_info and numpy; the calibration import against Aer's thermal relaxation.
+  - Bugs #21 (PEC), #22 (ZNE exponential), #23 (IBM import).
 - `src/qasm/fromTape.ts` turns the tape into OpenQASM 3. It uses stdgates names where
   they exist and `ctrl @`/`negctrl @` otherwise, adds exact `gate` definitions for
   non-stdgates (sy, sxdg, iswap, rxx, ryy, rzz), and folds `sqrt(...)` params to numbers.

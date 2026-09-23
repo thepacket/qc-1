@@ -47,7 +47,7 @@ export class InlineEngine implements Engine {
     const snap = this.core.snapshot();
     const t0 = performance.now();
     const result = this.analyzer
-      ? this.analyzer(req.id, { n: snap.n, state: snap.state, tape: snap.tape, scope: snap.scope }, req.opts)
+      ? this.analyzer(req.id, { n: snap.n, state: snap.state, tape: snap.tape, scope: snap.scope, noise: req.noise }, req.opts)
       : { error: "analyses unavailable" };
     const reply = (r: AnalysisResult) => this.onAnalysis({ seq: req.seq, rev: snap.rev, id: req.id, result: r, ms: performance.now() - t0 });
     // Synchronous analyses reply at once (tests rely on it); async ones when done.

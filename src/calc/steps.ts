@@ -102,6 +102,26 @@ export function symbolsOf(src: string): string[] {
   return compiled(src).freeVars;
 }
 
+/** The instructions a step exports as (measure_x → h, measure, h; preps → reset + gates). */
+export function exportedSteps(s: Step): Step[] {
+  const one = (gateId: string, params: string[] = []): Step => ({ ...s, gateId, params, controls: [], controlStates: undefined });
+  switch (s.gateId) {
+    case "measure_x": return [one("h"), one("measure"), one("h")];
+    case "measure_y": return [one("sdg"), one("h"), one("measure"), one("h"), one("s")];
+    case "init0": return [one("reset")];
+    case "init1": return [one("reset"), one("x")];
+    case "initplus": return [one("reset"), one("h")];
+    case "initminus": return [one("reset"), one("x"), one("h")];
+    case "initiplus": return [one("reset"), one("h"), one("s")];
+    case "initiminus": return [one("reset"), one("h"), one("sdg")];
+    case "initialize": {
+      const { theta, phi } = initAngles(s.params[0]);
+      return [one("reset"), one("u", [String(theta), String(phi), "0"])];
+    }
+  }
+  return [s];
+}
+
 /** Symbols a step uses, including those inside a custom gate's definition. */
 export function stepSymbols(s: Step): string[] {
   const def = customOf(s.gateId);

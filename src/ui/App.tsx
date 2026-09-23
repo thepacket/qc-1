@@ -128,13 +128,17 @@ export function App() {
   const n = calc.n;
   const last = calc.tape.slice(-6);
 
-  // A view summary is shown only once it matches the selected mode.
-  const data = calc.view?.mode === calc.mode ? calc.view : null;
+  // A view summary is shown only once it matches the selected mode. Under
+  // noise, PROB/BLOCH/SHOTS come from the analysis worker (ρ or trajectories).
+  const noisy = calc.noiseOn && ["prob", "bloch", "shots"].includes(calc.mode);
+  const nv = noisy ? calc.noisyView : null;
+  const data = noisy ? (nv?.view?.mode === calc.mode ? nv.view : null) : calc.view?.mode === calc.mode ? calc.view : null;
   const view = (() => {
     if (calc.param.open) return <ParamView calc={calc} />;
     if (calc.catalog.open) return <CatalogView calc={calc} />;
     if (calc.mode === "lab") return <LabView calc={calc} />;
     if (calc.mode === "tape") return <TapeView calc={calc} />;
+    if (noisy && nv?.error) return <div className="view"><div className="lab-error">E: {nv.error}</div></div>;
     if (!data) return <Pending />;
     switch (data.mode) {
       case "ket": return <KetView calc={calc} data={data} />;
@@ -167,6 +171,7 @@ export function App() {
             {calc.all && <b>ALL</b>}
             {calc.marks.length > 0 && <b>CTRL</b>}
             {calc.pendingIf && <b>IF c{calc.pendingIf.clbit}={calc.pendingIf.value}</b>}
+            {calc.noiseOn && <b className="noise-flag" title={noisy && nv?.view ? `noisy view: ${nv.view.method}` : "noise on"}>NOISE{noisy && nv?.view ? ` · ${nv.view.method}` : ""}</b>}
           </span>
           <span className="grow" />
           {calc.symbols.length > 0 && (
