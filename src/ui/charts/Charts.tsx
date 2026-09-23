@@ -39,10 +39,12 @@ function Heatmap({ c }: { c: Extract<Chart, { kind: "heatmap" }> }) {
       <div className="heat">
         <div className="heat-cols" style={{ gridTemplateColumns: `2.6em repeat(${C}, 1fr)` }}>
           <span />
-          {c.cols.map((l) => <span key={l}>{l}</span>)}
+          {c.cols.map((l, j) => <span key={`${l}${j}`}>{C <= 8 || j % Math.ceil(C / 8) === 0 ? l : ""}</span>)}
         </div>
         <div className="heat-body">
-          <div className="heat-rows">{c.rows.map((l) => <span key={l} style={{ height: `${cell}%` }}>{l}</span>)}</div>
+          <div className="heat-rows">
+            {c.rows.map((l, i) => <span key={`${l}${i}`} style={{ height: `${cell}%` }}>{R <= 16 || i % Math.ceil(R / 16) === 0 ? l : ""}</span>)}
+          </div>
           <svg viewBox={`0 0 ${C * cell} ${R * cell}`} className="heat-svg" preserveAspectRatio="none" role="img" aria-label={c.title ?? "heatmap"}>
             {c.values.map((row, i) =>
               row.map((_, j) => {
@@ -95,7 +97,10 @@ function Bars({ c }: { c: Extract<Chart, { kind: "bars" }> }) {
             <div className="hbar" key={`${l}${i}`}>
               <span className="lbl">{l}</span>
               <span className="track">
-                <span style={{ width: `${(Math.abs(v) / max) * 100}%`, background: ph === undefined ? undefined : phaseColor(ph) }} />
+                <span style={{
+                  width: `${(Math.abs(v) / max) * 100}%`,
+                  background: ph !== undefined ? phaseColor(ph) : c.signed && v < 0 ? "var(--series-2)" : undefined,
+                }} />
               </span>
               <span className="val">
                 {fmt(v)}
@@ -245,6 +250,108 @@ function QSphere({ c }: { c: Extract<Chart, { kind: "qsphere" }> }) {
   );
 }
 
+// ─── Scatter (+ fit) ─────────────────────────────────────────────────
+function Scatter({ c }: { c: Extract<Chart, { kind: "scatter" }> }) {
+  const [pick, setPick] = useState<string | null>(null);
+  const W = 300, H = 160, L = 38, B = 26, T = 8, Rm = 8;
+  const x0 = Math.min(...c.x), x1 = Math.max(...c.x, x0 + 1e-9);
+  const ys = [...c.y, ...(c.fit ? [c.fit.a + c.fit.b * x0, c.fit.a + c.fit.b * x1] : [])];
+  const y0 = Math.min(...ys), y1 = Math.max(...ys, y0 + 1e-9);
+  const px = (x: number) => L + ((x - x0) / (x1 - x0)) * (W - L - Rm);
+  const py = (y: number) => T + (1 - (y - y0) / (y1 - y0)) * (H - T - B);
+  return (
+    <Frame title={c.title}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="lines-svg" role="img" aria-label={c.yLabel}>
+        {[0, 0.5, 1].map((t) => {
+          const v = y0 + t * (y1 - y0);
+          return (
+            <g key={t}>
+              <line x1={L} x2={W - Rm} y1={py(v)} y2={py(v)} className="grid" />
+              <text x={L - 4} y={py(v)} className="tick" textAnchor="end" dominantBaseline="middle">{fmt(v, 2)}</text>
+            </g>
+          );
+        })}
+        {c.x.map((x, i) => <text key={i} x={px(x)} y={H - B + 12} className="tick" textAnchor="middle">{fmt(x, 2)}</text>)}
+        <text x={W - Rm} y={H - 2} className="axis-name" textAnchor="end">{c.xLabel}</text>
+        {c.fit && (
+          <line x1={px(x0)} y1={py(c.fit.a + c.fit.b * x0)} x2={px(x1)} y2={py(c.fit.a + c.fit.b * x1)}
+            stroke="var(--series-2)" strokeWidth={2} strokeDasharray="5 4" />
+        )}
+        {c.x.map((x, i) => (
+          <circle key={i} cx={px(x)} cy={py(c.y[i])} r={4} fill="var(--series-1)" stroke="var(--lcd)" strokeWidth={1.5}
+            onClick={() => setPick(`${c.xLabel} ${fmt(x)}: ${c.yLabel} ${fmt(c.y[i])}`)} />
+        ))}
+      </svg>
+      {c.fit && <div className="legend"><span><i style={{ borderColor: "var(--series-1)" }} />data</span><span><i style={{ borderColor: "var(--series-2)", borderStyle: "dashed" }} />fit · {c.fit.label}</span></div>}
+      <Readout text={pick} hint={`${c.yLabel} · tap a point`} />
+    </Frame>
+  );
+}
+
+// ─── Histogram (+ reference curve) ──────────────────────────────────
+function Hist({ c }: { c: Extract<Chart, { kind: "hist" }> }) {
+  const [pick, setPick] = useState<number | null>(null);
+  const W = 300, H = 150, L = 34, B = 24, T = 8, Rm = 8;
+  const n = c.centers.length;
+  const w = (W - L - Rm) / n;
+  const top = Math.max(...c.values, ...(c.curve?.y ?? []), 1e-9);
+  const py = (y: number) => T + (1 - y / top) * (H - T - B);
+  return (
+    <Frame title={c.title}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="lines-svg" role="img" aria-label={c.yLabel}>
+        {[0, 0.5, 1].map((t) => (
+          <g key={t}>
+            <line x1={L} x2={W - Rm} y1={py(t * top)} y2={py(t * top)} className="grid" />
+            <text x={L - 4} y={py(t * top)} className="tick" textAnchor="end" dominantBaseline="middle">{fmt(t * top, 2)}</text>
+          </g>
+        ))}
+        {c.values.map((v, i) => (
+          <rect key={i} x={L + i * w + 1} y={py(v)} width={w - 2} height={Math.max(0, H - B - py(v))} rx={1.5}
+            fill="var(--series-1)" onClick={() => setPick(i)} />
+        ))}
+        {c.curve && (
+          <polyline points={c.curve.y.map((y, i) => `${L + (i + 0.5) * w},${py(y)}`).join(" ")} fill="none"
+            stroke="var(--series-2)" strokeWidth={2} strokeDasharray="5 4" />
+        )}
+        {c.centers.map((x, i) => (i % Math.ceil(n / 6) === 0 ? (
+          <text key={i} x={L + (i + 0.5) * w} y={H - B + 12} className="tick" textAnchor="middle">{fmt(x, 2)}</text>
+        ) : null))}
+        <text x={W - Rm} y={H - 2} className="axis-name" textAnchor="end">{c.xLabel}</text>
+      </svg>
+      {c.curve && <div className="legend"><span><i style={{ borderColor: "var(--series-1)" }} />observed</span><span><i style={{ borderColor: "var(--series-2)", borderStyle: "dashed" }} />{c.curve.name}</span></div>}
+      <Readout text={pick === null ? null : `${c.xLabel} ≈ ${fmt(c.centers[pick])}: ${fmt(c.values[pick])}${c.curve ? ` (${c.curve.name} ${fmt(c.curve.y[pick])})` : ""}`}
+        hint={`${c.yLabel} · tap a bar`} />
+    </Frame>
+  );
+}
+
+// ─── Majorana stars ─────────────────────────────────────────────────
+function Stars({ c }: { c: Extract<Chart, { kind: "stars" }> }) {
+  const [pick, setPick] = useState<string | null>(null);
+  const R = 80, S = 200, m = S / 2;
+  const pts = c.stars
+    .map((s, i) => {
+      const [sx, sy, d] = project(Math.sin(s.theta) * Math.cos(s.phi), Math.sin(s.theta) * Math.sin(s.phi), Math.cos(s.theta));
+      return { i, s, sx: m + sx * R, sy: m - sy * R, d };
+    })
+    .sort((a, b) => a.d - b.d);
+  return (
+    <Frame title={c.title}>
+      <svg viewBox={`0 0 ${S} ${S}`} className="qsphere" role="img" aria-label="Majorana stars">
+        <circle cx={m} cy={m} r={R} className="sphere" />
+        <ellipse cx={m} cy={m} rx={R} ry={R * 0.26} className="eq back" />
+        <text x={m} y={m - R - 6} className="axis-label">|0…0⟩</text>
+        {pts.map((p) => (
+          <g key={p.i} onClick={() => setPick(`star ${p.i + 1}: θ ${Math.round((p.s.theta * 180) / Math.PI)}°, φ ${Math.round((p.s.phi * 180) / Math.PI)}°`)}>
+            <circle cx={p.sx} cy={p.sy} r={6} fill="var(--series-2)" fillOpacity={p.d < 0 ? 0.5 : 1} stroke="var(--lcd)" strokeWidth={1.5} />
+          </g>
+        ))}
+      </svg>
+      <Readout text={pick} hint={`${c.stars.length} stars · tap one`} />
+    </Frame>
+  );
+}
+
 export function ChartView({ chart }: { chart: Chart }) {
   switch (chart.kind) {
     case "heatmap": return <Heatmap c={chart} />;
@@ -253,5 +360,8 @@ export function ChartView({ chart }: { chart: Chart }) {
     case "table": return <Table c={chart} />;
     case "disks": return <Disks c={chart} />;
     case "qsphere": return <QSphere c={chart} />;
+    case "scatter": return <Scatter c={chart} />;
+    case "hist": return <Hist c={chart} />;
+    case "stars": return <Stars c={chart} />;
   }
 }

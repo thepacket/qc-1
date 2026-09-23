@@ -8,6 +8,7 @@ import { Register } from "../src/calc/register";
 import { exportQasm3 } from "../src/qasm/fromTape";
 import { gateCases, randomCases, type Case } from "./cases/groups/statevector";
 import * as ent from "./cases/groups/entanglement";
+import * as st2 from "./cases/groups/state2";
 
 const OUT = new URL("./out/", import.meta.url);
 
@@ -29,6 +30,14 @@ test("dump validation cases", () => {
       group: "entanglement",
       cases: ent.cases().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: ent.compute(c) })),
       page: { pairs: ent.pagePairs, qc1: ent.computePage() },
+    }),
+  );
+  writeFileSync(
+    new URL("state2.cases.json", OUT),
+    JSON.stringify({
+      group: "state2",
+      husimi: st2.HUSIMI,
+      cases: st2.cases().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: st2.compute(c) })),
     }),
   );
 });

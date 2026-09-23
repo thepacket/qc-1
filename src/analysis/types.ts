@@ -13,7 +13,11 @@ export type Category =
 /** Inputs an analysis screen shows. `key` names the field in the options object. */
 export type InputSpec =
   | { kind: "cut"; key: string; label: string; min?: number; max?: number }
-  | { kind: "qubit"; key: string; label: string };
+  /** One qubit; `fallback` picks the default from n (e.g. the last qubit). */
+  | { kind: "qubit"; key: string; label: string; fallback: "first" | "second" | "last" }
+  /** An integer in [min, max] (max ≤ 0 means n + max). */
+  | { kind: "int"; key: string; label: string; min: number; max: number; fallback: number }
+  | { kind: "choice"; key: string; label: string; options: { label: string; value: number }[]; fallback: number };
 
 export type Opts = Record<string, unknown>;
 
@@ -47,8 +51,21 @@ export type Chart =
       kind: "bars"; title?: string; labels: string[]; values: number[]; unit?: string;
       /** Optional per-bar phase (radians): bars are hue-coded by phase. */
       phases?: number[];
+      /** Signed values: negative bars in the second series colour. */
+      signed?: boolean;
       max?: number;
     }
+  | {
+      kind: "scatter"; title?: string; x: number[]; y: number[]; xLabel: string; yLabel: string;
+      logY?: boolean;
+      /** Fitted line y = a + b·x (in the plotted, possibly log, space). */
+      fit?: { a: number; b: number; label: string };
+    }
+  | {
+      kind: "hist"; title?: string; centers: number[]; values: number[]; xLabel: string; yLabel: string;
+      curve?: { name: string; y: number[] };
+    }
+  | { kind: "stars"; title?: string; stars: { theta: number; phi: number }[] }
   | {
       kind: "lines"; title?: string; x: number[]; xLabel: string; yLabel: string;
       series: { name: string; y: number[]; dashed?: boolean }[];

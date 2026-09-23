@@ -14,6 +14,9 @@ Upstream file paths are relative to that project's `client/src/`.
 | 4 | `qasm/emit.ts` | Emits names outside `stdgates.inc` (sy, iswap, rzz, fsim, ms, cu3, …) with no `gate` definition, so Qiskit rejects the file; base gates carrying controls come out as e.g. `x q[0], q[1];` | `qiskit.qasm3.loads` | `src/qasm/fromTape.ts` adds exact definitions and names controlled forms; a generic `ctrl @` block in `src/qasm/emit.ts` |
 | 5 | `qasm/emitQiskit.ts` | Drops `if` conditions silently; no mapping for fsim, sqrtswap and related gates; only Greek-named symbols become `Parameter`s | reading the code | Not ported: QC-1 writes its own Qiskit export (plan phase 11) |
 | 6 | `sim/pageCurve.ts` `pageEntropyBits` | Page's average entropy sums from d_A+1 instead of d_B+1: wrong for every unequal cut, exceeding the maximum (1.58 bits for a 1\|2 split; true 0.735) | Haar Monte-Carlo average of random states | Fixed in `src/sim/pageCurve.ts` (`QC-1 fix` block); fixture `page` |
+| 7 | `sim/anticoncentration.ts` | Porter–Thomas histogram puts dyadic probabilities (Bell, GHZ, uniform states: D·p exactly on a bin edge) in the bin *below* after a 1e-16 rounding error | numpy histogram of exact probabilities | `QC-1 fix`: bin with a 1e-9 edge tolerance; fixture `state2` |
+| 8 | `sim/chsh.ts` | Maximal CHSH value only accurate to ~5e-9: closed-form cubic eigenvalues (`eig3`) lose precision for near-degenerate singular values (e.g. product states, exactly 2) | numpy SVD of the Pauli correlation matrix | `QC-1 fix`: Jacobi eigenvalues; fixture `state2` |
+| 9 | `sim/quantumDiscord.ts` | Discord over-estimated by up to 0.011 bits: the conditional entropy is minimised only on a 10×12 grid of measurement axes | scipy multi-start Nelder–Mead (true optimum) | `QC-1 fix`: grid + Nelder–Mead refinement; now within 4e-14; fixture `state2` |
 
 ## Quirks in the reference tools (not upstream bugs)
 

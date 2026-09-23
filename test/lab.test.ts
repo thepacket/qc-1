@@ -22,11 +22,21 @@ describe("LAB framework", () => {
     expect(ANALYSES.map((a) => a.id).sort()).toEqual([...RUN_IDS].sort());
   });
 
-  test("every analysis runs on a Bell pair without error", () => {
-    const c = bell();
+  test("every analysis runs on a GHZ state of a size it accepts, without error", () => {
     for (const a of ANALYSES) {
+      const n = Math.min(a.maxQubits, Math.max(a.minQubits ?? 1, 4));
+      const c = calc();
+      // A generically entangled state: H layer, CZ ring, RX(0.7) + T layers, CZ ring again.
+      keys(c, ...(String(n).split("") as KeyId[]), "2nd", "q", "all", "h");
+      const czRing = () => { for (let q = 0; q < n; q++) keys(c, "ctrl", "right", "z"); };
+      czRing();
+      keys(c, "0", ".", "7", "all", "rx", "all", "t");
+      czRing();
+      c.setMode("lab");
       c.openAnalysis(a.id);
+      expect(c.n, a.id).toBe(n);
       expect(c.analysis?.result?.error, a.id).toBeUndefined();
+      expect((c.analysis?.result?.charts?.length ?? 0) + (c.analysis?.result?.scalars?.length ?? 0), a.id).toBeGreaterThan(0);
     }
   });
 
@@ -99,10 +109,12 @@ describe("LAB framework", () => {
   test("◀ ▶ = navigate categories and lists", () => {
     const c = calc();
     c.setMode("lab");
-    keys(c, "right", "eq"); // empty categories are skipped → Entanglement & correlations
+    keys(c, "right", "eq"); // State → Measurement
     expect(c.lab.level).toBe("list");
     keys(c, "eq");
     expect(c.lab.level).toBe("view");
+    expect(c.lab.id).toBe("anticoncentration");
+    keys(c, "ac", "ac", "right", "right", "eq", "eq"); // Measurement → Phase space → (skips empty Expectation) Entanglement
     expect(c.lab.id).toBe("density");
   });
 

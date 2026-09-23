@@ -18,8 +18,10 @@ and in GitHub CI only.
 4. `test/validated/*.test.ts` replays each fixture's tape in QC-1 and compares
    against the stored reference. `npm test` needs no Python.
 
-`npm run validate` runs steps 2 and 3. Fixtures are deterministic; CI
-regenerates them and fails on any diff.
+`npm run validate` runs steps 2 and 3. CI regenerates the fixtures and
+fails if any value moves by more than 1e-10 (`validation/ref/drift.py`). It
+doesn't compare bytes, because LAPACK builds differ in the last digit across
+platforms.
 
 ## Setup
 

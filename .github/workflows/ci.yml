@@ -3,7 +3,8 @@ name: CI
 # `test` runs on every push: typecheck, the Vitest suite (including the
 # committed Qiskit reference fixtures, so no Python needed) and the build.
 # `validate` regenerates those fixtures with the pinned Qiskit stack and
-# fails if they drift. It never commits anything.
+# fails if any value drifts by more than 1e-10 (not byte-for-byte: LAPACK
+# builds differ in the last digit across platforms). It never commits.
 
 on:
   push:
@@ -50,6 +51,8 @@ jobs:
         run: |
           python -m venv validation/.venv
           validation/.venv/bin/pip install -r validation/requirements.txt
+      - name: Keep the committed fixtures
+        run: cp -r test/fixtures "$RUNNER_TEMP/committed"
       - run: npm run validate
-      - name: Fixtures must not drift
-        run: git diff --exit-code --stat test/fixtures
+      - name: Fixtures must not drift (numerically, 1e-10)
+        run: validation/.venv/bin/python validation/ref/drift.py "$RUNNER_TEMP/committed" test/fixtures

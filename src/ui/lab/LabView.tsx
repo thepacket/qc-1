@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { Calculator } from "../../calc/calculator";
-import { ANALYSIS_BY_ID, CATEGORIES, analysesIn, cutDefault } from "../../analysis/catalog";
+import { ANALYSIS_BY_ID, CATEGORIES, analysesIn, cutDefault, inputValue } from "../../analysis/catalog";
 import type { AnalysisMeta, InputSpec } from "../../analysis/types";
 import { ChartView } from "../charts/Charts";
 import { fmt } from "../charts/colors";
@@ -132,5 +132,35 @@ function Input({ calc, meta, spec }: { calc: Calculator; meta: AnalysisMeta; spe
       </div>
     );
   }
-  return null;
+  const value = inputValue(spec, calc.labOpts(meta.id), calc.n);
+  const set = (v: number) => calc.setLabOpts(meta.id, { [spec.key]: v });
+  if (spec.kind === "qubit") {
+    return (
+      <div className="cut-picker" role="radiogroup" aria-label={spec.label}>
+        <span className="dim">{spec.label}</span>
+        {[...Array(calc.n).keys()].map((q) => (
+          <button key={q} role="radio" aria-checked={q === value} className={`qb${q === value ? " sel" : ""}`} onClick={() => set(q)}>q{q}</button>
+        ))}
+      </div>
+    );
+  }
+  if (spec.kind === "int") {
+    const hi = spec.max <= 0 ? calc.n + spec.max : spec.max;
+    return (
+      <div className="cut-picker" role="radiogroup" aria-label={spec.label}>
+        <span className="dim">{spec.label}</span>
+        {Array.from({ length: Math.max(0, hi - spec.min + 1) }, (_, i) => spec.min + i).map((v) => (
+          <button key={v} role="radio" aria-checked={v === value} className={`qb${v === value ? " sel" : ""}`} onClick={() => set(v)}>{v}</button>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div className="cut-picker" role="radiogroup" aria-label={spec.label}>
+      <span className="dim">{spec.label}</span>
+      {spec.options.map((o) => (
+        <button key={o.label} role="radio" aria-checked={o.value === value} className={`qb${o.value === value ? " sel" : ""}`} onClick={() => set(o.value)}>{o.label}</button>
+      ))}
+    </div>
+  );
 }

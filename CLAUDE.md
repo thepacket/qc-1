@@ -49,7 +49,11 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
   - `Result.rev` marks when the register changed.
   - Charts are in `src/ui/charts/` (heatmap seq/div/complex, bars, lines, table, disks, Q-sphere; colours in `colors.ts`); the screens are in `src/ui/lab/LabView.tsx`.
   - AC in LAB goes back a level and never clears the register.
-- `src/sim/` also holds validated Quantiom analysis modules (density, entanglement, eig, pauliMatrix, pauliSpectrum, expectation, concurrence, negativity, pageCurve, renyiSpectrum, qsphere). `qsphere.ts` inlines its Amplitude type.
+- `src/sim/` also holds validated Quantiom analysis modules:
+  - Phase 1: density, entanglement, eig, pauliMatrix, pauliSpectrum, expectation, concurrence, negativity, pageCurve, renyiSpectrum, qsphere. `qsphere.ts` inlines its Amplitude type.
+  - Phase 2: every state-only analysis (fixture `state2`).
+  - Their fixes are `// QC-1 fix` blocks: pageCurve, anticoncentration, chsh, quantumDiscord (bugs #6–#9).
+  - LAB inputs are cut / qubit / int / choice (`inputValue` in catalog.ts). Chart kinds add scatter+fit, hist+curve, and Majorana stars.
 - `src/qasm/fromTape.ts` turns the tape into OpenQASM 3. It uses stdgates names where
   they exist and `ctrl @`/`negctrl @` otherwise, adds exact `gate` definitions for
   non-stdgates (sy, sxdg, iswap, rxx, ryy, rzz), and folds `sqrt(...)` params to numbers.

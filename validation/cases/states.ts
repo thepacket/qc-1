@@ -25,3 +25,21 @@ export function stateCases(seed: number, sizes = [3, 4, 5, 6, 7]): StateCase[] {
   }
   return out;
 }
+
+/** W state on 3 qubits: (|100⟩ + |010⟩ + |001⟩)/√3. */
+export const wState = (): Entry[] => [
+  [step("ry", [0], [], ["2*acos(1/sqrt(3))"])],
+  [step("ry", [1], [0], ["π/2"])],
+  [step("x", [0], [1])],
+  [step("x", [2], [0, 1], [], [true, true])],
+];
+
+/** T|+⟩ on every qubit: a product of magic states. */
+export const tPlus = (n: number): Entry[] => [
+  ...Array.from({ length: n }, (_, q) => [step("h", [q])]),
+  ...Array.from({ length: n }, (_, q) => [step("t", [q])]),
+];
+
+/** Spin-coherent product state (θ, φ) on every qubit. */
+export const coherent = (n: number, theta: string, phi: string): Entry[] =>
+  Array.from({ length: n }, (_, q) => [step("u", [q], [], [theta, phi, "0"])]);
