@@ -1,7 +1,25 @@
 import { GATES, productLayer, randomTape, rng, step } from "../tapes";
 import type { Entry } from "../../../src/calc/steps";
+import { defineGate, type CustomGate } from "../../../src/calc/custom";
 
-export type Case = { id: string; n: number; tape: Entry[] };
+/** `gates`: custom gate definitions the tape uses (set in the registry before replay/export). */
+export type Case = { id: string; n: number; tape: Entry[]; gates?: CustomGate[] };
+
+/** Custom gates: nested definitions, controls and anti-controls, a u_arb inside. */
+export function customCases(): Case[] {
+  const s = (g: string, t: number[], c: number[] = [], p: string[] = [], anti?: boolean[]): Entry => [step(g, t, c, p, anti)];
+  const G1 = defineGate("G1", [s("h", [0]), s("x", [1], [0]), s("rz", [1], [], ["0.3"]), s("sy", [0])]);
+  const G2 = defineGate("G2", [s("custom:G1", [2, 0]), s("rzz", [0, 1], [], ["2/3*π"]), s("t", [1], [2])]);
+  const G3 = defineGate("G3", [s("u_arb", [0], [], ["0", "0", "0.6", "0.8", "0", "1", "0", "0"]), s("iswap", [0, 1])]);
+  const gates = [G1, G2, G3];
+  const r = rng(3003);
+  return [
+    { id: "custom-G1", n: 3, tape: [...productLayer(r, 3), s("custom:G1", [2, 0])], gates },
+    { id: "custom-G1+c1", n: 3, tape: [...productLayer(r, 3), s("custom:G1", [0, 2], [1])], gates },
+    { id: "custom-G2+anti", n: 4, tape: [...productLayer(r, 4), s("custom:G2", [3, 1, 0], [2], [], [true])], gates },
+    { id: "custom-G3+c2", n: 4, tape: [...productLayer(r, 4), s("custom:G3", [1, 3], [0, 2], [], [false, true])], gates },
+  ];
+}
 
 /**
  * Statevector + QASM-export cases. Qiskit imports each exported program and

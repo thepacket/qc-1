@@ -20,6 +20,8 @@ export type InputSpec =
   | { kind: "choice"; key: string; label: string; options: { label: string; value: number }[]; fallback: number }
   /** Pauli string or Pauli sum, typed on the phone keyboard (presets for the current n). */
   | { kind: "pauli"; key: string; label: string }
+  /** A target state typed on the phone keyboard (|011⟩ or amplitudes), with presets. */
+  | { kind: "state"; key: string; label: string }
   /** One of the tape's symbols; `optional` adds "none". */
   | { kind: "symbol"; key: string; label: string; optional?: boolean; fallback: "first" | "second" | "t" };
 
@@ -102,6 +104,21 @@ export type AnalysisResult = {
   scalars?: Scalar[]; charts?: Chart[]; notes?: string[]; error?: string;
   /** Offer to set these symbol values (e.g. the optimizer's result). */
   apply?: { label: string; scope: Record<string, number> };
+  /** A circuit tool's output: offered as an undoable whole-tape replace. */
+  proposal?: Proposal;
+};
+
+/**
+ * A tool's rewritten tape. `verified` says the in-app check passed (same
+ * operator, or the stated target reached); APPLY is only offered then.
+ */
+export type Proposal = {
+  label: string;
+  n: number;
+  tape: Entry[];
+  verified: boolean;
+  /** What was checked and how, e.g. "same operator up to a global phase (every column, err 2e-15)". */
+  check: string;
 };
 
 /** What an analysis sees: a private copy of the register. */

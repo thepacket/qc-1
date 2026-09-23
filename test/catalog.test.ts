@@ -24,7 +24,7 @@ describe("CATALOG", () => {
     keys(c, "2nd", "all");
     expect(c.catalog.open).toBe(true);
     keys(c, "left");
-    expect(c.catalog.index).toBe(CATALOG.length - 1);
+    expect(c.catalog.index).toBe(c.catalogItems.length - 1);
     keys(c, "right");
     expect(c.catalog.index).toBe(0);
     expect(c.sel).toBe(0); // arrows moved the list, not the qubit
@@ -113,5 +113,53 @@ describe("CATALOG", () => {
     choose(c, "init1");
     keys(c, "eq");
     expect(c.message?.kind).toBe("error");
+  });
+});
+
+describe("custom gates (DEFINE)", () => {
+  const openAt = (c: Calculator, gate: string) => {
+    keys(c, "2nd", "all");
+    const i = c.catalogItems.findIndex((it) => it.gate === gate);
+    c.catalog.index = i;
+    keys(c, "eq");
+  };
+
+  test("DEFINE the last 2 steps as G1, then place G1 elsewhere: same state as the steps", () => {
+    const c = calc();
+    keys(c, "3", "2nd", "q", "h", "ctrl", "right", "x"); // Bell on q0,q1
+    keys(c, "2", "2nd", "all");
+    c.catalog.index = c.catalogItems.findIndex((it) => it.gate === "define");
+    keys(c, "eq");
+    expect(c.customGates.map((d) => [d.name, d.k, d.tape.length])).toEqual([["G1", 2, 2]]);
+    // Place G1 on (q1, q2): mark q1 as partner, target q2.
+    keys(c, "undo", "undo"); // empty tape; q1 selected
+    keys(c, "ctrl", "right"); // partner q1, target q2
+    openAt(c, "custom:G1");
+    expect(c.tape).toHaveLength(1);
+    expect(c.tape[0][0].targets).toEqual([1, 2]);
+    const v = c.view!;
+    if (v.mode !== "ket") throw new Error(v.mode);
+    expect(v.rows.map((r) => r.i).sort()).toEqual([0b000, 0b011]);
+    // Exported as a gate definition and one call.
+    const q = exportQasm3(c.n, c.tape);
+    expect(q).toContain("gate G1 a0, a1 { h a0; cx a0, a1; }");
+    expect(q).toContain("G1 q[1], q[2];");
+    // Persisted with the session.
+    expect(c.save().gates?.[0].name).toBe("G1");
+  });
+
+  test("a controlled custom gate, and a custom gate with a symbol, export with ctrl @ and a parameter", () => {
+    const c = calc();
+    keys(c, "2nd", ".", "rx"); // RX(t) on q0
+    keys(c, "2nd", "all");
+    c.catalog.index = c.catalogItems.findIndex((it) => it.gate === "define");
+    keys(c, "eq");
+    keys(c, "undo");
+    keys(c, "ctrl", "right"); // control q0, target q1
+    openAt(c, "custom:G1");
+    const q = exportQasm3(c.n, c.tape);
+    expect(q).toContain("gate G1(p0) a0 { rx(p0) a0; }");
+    expect(q).toContain("ctrl @ G1(t_) q[0], q[1];");
+    expect(c.symbols).toEqual(["t"]);
   });
 });

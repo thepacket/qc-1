@@ -26,3 +26,21 @@ describe(`tools (vs ${fx.meta.reference})`, () => {
     }
   });
 });
+
+// Structure analyses on Clifford tapes with mid-circuit measurements:
+// count_ops/depth, DAG ancestors per measurement, stabilizer generators that
+// fix Qiskit's post-selected state (validation/ref/g_tools.py).
+import { computeStructure } from "../../validation/cases/groups/tools";
+type StructRef = { n: number; tape: Entry[]; resources: Record<string, number>; interaction: number[][]; tanner: unknown; generators: string[] };
+const sx = loadFixture<StructRef>("structure");
+
+describe(`structure (vs ${sx.meta.reference})`, () => {
+  test.each(sx.cases.map((c) => [c.id, c] as const))("%s", (_, c) => {
+    const mine = computeStructure({ id: c.id, n: c.n, tape: c.tape });
+    const res = mine.resources as unknown as Record<string, unknown>;
+    expect(Object.fromEntries(Object.keys(c.resources).map((k) => [k, res[k]]))).toEqual(c.resources);
+    expect(mine.interaction).toEqual(c.interaction);
+    expect(mine.tanner).toEqual(c.tanner);
+    expect(mine.generators).toEqual(c.generators);
+  });
+});

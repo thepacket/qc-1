@@ -264,6 +264,50 @@ ANALYSES.push(
     summary: "The tape steps that can influence a qubit's final state (backward) or that its input can reach (forward)." },
 );
 
+// Phase 6: circuit tools (validated: fixtures tools, synth) and structure.
+const coupling = { kind: "choice" as const, key: "coupling", label: "map", fallback: 0, options: [{ label: "line", value: 0 }, { label: "ring", value: 1 }, { label: "2-row grid", value: 2 }] };
+const target = { kind: "choice" as const, key: "target", label: "to", fallback: 1, options: [{ label: "Clifford+T", value: 0 }, { label: "IBM", value: 1 }, { label: "Rigetti", value: 2 }] };
+ANALYSES.push(
+  { id: "simplify", title: "Simplify", category: "tools", mode: "run", maxQubits: 20, inputs: [
+      { kind: "choice", key: "deep", label: "passes", fallback: 0, options: [{ label: "peephole", value: 0 }, { label: "deep", value: 1 }] },
+    ],
+    summary: "Cancel and merge neighbouring gates (H·H, S·S†, RZ·RZ, CX·CX, H·CX·H → CZ…); checks the result is the same operator before offering it." },
+  { id: "transpile", title: "Transpile", category: "tools", mode: "run", maxQubits: 20, inputs: [target],
+    summary: "Rewrite into a device gate set: Clifford+T, IBM (RZ, SX, CX) or Rigetti (RZ, RX±π/2, CZ); arbitrary 2-qubit gates go through a KAK decomposition." },
+  { id: "route", title: "Route", category: "tools", mode: "run", maxQubits: 20, minQubits: 2, inputs: [coupling],
+    summary: "Insert SWAPs so every 2-qubit gate acts on neighbours of a coupling map (greedy, shortest paths). Qubits end up relabelled." },
+  { id: "compile", title: "Compile", category: "tools", mode: "run", maxQubits: 20, inputs: [
+      target,
+      { kind: "choice", key: "coupling", label: "map", fallback: 0, options: [{ label: "none", value: 0 }, { label: "line", value: 1 }, { label: "ring", value: 2 }, { label: "grid", value: 3 }] },
+    ],
+    summary: "Transpile, optimise, route, optimise: one pass to a device, with the gate count after each stage." },
+  { id: "inverse", title: "Inverse U†", category: "tools", mode: "run", maxQubits: 20, inputs: [
+      { kind: "choice", key: "mode", label: "", fallback: 0, options: [{ label: "append U†", value: 0 }, { label: "replace by U†", value: 1 }] },
+    ],
+    summary: "Reverse the tape and invert every gate. Appending gives a mirror circuit that returns to |0…0⟩." },
+  { id: "trotter", title: "Trotter circuit", category: "tools", mode: "run", maxQubits: 20, inputs: [
+      { kind: "pauli", key: "ham", label: "H" },
+      { kind: "int", key: "steps", label: "steps", min: 1, max: 8, fallback: 2 },
+      { kind: "choice", key: "order", label: "order", fallback: 0, options: [{ label: "1", value: 0 }, { label: "2", value: 1 }, { label: "4", value: 2 }] },
+      { kind: "choice", key: "mode", label: "", fallback: 0, options: [{ label: "product", value: 0 }, { label: "QDrift", value: 1 }] },
+    ],
+    summary: "Build e^{−iH·steps·t} as a product formula in the symbol t, and show its error against the exact evolution at the current t." },
+  { id: "stateprep", title: "State preparation", category: "tools", mode: "run", maxQubits: 20, inputs: [{ kind: "state", key: "target", label: "target" }],
+    summary: "A circuit that prepares a target state (or the current one) from |0…0⟩ with RY, RZ and CX." },
+  { id: "synth", title: "Unitary synthesis", category: "tools", mode: "run", maxQubits: 4, inputs: [],
+    summary: "Re-synthesise the tape's unitary from two-level controlled 2×2 gates (exact, not gate-optimal)." },
+  { id: "resources", title: "Resources", category: "structure", mode: "live", maxQubits: 20, inputs: [
+      { kind: "choice", key: "coupling", label: "check map", fallback: 0, options: [{ label: "none", value: 0 }, { label: "line", value: 1 }, { label: "ring", value: 2 }, { label: "grid", value: 3 }] },
+    ],
+    summary: "Gate counts, depth, T count and T-depth, CX and Clifford counts, as Qiskit counts the exported circuit." },
+  { id: "interaction", title: "Interaction graph", category: "structure", mode: "live", maxQubits: 20, minQubits: 2, inputs: [],
+    summary: "How many gates act on each pair of qubits: the connectivity a device needs." },
+  { id: "tanner", title: "Tanner graph", category: "structure", mode: "live", maxQubits: 20, inputs: [],
+    summary: "Measurements (checks) against the qubits in each one's backward light cone." },
+  { id: "tableau", title: "Stabilizer tableau", category: "structure", mode: "live", maxQubits: 20, inputs: [],
+    summary: "For Clifford tapes: the n Pauli operators that fix the state (Bell → +XX, +ZZ)." },
+);
+
 export const ANALYSIS_BY_ID: Record<string, AnalysisMeta> = Object.fromEntries(ANALYSES.map((a) => [a.id, a]));
 
 /** Default bipartition: the first half of the register. */

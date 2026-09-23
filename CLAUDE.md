@@ -82,6 +82,28 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
   - Fixture `dynamics`. Bug #16: the autocorrelation DFT must run over the P−1 periodic samples.
   - TAPE step-scrubber: `ViewReq.upTo` makes the core view `Register.stateAt(k)` (a read-only replay with recorded outcomes). `Calculator.scrub` drives it, and ViewData carries `at`. The header shows `@k/N`, and any tape edit ends the scrub. LAB analyses still use the live state.
   - Heatmaps keep the grid's aspect (clamped to 1:2…4:1). `codes` marks categorical cells: a key replaces the numbers and the colour bar.
+- **Circuit tools & structure (Phase 6).**
+  - `src/calc/toolCircuit.ts` bridges the tape and upstream's named-gate vocabulary:
+    - `toolCircuit` expands macros, custom gates and anti-controls into plain named gates (cx, ccx, mcp…) and refuses non-unitary tapes;
+    - `raiseCircuit` maps a tool's output back to tape entries.
+  - `src/calc/equiv.ts` is the in-app check. It compares every unitary column for n ≤ 8, or 3 random states above that, always against one global phase. It takes an optional routing permutation.
+  - LAB "Circuit tools" (`src/analysis/tools.ts`): simplify, transpile, route, compile, inverse, Trotter, state prep, unitary synthesis.
+    - Each result carries a `proposal`, which offers APPLY (an undoable `replace`) only when `verified`.
+    - When the tape has symbols, the check runs at two symbol settings.
+  - Structure analyses: resources, interaction graph, Tanner graph, stabilizer tableau.
+    - `src/calc/resources.ts` counts what the QASM export emits, with Qiskit's definitions: size, depth, T-depth as the filtered depth, Clifford gates by their matrix.
+  - Custom gates (`src/calc/custom.ts`):
+    - DEFINE in CATALOG makes G# from the last k entries (entry k), or from the whole tape.
+    - Definitions use local qubits 0..k−1; symbols stay symbols.
+    - A per-worker registry is set by the core command `gates`, analysis snapshots, and the UI thread; `applyStep` expands them.
+    - Export: `gate G1(p0,…) a0, a1 { … }`, then `ctrl @ G1(theta) …`.
+  - `u_arb` exports as an exact ZYZ gate definition with `gphase`.
+  - Fixtures: `tools` (45 cases × 10 tool outputs), `structure`, `synth` (prep, unitary, Trotter orders 1/2/4), plus custom-gate cases in `gates` and `symbolic`.
+  - Bugs:
+    - #17: router SWAPs.
+    - #18: integer division in exported angles; the export now makes numerators floats.
+    - #19: Suzuki order-4 coefficient.
+  - Validation plumbing: drift ignores tape step ids and compares QASM with long floats rounded to 12 significant digits (libm last-bit differences between macOS and Linux).
 - `src/qasm/fromTape.ts` turns the tape into OpenQASM 3. It uses stdgates names where
   they exist and `ctrl @`/`negctrl @` otherwise, adds exact `gate` definitions for
   non-stdgates (sy, sxdg, iswap, rxx, ryy, rzz), and folds `sqrt(...)` params to numbers.

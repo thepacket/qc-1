@@ -13,6 +13,7 @@ usage: python drift.py <committed_dir> <regenerated_dir>
 import json
 import math
 import pathlib
+import re
 import sys
 
 TOL = 1e-10
@@ -34,6 +35,14 @@ def star_drift(a, b):
     return worst
 
 
+FLOAT = re.compile(r"-?\d+\.\d{12,}(?:e[+-]?\d+)?")
+
+
+def qasm_norm(text):
+    """Long floats to 12 significant digits (last-bit libm differences across platforms)."""
+    return FLOAT.sub(lambda m: repr(float(f"{float(m.group(0)):.12g}")), text)
+
+
 def walk(path, a, b, bad, tol=TOL, tols=None):
     tols = tols or {}
     if isinstance(a, dict) and isinstance(b, dict):
@@ -48,6 +57,10 @@ def walk(path, a, b, bad, tol=TOL, tols=None):
             if k == "stars":
                 if len(a[k]) != len(b[k]) or star_drift(a[k], b[k]) > 5e-3:
                     bad.append(f"{path}.stars: constellation moved")
+                continue
+            if k == "qasm" and isinstance(a[k], str) and isinstance(b[k], str):
+                if qasm_norm(a[k]) != qasm_norm(b[k]):
+                    bad.append(f"{path}.qasm: program differs")
                 continue
             walk(f"{path}.{k}", a[k], b[k], bad, max(TOL, tols.get(k, tol)), tols)
     elif isinstance(a, list) and isinstance(b, list):

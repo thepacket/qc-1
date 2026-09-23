@@ -16,11 +16,14 @@ imports QC-1's QASM export of the input and of the tool's output and checks:
     single Pauli; decided with SparsePauliOp.from_operator), parameterized
     instructions, and the busiest qubit.
 """
+import json
+
 import numpy as np
 from qiskit import qasm3
-from qiskit.quantum_info import Operator, SparsePauliOp
+from qiskit.converters import circuit_to_dag
+from qiskit.quantum_info import Operator, SparsePauliOp, Statevector
 
-from common import fail, load_cases, write_fixture
+from common import OUT, fail, load_cases, write_fixture
 
 EQ_TOL = 1e-8
 NATIVE = {
@@ -116,7 +119,114 @@ def check_resources(where, qc, qc1):
     return ref
 
 
+MEASURE_IDS = {"measure", "measure_x", "measure_y", "reset"}
+
+
+def interaction(qc, n):
+    w = np.zeros((n, n), dtype=int)
+    for inst in qc.data:
+        qs = sorted({qc.find_bit(q).index for q in inst.qubits})
+        if len(qs) < 2 or inst.operation.name in ("measure", "barrier"):
+            continue
+        for i in range(len(qs)):
+            for j in range(i + 1, len(qs)):
+                w[qs[i], qs[j]] += 1
+                w[qs[j], qs[i]] += 1
+    return w.tolist()
+
+
+def backward_cones(qc):
+    """Per measurement, in program order: the measured qubit plus the qubits of every
+    non-measurement operation it causally depends on (DAG ancestors)."""
+    dag = circuit_to_dag(qc)
+    out = []
+    for node in dag.topological_op_nodes():
+        if node.op.name != "measure":
+            continue
+        q = qc.find_bit(node.qargs[0]).index
+        sup = {q}
+        for a in dag.ancestors(node):
+            if hasattr(a, "op") and a.op.name != "measure":
+                sup |= {qc.find_bit(x).index for x in a.qargs}
+        out.append({"qubit": q, "support": sorted(sup)})
+    return out
+
+
+def post_selected_state(qc, n, outcomes):
+    """Statevector of the exported program with each measurement/reset forced to QC-1's recorded outcome."""
+    psi = Statevector.from_label("0" * n)
+    k = 0
+    for inst in qc.data:
+        name = inst.operation.name
+        qi = [qc.find_bit(q).index for q in inst.qubits]
+        if name in ("measure", "reset"):
+            o = outcomes[k]
+            k += 1
+            q = qi[0]
+            data = psi.data.copy()
+            # Qiskit is little-endian: qubit q is bit q of the index.
+            for i in range(len(data)):
+                if ((i >> q) & 1) != o:
+                    data[i] = 0
+            data /= np.linalg.norm(data)
+            psi = Statevector(data)
+            if name == "reset" and o == 1:
+                from qiskit.circuit.library import XGate
+                psi = psi.evolve(XGate(), [q])
+            continue
+        if name == "barrier":
+            continue
+        psi = psi.evolve(inst.operation, qi)
+    return psi.reverse_qargs().data
+
+
+def gf2_rank(rows):
+    rows = [r[:] for r in rows]
+    rank = 0
+    for col in range(len(rows[0]) if rows else 0):
+        piv = next((i for i in range(rank, len(rows)) if rows[i][col]), None)
+        if piv is None:
+            continue
+        rows[rank], rows[piv] = rows[piv], rows[rank]
+        for i in range(len(rows)):
+            if i != rank and rows[i][col]:
+                rows[i] = [a ^ b for a, b in zip(rows[i], rows[rank])]
+        rank += 1
+    return rank
+
+
+def check_structure(c):
+    n, qc1 = c["n"], c["qc1"]
+    qc = qasm3.loads(c["qasm"])
+    res = check_resources(f"structure {c['id']}", qc, qc1["resources"])
+    inter = interaction(qc, n)
+    if inter != qc1["interaction"]:
+        fail(f"structure {c['id']}: interaction {qc1['interaction']} vs Qiskit {inter}")
+    cones = backward_cones(qc)
+    if cones != qc1["tanner"]:
+        fail(f"structure {c['id']}: tanner {qc1['tanner']} vs Qiskit DAG {cones}")
+    outcomes = [s["outcome"] for e in c["tape"] for s in e if s["gateId"] in MEASURE_IDS]
+    psi = post_selected_state(qc, n, outcomes)
+    mine = np.array(qc1["state"][0::2]) + 1j * np.array(qc1["state"][1::2])
+    if np.max(np.abs(psi - mine)) > 1e-9:
+        fail(f"structure {c['id']}: post-selected state differs from QC-1's")
+    gens = qc1["generators"]
+    if gens is None:
+        fail(f"structure {c['id']}: QC-1 says not Clifford")
+    for g in gens:
+        P = SparsePauliOp(g[1:]).to_matrix() * (-1 if g[0] == "-" else 1)
+        ev = np.real(np.vdot(psi, P @ psi))
+        if abs(ev - 1) > 1e-9:
+            fail(f"structure {c['id']}: generator {g} has <P> = {ev}")
+    bits = [[1 if p in "XY" else 0 for p in g[1:]] + [1 if p in "ZY" else 0 for p in g[1:]] for g in gens]
+    if gf2_rank(bits) != n:
+        fail(f"structure {c['id']}: generators not independent")
+    return {"id": c["id"], "n": n, "tape": c["tape"], "resources": res, "interaction": inter, "tanner": cones, "generators": gens}
+
+
 def main():
+    doc = json.load(open(OUT / "tools.cases.json"))
+    structure = [check_structure(c) for c in doc["structure"]]
     cases = load_cases("tools")
     out = []
     worst = 0.0
@@ -153,8 +263,9 @@ def main():
                 "resources": check_resources(f"{c['id']}/{name}", qb, t["resources"]),
             }
         out.append(entry)
-    print(f"  tools: worst operator error {worst:.2e} over {len(out)} cases")
+    print(f"  tools: worst operator error {worst:.2e} over {len(out)} cases; {len(structure)} structure cases")
     write_fixture("tools", "qiskit Operator equivalence (up to global phase, routing permutation), count_ops/depth, SparsePauliOp Clifford test", out, {"equiv": EQ_TOL})
+    write_fixture("structure", "qiskit count_ops/depth, DAG ancestors of each measurement, post-selected Statevector (<g> = +1, GF(2) rank n)", structure, {})
 
 
 if __name__ == "__main__":

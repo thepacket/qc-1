@@ -106,6 +106,14 @@ function AnalysisScreen({ calc, meta }: { calc: Calculator; meta: AnalysisMeta }
             ))}
           </dl>
         )}
+        {res?.proposal && (
+          <div className={`proposal${res.proposal.verified ? "" : " bad"}`}>
+            <span>{res.proposal.verified ? "✓ " : "✗ "}{res.proposal.check}</span>
+            {res.proposal.verified && !stale && (
+              <button className="lab-status apply" onClick={() => calc.applyProposal(res.proposal!)}>{res.proposal.label}</button>
+            )}
+          </div>
+        )}
         {res?.apply && Object.keys(res.apply.scope).length > 0 && (
           <button className="lab-status apply" onClick={() => calc.applyScope(res.apply!.scope)}>{res.apply.label}</button>
         )}
@@ -139,6 +147,7 @@ function Input({ calc, meta, spec }: { calc: Calculator; meta: AnalysisMeta; spe
     );
   }
   if (spec.kind === "pauli") return <PauliField calc={calc} meta={meta} spec={spec} />;
+  if (spec.kind === "state") return <StateField calc={calc} meta={meta} spec={spec} />;
   if (spec.kind === "symbol") {
     const cur = symbolValue(spec, calc.labOpts(meta.id), calc.symbols);
     const options = [...(spec.optional ? [""] : []), ...calc.symbols];
@@ -210,6 +219,47 @@ function PauliField({ calc, meta, spec }: { calc: Calculator; meta: AnalysisMeta
       />
       <div className="cut-picker">
         {pauliPresets(calc.n).map((p) => (
+          <button key={p.label} className={`qb${p.text === committed ? " sel" : ""}`} onClick={() => { setDraft(null); calc.setLabOpts(meta.id, { [spec.key]: p.text }); }}>
+            {p.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Target-state presets for n qubits (amplitude lists are normalised by the tool). */
+function statePresets(n: number): { label: string; text: string }[] {
+  const d = 1 << n;
+  const amps = (f: (i: number) => number) => Array.from({ length: d }, (_, i) => f(i)).join(",");
+  return [
+    { label: "current", text: "current" },
+    { label: `|${"0".repeat(n - 1)}1⟩`, text: `|${"0".repeat(n - 1)}1⟩` },
+    ...(n >= 2 ? [{ label: "GHZ", text: amps((i) => (i === 0 || i === d - 1 ? 1 : 0)) }] : []),
+    ...(n >= 2 ? [{ label: "W", text: amps((i) => ((i & (i - 1)) === 0 && i > 0 ? 1 : 0)) }] : []),
+    { label: "uniform", text: amps(() => 1) },
+  ];
+}
+
+/** Target state: |bits⟩ or amplitudes (1, 0, 0.5i, …) on the phone keyboard, with presets. */
+function StateField({ calc, meta, spec }: { calc: Calculator; meta: AnalysisMeta; spec: Extract<InputSpec, { kind: "state" }> }) {
+  const v = calc.labOpts(meta.id)[spec.key];
+  const committed = typeof v === "string" && v.trim() ? v : "current";
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft !== null && draft.trim() !== committed) calc.setLabOpts(meta.id, { [spec.key]: draft.trim() || "current" });
+    setDraft(null);
+  };
+  return (
+    <div className="pauli-field">
+      <input
+        value={draft ?? committed} aria-label={spec.label} spellCheck={false} autoCapitalize="none"
+        autoCorrect="off" autoComplete="off" inputMode="text" enterKeyHint="done" placeholder="|011⟩ or 1, 0, 0, i"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); e.stopPropagation(); }}
+      />
+      <div className="cut-picker">
+        {statePresets(calc.n).map((p) => (
           <button key={p.label} className={`qb${p.text === committed ? " sel" : ""}`} onClick={() => { setDraft(null); calc.setLabOpts(meta.id, { [spec.key]: p.text }); }}>
             {p.label}
           </button>

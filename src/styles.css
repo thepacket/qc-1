@@ -606,3 +606,7 @@ button {
 .zx-x { fill: #d9534f; stroke: var(--lcd); stroke-width: 1.5; }
 .zx-h { fill: #d9b54a; stroke: var(--lcd); stroke-width: 1.5; }
 .zx-box { fill: var(--grid); stroke: var(--ink-dim); stroke-width: 1; }
+
+/* ── Circuit tools ─────────────────────────────────────────── */
+.proposal { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 4px; border: 1px solid var(--series-1); font-size: 11px; }
+.proposal.bad { border-color: var(--ink-muted); color: var(--ink-muted); }

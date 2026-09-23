@@ -1,4 +1,5 @@
 import { Register } from "../../../src/calc/register";
+import { defineGate, setCustomGates, type CustomGate } from "../../../src/calc/custom";
 import type { Entry, Scope } from "../../../src/calc/steps";
 import { GATES, rng, step } from "../tapes";
 
@@ -12,7 +13,7 @@ export const POINTS: Scope[] = [
   { theta: 1.0, phi: 1.0, lambda: 1.0, t: Math.PI },
 ];
 
-export type SymCase = { id: string; n: number; tape: Entry[] };
+export type SymCase = { id: string; n: number; tape: Entry[]; gates?: CustomGate[] };
 
 /** Random tapes whose rotation angles are symbolic; unitary gates only (exact comparison). */
 export function cases(): SymCase[] {
@@ -30,11 +31,23 @@ export function cases(): SymCase[] {
       tape.push([step(g, qs.slice(0, k), controls, Array.from({ length: p }, () => r.pick(SYM_EXPRS)))]);
     }
     return { id: `sym${i}`, n, tape };
-  });
+  }).concat(customSymCases());
+}
+
+/** Custom gates whose definitions use symbols: exported as gate parameters p0, p1, … */
+function customSymCases(): SymCase[] {
+  const s = (g: string, t: number[], c: number[] = [], p: string[] = []): Entry => [step(g, t, c, p)];
+  const S1 = defineGate("S1", [s("rx", [0], [], ["θ"]), s("x", [1], [0]), s("rz", [1], [], ["t/2"]), s("p", [0], [], ["φ-θ"])]);
+  const S2 = defineGate("S2", [s("custom:S1", [1, 0]), s("ry", [0], [], ["(1/3)*λ"])]);
+  const gates = [S1, S2];
+  return [
+    { id: "custom-sym", n: 3, tape: [s("h", [1]), s("custom:S1", [0, 2]), s("custom:S2", [2, 1], [0])], gates },
+  ];
 }
 
 /** QC-1 states at each point: a fresh register, and one register re-scoped in place. */
 export function compute(c: SymCase) {
+  setCustomGates(c.gates ?? []);
   const moving = new Register(c.n, c.tape, POINTS[0]);
   return POINTS.map((p) => {
     moving.setScope(p);

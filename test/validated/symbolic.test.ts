@@ -9,8 +9,8 @@ const fx = loadFixture<CVec[]>("symbolic");
 
 describe(`symbolic tapes (vs ${fx.meta.reference})`, () => {
   test.each(fx.cases.map((c) => [c.id, c] as const))("%s", (_, c) => {
+    const mine = compute(c); // sets the case's custom gates
     expect(exportQasm3(c.n, c.tape)).toBe(c.qasm);
-    const mine = compute(c);
     POINTS.forEach((_, k) => {
       expect(maxDiff(Float64Array.from(mine[k].fresh), c.expected[k])).toBeLessThan(fx.meta.tol.abs);
       expect(maxDiff(Float64Array.from(mine[k].replayed), c.expected[k])).toBeLessThan(fx.meta.tol.abs);

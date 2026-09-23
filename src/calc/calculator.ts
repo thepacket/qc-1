@@ -1,8 +1,9 @@
 import { MAX_QUBITS } from "./register";
 import { evalParam, exprOk, formatEntry, NONUNITARY, type Entry, type Scope, type Step } from "./steps";
-import { CATALOG } from "./catalog";
+import { CATALOG, type CatalogItem } from "./catalog";
+import { CUSTOM_PREFIX, defineGate, setCustomGates, type CustomGate } from "./custom";
 import { ANALYSIS_BY_ID, CATEGORIES, analysesIn } from "../analysis/catalog";
-import type { AnalysisReply, AnalysisResult, Opts } from "../analysis/types";
+import type { AnalysisReply, AnalysisResult, Opts, Proposal } from "../analysis/types";
 import { splitArgs, TOKENS, toDisplay, VARS, varToken, symbolGlyph, type Token } from "./entry";
 import type { Cmd, Mode, Result, ViewData } from "./core";
 import type { Engine } from "./engine";
@@ -18,7 +19,7 @@ export type KeyId =
   | "." | "," | "div" | "mul" | "minus" | "pi" | "bs" | "p" | "eq";
 
 /** Gate keys: base gate id, qubit arity, and default parameters. */
-type GateKey = { gate: string; arity: 1 | 2 | 3 | 4; params: string[] };
+type GateKey = { gate: string; arity: number; params: string[] };
 const GATE_KEYS: Record<string, GateKey> = {
   h: { gate: "h", arity: 1, params: [] },
   sy: { gate: "sy", arity: 1, params: [] },
@@ -68,6 +69,8 @@ export type LabState = { level: LabLevel; cat: number; index: number; id: string
 export type Saved = {
   v: 1; n: number; sel: number; mode: Mode; shots: number; tape: Entry[];
   lab?: LabState; scope?: Scope; memory?: Record<number, Memory>;
+  /** Custom gates (DEFINE). */
+  gates?: CustomGate[];
 };
 
 /** t playback on the PARAM screen: pull-based (next frame after the last view). */
@@ -132,6 +135,8 @@ export class Calculator {
   message: Message | null = null;
   /** CATALOG list open on the LCD, and its highlighted row. */
   catalog = { open: false, index: 0 };
+  /** Custom gates defined with DEFINE (G1, G2, …). */
+  customGates: CustomGate[] = [];
   /** LAB browser position and per-analysis options. */
   lab: LabState = { level: "cats", cat: 0, index: 0, id: null, opts: {} };
   analysis: AnalysisView | null = null;
@@ -164,8 +169,14 @@ export class Calculator {
       if (saved.lab && typeof saved.lab === "object") this.lab = { ...this.lab, ...saved.lab, opts: saved.lab.opts ?? {} };
       if (saved.scope) this.scope = { ...saved.scope };
       if (saved.memory) this.memory = saved.memory;
+      if (Array.isArray(saved.gates)) this.customGates = saved.gates;
     }
     this.send({ t: "view", req: this.viewReq() });
+    // Definitions go first: the saved tape may use them.
+    if (this.customGates.length) {
+      setCustomGates(this.customGates);
+      this.send({ t: "gates", defs: this.customGates });
+    }
     if (ok) this.send({ t: "load", n: saved.n, tape: saved.tape, scope: saved.scope });
   }
 
@@ -186,7 +197,7 @@ export class Calculator {
   save(): Saved {
     return {
       v: 1, n: this.n, sel: this.sel, mode: this.mode, shots: this.shots, tape: this.tape,
-      lab: this.lab, scope: this.scope, memory: this.memory,
+      lab: this.lab, scope: this.scope, memory: this.memory, gates: this.customGates,
     };
   }
 
@@ -473,6 +484,15 @@ export class Calculator {
   }
 
   /** Set several symbols at once (e.g. the optimizer's result). */
+  /** Replace the tape by a circuit tool's verified output (one undoable step). */
+  applyProposal(p: Proposal) {
+    if (!p.verified) return;
+    const label = this.lab.id ? ANALYSIS_BY_ID[this.lab.id]?.title ?? "tool" : "tool";
+    // Symbols the new tape uses keep their values; new ones start at 0 in the register.
+    this.send({ t: "replace", n: p.n, tape: p.tape, scope: { ...this.scope }, label }, () => this.info(`${label}: ${p.tape.length} steps`));
+    this.changed();
+  }
+
   applyScope(values: Scope) {
     for (const [k, v] of Object.entries(values)) this.setSymbol(k, v);
     this.info(`set ${Object.entries(values).map(([k, v]) => `${symbolGlyph(k)}=${v.toFixed(3)}`).join(" ")}`);
@@ -580,7 +600,7 @@ export class Calculator {
 
   /** Keys that behave differently while the CATALOG is open. Returns true if handled. */
   private catalogKey(id: string): boolean {
-    const len = CATALOG.length;
+    const len = this.catalogItems.length;
     switch (id) {
       case "left": case "n-": this.catalog.index = (this.catalog.index + len - 1) % len; return true;
       case "right": case "n+": this.catalog.index = (this.catalog.index + 1) % len; return true;
@@ -611,10 +631,46 @@ export class Calculator {
     this.changed();
   }
 
+  /** CATALOG rows: the built-in gates, then the custom gates and DEFINE. */
+  get catalogItems(): CatalogItem[] {
+    return [
+      ...CATALOG,
+      ...this.customGates.map((d): CatalogItem => ({
+        gate: CUSTOM_PREFIX + d.name, label: d.name, group: "CUSTOM", arity: d.k, params: [], argNames: [],
+        note: `${d.tape.length} step${d.tape.length > 1 ? "s" : ""} on ${d.k} qubit${d.k > 1 ? "s" : ""}`,
+      })),
+      {
+        gate: "define", label: "DEFINE", group: "CUSTOM", arity: 1, params: [], argNames: [],
+        note: "the last k steps (entry k, else the whole tape) as a new gate",
+      },
+    ];
+  }
+
   private applyCatalog(index: number) {
-    const item = CATALOG[index];
-    this.gate({ gate: item.gate, arity: item.arity, params: item.params });
+    const item = this.catalogItems[index];
+    if (item.gate === "define") this.define();
+    else this.gate({ gate: item.gate, arity: item.arity, params: item.params });
     this.catalog.open = false;
+  }
+
+  /** DEFINE: the last k tape entries (entry k, else all) become gate G#. */
+  private define() {
+    let k = this.tape.length;
+    if (this.entry.length > 0) {
+      const v = this.takeInt();
+      if (v === null) return;
+      k = v;
+    }
+    if (k < 1 || k > this.tape.length) throw new Error(this.tape.length ? `k = 1–${this.tape.length}` : "the tape is empty");
+    const entries = this.tape.slice(-k);
+    if (entries.some((e) => e.some((s) => NONUNITARY.has(s.gateId)))) throw new Error("a gate can't measure, reset or prepare");
+    let i = 1;
+    while (this.customGates.some((d) => d.name === `G${i}`)) i++;
+    const def = defineGate(`G${i}`, entries);
+    this.customGates = [...this.customGates, def];
+    setCustomGates(this.customGates);
+    this.send({ t: "gates", defs: this.customGates });
+    this.info(`G${i} = ${k} step${k > 1 ? "s" : ""} on ${def.k} qubit${def.k > 1 ? "s" : ""} (CATALOG)`);
   }
 
   private dispatch(id: string) {

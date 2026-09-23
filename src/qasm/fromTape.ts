@@ -1,5 +1,6 @@
 import type { Circuit, PlacedGate } from "../sim/types";
-import { evalParam, initAngles, MACROS, MEASURE_IDS, symbolsOf, type Entry } from "../calc/steps";
+import { evalParam, initAngles, MACROS, MEASURE_IDS, stepSymbols, symbolsOf, type Entry } from "../calc/steps";
+import { customOf, type CustomGate } from "../calc/custom";
 import { emitQasm3 } from "./emit";
 import { NAMED } from "../calc/lower";
 
@@ -187,8 +188,10 @@ function uarbDefinitions(tape: Entry[]): Map<string, { name: string; def: string
   return out;
 }
 
-export function tapeToCircuit(n: number, tape: Entry[]): Circuit {
-  const uarb = uarbDefinitions(tape);
+/** Symbols of a custom gate, in parameter order (p0, p1, … bind alphabetically in Qiskit). */
+const customParams = (def: CustomGate) => [...new Set(def.tape.flat().flatMap(stepSymbols))].sort();
+
+export function tapeToCircuit(n: number, tape: Entry[], uarb = uarbDefinitions(tape)): Circuit {
   const gates: PlacedGate[] = [];
   let clbit = 0;
   tape.forEach((entry, column) => {
@@ -199,6 +202,15 @@ export function tapeToCircuit(n: number, tape: Entry[]): Circuit {
         const base = { column, controls: [], targets: s.targets, clbits: [] };
         gates.push({ ...base, id: `${s.id}a`, gateId: "reset", params: [] });
         gates.push({ ...base, id: `${s.id}b`, gateId: "u", params: [String(theta), String(phi), "0"] });
+        continue;
+      }
+      const custom = customOf(s.gateId);
+      if (custom) {
+        gates.push({
+          id: s.id, gateId: `def:${custom.name}`, column, controls: s.controls, targets: s.targets, clbits: [],
+          params: customParams(custom).map(qasmSymbol),
+          ...(s.controlStates ? { controlStates: s.controlStates } : {}),
+        });
         continue;
       }
       const arb = s.gateId === "u_arb" ? uarb.get(s.params.join(",")) : undefined;
@@ -226,12 +238,45 @@ export function tapeToCircuit(n: number, tape: Entry[]): Circuit {
   return { numQubits: n, numClbits: clbit, gates };
 }
 
+/** Custom gates a tape uses, dependencies first. */
+function customsUsed(tape: Entry[], out: CustomGate[] = []): CustomGate[] {
+  for (const s of tape.flat()) {
+    const def = customOf(s.gateId);
+    if (!def || out.includes(def)) continue;
+    customsUsed(def.tape, out);
+    out.push(def);
+  }
+  return out;
+}
+
+/** The statements of a tape as a gate body: q[j] → a{j}, symbols → p{i}. */
+function gateBody(def: CustomGate, uarb: ReturnType<typeof uarbDefinitions>): string {
+  const lines = emitQasm3(tapeToCircuit(def.k, def.tape, uarb)).split("\n");
+  const start = lines.findIndex((l) => /^qubit\[\d+\] q;$/.test(l)) + 1;
+  const params = customParams(def).map(qasmSymbol);
+  return lines.slice(start).filter((l) => l.trim() && !l.startsWith("//") && !l.startsWith("input float"))
+    .map((l) => params.reduce((acc, v, i) => acc.replace(new RegExp(`\\b${v}\\b`, "g"), `p${i}`), l.replace(/q\[(\d+)\]/g, "a$1")))
+    .join(" ");
+}
+
 export function exportQasm3(n: number, tape: Entry[]): string {
-  const circuit = tapeToCircuit(n, tape);
-  const defs = [...definitionsFor(new Set(circuit.gates.map((g) => g.gateId))), ...[...uarbDefinitions(tape).values()].map((d) => d.def)];
+  const customs = customsUsed(tape);
+  const all = [...tape, ...customs.flatMap((d) => d.tape)];
+  const uarb = uarbDefinitions(all);
+  const circuit = tapeToCircuit(n, tape, uarb);
+  const inner = customs.flatMap((d) => tapeToCircuit(d.k, d.tape, uarb).gates.map((g) => g.gateId));
+  const defs = [
+    ...definitionsFor(new Set([...circuit.gates.map((g) => g.gateId), ...inner])),
+    ...[...uarb.values()].map((d) => d.def),
+    ...customs.map((d) => {
+      const ps = customParams(d);
+      const qs = Array.from({ length: d.k }, (_, j) => `a${j}`).join(", ");
+      return `gate ${d.name}${ps.length ? `(${ps.map((_, i) => `p${i}`).join(", ")})` : ""} ${qs} { ${gateBody(d, uarb)} }`;
+    }),
+  ];
   // The emitter declares only a fixed list of Greek names; declare every
   // symbol the tape uses instead (t included, as t_).
-  const syms = [...new Set(tape.flatMap((e) => e.flatMap((s) => s.params.flatMap(symbolsOf))))].sort().map(qasmSymbol);
+  const syms = [...new Set(tape.flatMap((e) => e.flatMap(stepSymbols)))].sort().map(qasmSymbol);
   const lines = emitQasm3(circuit).split("\n").filter((l) => !l.startsWith("input float "));
   const at = lines.findIndex((l) => l.startsWith("include")) + 1;
   const decls = syms.map((v) => `input float ${v};`);

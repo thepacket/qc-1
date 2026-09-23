@@ -2,8 +2,9 @@
 import { runAnalysis } from "./run";
 import type { AnalysisReply, AnalysisRequest } from "./types";
 import type { Entry } from "../calc/steps";
+import { setCustomGates, type CustomGate } from "../calc/custom";
 
-type Job = { req: AnalysisRequest; snap: { rev: number; n: number; tape: Entry[]; scope: Record<string, number>; state: Float64Array } };
+type Job = { req: AnalysisRequest; snap: { rev: number; n: number; tape: Entry[]; scope: Record<string, number>; state: Float64Array; gates: CustomGate[] } };
 
 /**
  * The analysis worker: receives register snapshots from the core worker over
@@ -13,6 +14,7 @@ type Job = { req: AnalysisRequest; snap: { rev: number; n: number; tape: Entry[]
 self.onmessage = (e: MessageEvent<{ port: MessagePort }>) => {
   e.data.port.onmessage = async (m: MessageEvent<Job>) => {
     const { req, snap } = m.data;
+    setCustomGates(snap.gates);
     const t0 = performance.now();
     const result = await runAnalysis(req.id, { n: snap.n, state: snap.state, tape: snap.tape, scope: snap.scope }, req.opts);
     const reply: AnalysisReply = { seq: req.seq, rev: snap.rev, id: req.id, result, ms: performance.now() - t0 };

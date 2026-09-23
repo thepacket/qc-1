@@ -209,3 +209,71 @@ describe("Phase 5b dynamics in LAB", () => {
     expect(scalar(c, "backward cone of q0")).toBe("2 of 3 gates");
   });
 });
+
+describe("Phase 6 circuit tools in LAB", () => {
+  const run = (c: Calculator, id: string, opts: Record<string, unknown> = {}) => {
+    c.setMode("lab");
+    c.setLabOpts(id, opts);
+    c.openAnalysis(id);
+    c.requestAnalysis();
+    return c.analysis!.result!;
+  };
+
+  test("Simplify proposes a verified shorter tape; APPLY replaces it, UNDO restores", () => {
+    const c = calc();
+    keys(c, "h", "h", "s", "s", "ctrl", "right", "x");
+    const r = run(c, "simplify");
+    expect(r.proposal?.verified).toBe(true);
+    expect(r.proposal!.tape.length).toBeLessThan(5);
+    c.applyProposal(r.proposal!);
+    expect(c.tape.length).toBe(r.proposal!.tape.length);
+    keys(c, "undo");
+    expect(c.tape.length).toBe(5);
+  });
+
+  test("appending U† returns the register to |0…0⟩", () => {
+    const c = calc();
+    keys(c, "h", "ctrl", "right", "x", "t", "rx");
+    const r = run(c, "inverse", { mode: 0 });
+    c.applyProposal(r.proposal!);
+    c.setMode("ket");
+    const v = c.view!;
+    if (v.mode !== "ket") throw new Error();
+    expect(v.nonzero).toBe(1);
+    expect(v.rows[0].i).toBe(0);
+  });
+
+  test("state preparation of GHZ, and routing a far CX on a line", () => {
+    const c = calc();
+    keys(c, "3", "2nd", "q");
+    const r = run(c, "stateprep", { target: "1,0,0,0,0,0,0,1" });
+    expect(r.proposal?.verified).toBe(true);
+    expect(r.scalars!.find((s) => s.label === "|⟨target|ψ⟩|")!.value as number).toBeCloseTo(1, 12);
+    const d = calc();
+    keys(d, "3", "2nd", "q", "h", "ctrl", "right", "right", "x");
+    const rt = run(d, "route", { coupling: 0 });
+    expect(rt.proposal?.verified).toBe(true);
+    expect(rt.scalars!.find((s) => s.label === "SWAPs inserted")!.value).toBe(1);
+  });
+
+  test("Trotter circuit in t; its error shrinks with the order (at t = 1)", () => {
+    const c = calc();
+    keys(c, "2", "2nd", "q");
+    const err = (order: number) => {
+      const r = run(c, "trotter", { ham: "ZZ + 0.5*XI + 0.5*IX", steps: 4, order });
+      expect(r.proposal!.tape.flat().some((s) => s.params.some((p) => /\bt\b/.test(p)))).toBe(true);
+      return r.scalars!.find((s) => s.label.startsWith("error"))!.value as number;
+    };
+    const [e1, e2, e4] = [err(0), err(1), err(2)];
+    expect(e1).toBeGreaterThan(e2);
+    expect(e2).toBeGreaterThan(e4);
+    expect(e4).toBeGreaterThan(0);
+  });
+
+  test("stabilizer tableau of a Bell pair: +XX, +ZZ", () => {
+    const c = bell();
+    const r = run(c, "tableau");
+    const rows = (r.charts![0] as Extract<Chart, { kind: "table" }>).rows.map((row) => `${row[1]}${row[2]}`).sort();
+    expect(rows).toEqual(["+XX", "+ZZ"]);
+  });
+});

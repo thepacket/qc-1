@@ -2,6 +2,7 @@ import { Register } from "./register";
 import { bloch, sampleState, topK, type Vec3 } from "./analysis";
 import type { Entry, Scope } from "./steps";
 import type { Op } from "./register";
+import { customGates, setCustomGates, type CustomGate } from "./custom";
 
 /**
  * The simulator side of the calculator: owns the Register (statevector,
@@ -35,7 +36,9 @@ export type Cmd =
   | { t: "scope"; values: Scope }
   /** Swap in whole new contents as one undoable operation. */
   | { t: "replace"; n: number; tape: Entry[]; scope: Scope; label: string }
-  | { t: "view"; req: ViewReq };
+  | { t: "view"; req: ViewReq }
+  /** Custom gate definitions (set before a load/replace that uses them). */
+  | { t: "gates"; defs: CustomGate[] };
 
 export type Result = {
   /** Bumped on every change to the register; analyses use it to go stale. */
@@ -115,11 +118,12 @@ export class Core {
           }
           break;
         case "view": break;
+        case "gates": setCustomGates(cmd.defs); break;
       }
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }
-    if (cmd.t !== "view" && !error) this.rev++;
+    if (cmd.t !== "view" && cmd.t !== "gates" && !error) this.rev++;
     return this.result({ done, op, error });
   }
 
@@ -141,9 +145,9 @@ export class Core {
   }
 
   /** A private copy of the register for the analysis worker. */
-  snapshot(): { rev: number; n: number; tape: Entry[]; scope: Scope; state: Float64Array } {
+  snapshot(): { rev: number; n: number; tape: Entry[]; scope: Scope; state: Float64Array; gates: CustomGate[] } {
     this.flush();
-    return { rev: this.rev, n: this.reg.n, tape: this.reg.tape, scope: { ...this.reg.scope }, state: this.reg.state.slice() };
+    return { rev: this.rev, n: this.reg.n, tape: this.reg.tape, scope: { ...this.reg.scope }, state: this.reg.state.slice(), gates: customGates() };
   }
 
   /** Reject steps that address qubits outside the register (a resize may have raced ahead). */

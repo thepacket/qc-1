@@ -44,3 +44,12 @@ export function deepClose(a: unknown, b: unknown, tol: number, tols: Record<stri
   }
   return a === b ? [] : [`${path}: ${String(a)} vs ${String(b)}`];
 }
+
+/**
+ * QASM text with long floats rounded to 12 significant digits: angles QC-1
+ * computes (u_arb's ZYZ, folded functions) can differ in the last bit between
+ * platforms (libm, fused multiply-add), which isn't a change of program.
+ */
+export function sameQasm(text: string): string {
+  return text.replace(/-?\d+\.\d{12,}(?:e[+-]?\d+)?/g, (m) => String(Number(Number(m).toPrecision(12))));
+}

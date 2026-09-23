@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Calculator } from "../calc/calculator";
 import { KET_ROWS, type ViewData } from "../calc/core";
 import { formatEntry } from "../calc/steps";
-import { CATALOG } from "../calc/catalog";
 import { exportQasm3 } from "../qasm/fromTape";
 import type { Vec3 } from "../calc/analysis";
 import { complex, ket, num, pct } from "./format";
@@ -151,7 +150,8 @@ export function CatalogView({ calc }: { calc: Calculator }) {
   useEffect(() => {
     lit.current?.scrollIntoView({ block: "nearest" });
   }, [index]);
-  const cur = CATALOG[index];
+  const items = calc.catalogItems;
+  const cur = items[index];
   const partners = cur.arity - 1;
   return (
     <div className="view">
@@ -160,9 +160,9 @@ export function CatalogView({ calc }: { calc: Calculator }) {
         {partners > 0 && ` · CTRL-mark ${partners === 1 ? "a partner" : `${partners} qubits`}`}
       </div>
       <div className="rows">
-        {CATALOG.map((it, i) => (
+        {items.map((it, i) => (
           <div key={it.gate}>
-            {(i === 0 || CATALOG[i - 1].group !== it.group) && <div className="cat-group">{it.group}</div>}
+            {(i === 0 || items[i - 1].group !== it.group) && <div className="cat-group">{it.group}</div>}
             <button
               ref={i === index ? lit : undefined}
               className={`cat-row${i === index ? " on" : ""}`}

@@ -1,6 +1,7 @@
 import type { Circuit, PlacedGate } from "../sim/types";
 import { newGateId } from "./ids";
 import { MACROS, NONUNITARY, type Entry, type Step } from "./steps";
+import { customOf, expandCustom } from "./custom";
 
 /**
  * Bridge between the tape and the upstream circuit tools (optimiser,
@@ -36,6 +37,8 @@ export class ToolInputError extends Error {}
 
 /** Expand macros and anti-controls into plain steps (base gate + positive controls). */
 function plainSteps(s: Step): Step[] {
+  const def = customOf(s.gateId);
+  if (def) return expandCustom(s, def).flatMap(plainSteps);
   const macro = MACROS[s.gateId];
   if (macro) {
     return macro.flatMap(([g, cs, ts]) => plainSteps({

@@ -6,7 +6,8 @@ import { test } from "vitest";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { Register } from "../src/calc/register";
 import { exportQasm3 } from "../src/qasm/fromTape";
-import { gateCases, randomCases, type Case } from "./cases/groups/statevector";
+import { customCases, gateCases, randomCases, type Case } from "./cases/groups/statevector";
+import { setCustomGates } from "../src/calc/custom";
 import * as ent from "./cases/groups/entanglement";
 import * as st2 from "./cases/groups/state2";
 import * as sym from "./cases/groups/symbolic";
@@ -20,6 +21,7 @@ const OUT = new URL("./out/", import.meta.url);
 
 function bundle(group: string, cases: Case[]) {
   const rows = cases.map((c) => {
+    setCustomGates(c.gates ?? []);
     const reg = new Register(c.n, c.tape);
     return { ...c, qasm: exportQasm3(c.n, c.tape), state: Array.from(reg.state) };
   });
@@ -28,7 +30,7 @@ function bundle(group: string, cases: Case[]) {
 
 test("dump validation cases", async () => {
   mkdirSync(OUT, { recursive: true });
-  bundle("gates", gateCases());
+  bundle("gates", [...gateCases(), ...customCases()]);
   bundle("random-tapes", randomCases());
   writeFileSync(
     new URL("entanglement.cases.json", OUT),
@@ -51,7 +53,10 @@ test("dump validation cases", async () => {
     JSON.stringify({
       group: "symbolic",
       points: sym.POINTS,
-      cases: sym.cases().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: sym.compute(c) })),
+      cases: sym.cases().map((c) => {
+        setCustomGates(c.gates ?? []);
+        return { ...c, qasm: exportQasm3(c.n, c.tape), qc1: sym.compute(c) };
+      }),
     }),
   );
   writeFileSync(
@@ -83,7 +88,11 @@ test("dump validation cases", async () => {
   );
   writeFileSync(
     new URL("tools.cases.json", OUT),
-    JSON.stringify({ group: "tools", cases: tls.cases().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: tls.compute(c) })) }),
+    JSON.stringify({
+      group: "tools",
+      cases: tls.cases().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: tls.compute(c) })),
+      structure: tls.structureCases().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: tls.computeStructure(c) })),
+    }),
   );
   writeFileSync(
     new URL("synth.cases.json", OUT),

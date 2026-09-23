@@ -1,4 +1,5 @@
 import type { PlacedGate } from "../sim/types";
+import { CUSTOM_PREFIX, customOf, expandCustom } from "./custom";
 import { applyKQubit } from "../sim/apply";
 import { buildMatrix, controlled, M_H, M_S, M_Sdg, M_U, M_X, type Matrix } from "../sim/matrices";
 import { measureX, measureY, measureZ } from "../sim/measure";
@@ -101,6 +102,12 @@ export function symbolsOf(src: string): string[] {
   return compiled(src).freeVars;
 }
 
+/** Symbols a step uses, including those inside a custom gate's definition. */
+export function stepSymbols(s: Step): string[] {
+  const def = customOf(s.gateId);
+  return def ? def.tape.flat().flatMap(stepSymbols) : s.params.flatMap(symbolsOf);
+}
+
 /** True when the expression parses (symbols allowed). */
 export function exprOk(src: string): boolean {
   return !Number.isNaN(compiled(src).eval({}));
@@ -120,6 +127,13 @@ export function applyStep(state: Float64Array, n: number, s: Step, rng: () => nu
     for (const U of prep) applyKQubit(state, n, s.targets, U);
     return done.outcome === s.outcome ? s : { ...s, outcome: done.outcome };
   }
+
+  const custom = customOf(s.gateId);
+  if (custom) {
+    for (const d of expandCustom(s, custom)) applyStep(state, n, d, rng, scope);
+    return s;
+  }
+  if (s.gateId.startsWith(CUSTOM_PREFIX)) throw new Error(`gate ${s.gateId.slice(CUSTOM_PREFIX.length)} isn't defined`);
 
   const macro = MACROS[s.gateId];
   if (macro) {
@@ -251,7 +265,7 @@ export function prettyExpr(e: string): string {
 
 /** Short tape label: "H q0", "CX q0→q2", "RZ(π÷4) q1", "M q1=0". */
 export function formatStep(s: Step): string {
-  const base = LABEL[s.gateId] ?? s.gateId.toUpperCase();
+  const base = LABEL[s.gateId] ?? (s.gateId.startsWith(CUSTOM_PREFIX) ? s.gateId.slice(CUSTOM_PREFIX.length) : s.gateId.toUpperCase());
   const cs = s.controls.map((_, i) => (s.controlStates?.[i] === false ? "○" : "C")).join("");
   const args = s.gateId === "initialize"
     ? `(${s.params[0].replace(/[()\s]/g, "").split(",").map((x) => String(+(+x).toFixed(3))).join(",")})`.replace(/-/g, "−")

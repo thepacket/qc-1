@@ -10,7 +10,7 @@ export type CatalogItem = {
   gate: string;
   label: string;
   group: string;
-  arity: 1 | 2 | 3 | 4;
+  arity: number;
   params: string[];
   argNames: string[];
   note: string;

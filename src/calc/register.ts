@@ -1,4 +1,4 @@
-import { applyStep, symbolsOf, type Entry, type Scope } from "./steps";
+import { applyStep, stepSymbols, type Entry, type Scope } from "./steps";
 
 export const MAX_QUBITS = 20;
 
@@ -22,7 +22,7 @@ export type Op = { k: "entry"; entry: Entry } | { k: "replace"; before: Contents
 
 /** Symbols (ASCII names) an entry's parameters use. */
 export function entrySymbols(e: Entry): string[] {
-  return e.flatMap((s) => s.params.flatMap(symbolsOf));
+  return e.flatMap(stepSymbols);
 }
 
 /**

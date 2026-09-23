@@ -85,8 +85,9 @@ import { temporalAutocorrelation } from "../sim/autocorrelation";
 import { spaceTimeZ, spaceTimeEntropy } from "../sim/spacetime";
 import { entanglementAsymmetrySweep } from "../sim/entanglementAsymmetry";
 import { computeLightCone } from "../sim/lightcone";
-import { symbolsOf } from "../calc/steps";
+import { stepSymbols } from "../calc/steps";
 import { symbolGlyph } from "../calc/entry";
+import { TOOL_RUNS } from "./tools";
 
 const ROWS = 64;
 const ket = (i: number, n: number) => `|${i.toString(2).padStart(n, "0")}⟩`;
@@ -119,7 +120,7 @@ function observable(opts: Opts, n: number, key = "obs") {
 }
 /** Symbols (ASCII names) the tape uses — the same rule the register applies. */
 const symbolsOfTape = (ctx: AnalysisContext) =>
-  [...new Set(ctx.tape.flatMap((e) => e.flatMap((s) => s.params.flatMap(symbolsOf))))].sort();
+  [...new Set(ctx.tape.flatMap((e) => e.flatMap(stepSymbols)))].sort();
 
 /** Value of a qubit / int / choice input of analysis `id`. */
 function num(id: string, key: string, opts: Opts, n: number): number {
@@ -1100,6 +1101,8 @@ Object.assign(RUNS, {
     };
   },
 } satisfies Record<string, Run>);
+
+Object.assign(RUNS, TOOL_RUNS);
 
 export function runAnalysis(id: string, ctx: AnalysisContext, opts: Opts): AnalysisResult | Promise<AnalysisResult> {
   const meta = ANALYSIS_BY_ID[id];

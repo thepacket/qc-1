@@ -34,7 +34,7 @@ def main():
                 if err > TOL:
                     bad.append(f"{c['id']} point {k} ({how}): |Δ| = {err:.2e}")
             expected.append(cvec(ref))
-        fixtures.append({"id": c["id"], "n": c["n"], "tape": c["tape"], "qasm": c["qasm"], "expected": expected})
+        fixtures.append({"id": c["id"], "n": c["n"], "tape": c["tape"], **({"gates": c["gates"]} if c.get("gates") else {}), "qasm": c["qasm"], "expected": expected})
     if bad:
         fail(f"symbolic: {len(bad)} mismatches:\n  " + "\n  ".join(bad[:30]))
     write_fixture("symbolic", "qiskit.qasm3.loads (input float → Parameter) → assign_parameters → Statevector",

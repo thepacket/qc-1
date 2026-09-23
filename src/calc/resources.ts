@@ -1,10 +1,10 @@
-import { buildMatrix, controlled } from "../sim/matrices";
-import { MACROS, MEASURE_IDS, NONUNITARY, evalParam, symbolsOf, type Entry, type Scope, type Step } from "./steps";
+import { MEASURE_IDS, NONUNITARY, applyStep, initAngles, stepSymbols, type Entry, type Scope, type Step } from "./steps";
 
 /**
  * Circuit resources of a tape, with Qiskit's definitions (validated against
  * `QuantumCircuit.size / depth / count_ops` on the QASM export, fixture
- * `tools`). Each step is one instruction, as it exports.
+ * `tools`): the instructions the QASM export writes (a step, or its
+ * expansion: measure_x → h, measure, h; state preps → reset + gates).
  *
  * Differs from upstream `estimateResources`, which counted controlled T as
  * T, took the T-depth as the number of ASAP columns holding a T (instead of
@@ -78,32 +78,30 @@ function isPauliMultiple(M: C[][], k: number): boolean {
   return false;
 }
 
-/** The step's unitary on its own qubits (controls first, anti-controls honoured), or null. */
+/** The step's unitary on its own qubits (controls first, then targets), by simulation; null if it can't be evaluated. */
 function localUnitary(s: Step, scope: Scope): C[][] | null {
-  if (MACROS[s.gateId]) return null;
-  const params = s.params.map((p) => evalParam(p, scope));
-  if (params.some(Number.isNaN)) return null;
-  const U0 = buildMatrix(s.gateId, params);
-  if (!U0) return null;
-  let U = (s.controls.length ? controlled(U0, s.controls.length) : U0).map((row) => row.map((e) => [e[0], e[1]] as C));
-  const anti = s.controlStates?.map((on, i) => (on ? -1 : i)).filter((i) => i >= 0) ?? [];
-  if (anti.length) {
-    const k = s.controls.length + s.targets.length;
-    const Xs = pauli(Array.from({ length: k }, (_, i) => (anti.includes(i) ? "X" : "I")).join(""));
-    U = matMul(matMul(Xs, U), Xs);
+  const qs = [...s.controls, ...s.targets];
+  const k = qs.length, d = 1 << k;
+  const local = new Map(qs.map((q, j) => [q, j]));
+  const step: Step = { ...s, controls: s.controls.map((q) => local.get(q)!), targets: s.targets.map((q) => local.get(q)!) };
+  const U: C[][] = Array.from({ length: d }, () => new Array<C>(d));
+  try {
+    for (let j = 0; j < d; j++) {
+      const psi = new Float64Array(2 * d);
+      psi[2 * j] = 1;
+      applyStep(psi, k, step, Math.random, scope);
+      for (let i = 0; i < d; i++) U[i][j] = [psi[2 * i], psi[2 * i + 1]];
+    }
+  } catch {
+    return null;
   }
   return U;
 }
 
 function isClifford(s: Step, scope: Scope): boolean {
   const k = s.controls.length + s.targets.length;
-  if (k > 3) return false;
-  let U: C[][] | null;
-  if (MACROS[s.gateId]) {
-    // Relative-phase Toffolis are not Clifford (they contain T gates).
-    return false;
-  }
-  U = localUnitary(s, scope);
+  if (k > 4) return false;
+  const U = localUnitary(s, scope);
   if (!U) return false;
   const Ud = dagger(U);
   for (let q = 0; q < k; q++) {
@@ -113,6 +111,26 @@ function isClifford(s: Step, scope: Scope): boolean {
     }
   }
   return true;
+}
+
+/** The instructions a step exports as (measure_x → h, measure, h; preps → reset + gates). */
+function exported(s: Step): Step[] {
+  const one = (gateId: string, params: string[] = []): Step => ({ ...s, gateId, params, controls: [], controlStates: undefined });
+  switch (s.gateId) {
+    case "measure_x": return [one("h"), one("measure"), one("h")];
+    case "measure_y": return [one("sdg"), one("h"), one("measure"), one("h"), one("s")];
+    case "init0": return [one("reset")];
+    case "init1": return [one("reset"), one("x")];
+    case "initplus": return [one("reset"), one("h")];
+    case "initminus": return [one("reset"), one("x"), one("h")];
+    case "initiplus": return [one("reset"), one("h"), one("s")];
+    case "initiminus": return [one("reset"), one("h"), one("sdg")];
+    case "initialize": {
+      const { theta, phi } = initAngles(s.params[0]);
+      return [one("reset"), one("u", [String(theta), String(phi), "0"])];
+    }
+  }
+  return [s];
 }
 
 export function circuitResources(n: number, tape: Entry[], scope: Scope = {}): CircuitResources {
@@ -125,7 +143,7 @@ export function circuitResources(n: number, tape: Entry[], scope: Scope = {}): C
   const perQubit = new Array<number>(n).fill(0);
   const symbols = new Set<string>();
   const cache = new Map<string, boolean>();
-  for (const s of tape.flat()) {
+  for (const s of tape.flat().flatMap(exported)) {
     const qs = [...s.controls, ...s.targets];
     r.gates++;
     if (MEASURE_IDS.has(s.gateId) && s.gateId !== "reset") r.measurements++;
@@ -140,9 +158,9 @@ export function circuitResources(n: number, tape: Entry[], scope: Scope = {}): C
     if (isT) r.tCount++;
     if (s.gateId === "x" && s.controls.length === 1 && (s.controlStates?.[0] ?? true)) r.cxCount++;
     if (s.params.length > 0) r.parameterized++;
-    for (const p of s.params) for (const v of symbolsOf(p)) symbols.add(v);
+    for (const v of stepSymbols(s)) symbols.add(v);
     if (!NONUNITARY.has(s.gateId)) {
-      const key = `${s.gateId}|${s.controls.length}|${s.controlStates ?? ""}|${s.params}|${s.params.some((p) => symbolsOf(p).length) ? JSON.stringify(scope) : ""}`;
+      const key = `${s.gateId}|${s.controls.length}|${s.controlStates ?? ""}|${s.params}|${stepSymbols(s).length ? JSON.stringify(scope) : ""}`;
       let c = cache.get(key);
       if (c === undefined) cache.set(key, (c = isClifford(s, scope)));
       if (c) r.cliffordCount++;

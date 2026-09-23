@@ -9,6 +9,11 @@ import { inverseGates } from "../../../src/sim/inverse";
 import { exportQasm3 } from "../../../src/qasm/fromTape";
 import type { Entry } from "../../../src/calc/steps";
 import { randomTape, rng, step } from "../tapes";
+import { Register } from "../../../src/calc/register";
+import { namedCircuit, lowerTape } from "../../../src/calc/lower";
+import { interactionGraph } from "../../../src/sim/interaction";
+import { tannerGraph } from "../../../src/sim/tanner";
+import { cliffordGenerators } from "../../../src/analysis/tools";
 
 /** Coupling maps (adjacency lists) the routing tools are checked on. */
 export const COUPLINGS: Record<string, (n: number) => number[][]> = {
@@ -86,4 +91,46 @@ export function compute(c: ToolCase) {
     };
   }
   return { tools: res, resources: circuitResources(c.n, c.tape) };
+}
+
+// ─── Structure analyses: Clifford tapes with mid-circuit measurements ──
+
+
+const CLIFFORD_1Q = ["h", "s", "sdg", "x", "y", "z", "sx", "sxdg"];
+
+export function structureCases(): ToolCase[] {
+  const r = rng(7117);
+  const s = (g: string, t: number[], c: number[] = []): Entry => [step(g, t, c)];
+  const out: ToolCase[] = [
+    // Repetition-code syndrome extraction: data q0..q2, ancillas q3, q4.
+    { id: "rep3", n: 5, tape: [s("x", [3], [0]), s("x", [3], [1]), s("x", [4], [1]), s("x", [4], [2]), s("measure", [3]), s("measure", [4])] },
+    { id: "bell", n: 2, tape: [s("h", [0]), s("x", [1], [0])] },
+    { id: "ghz4m", n: 4, tape: [s("h", [0]), s("x", [1], [0]), s("x", [2], [1]), s("x", [3], [2]), s("measure_x", [1])] },
+  ];
+  for (let k = 0; out.length < 16; k++) {
+    const n = 2 + r.int(4);
+    const tape: Entry[] = [];
+    for (let d = 0; d < 6 + r.int(10); d++) {
+      const u = r.next();
+      const q = r.int(n);
+      if (u < 0.45) tape.push(s(r.pick(CLIFFORD_1Q), [q]));
+      else if (u < 0.8) {
+        const t = (q + 1 + r.int(n - 1)) % n;
+        tape.push(r.next() < 0.2 ? s("swap", [q, t]) : s(r.pick(["x", "y", "z"]), [t], [q]));
+      } else tape.push(s(r.pick(["measure", "measure", "measure_x", "reset"]), [q]));
+    }
+    out.push({ id: `cliff${k}`, n, tape });
+  }
+  // Record measurement outcomes as a run of the register would.
+  return out.map((c) => ({ ...c, tape: new Register(c.n, c.tape).tape }));
+}
+
+export function computeStructure(c: ToolCase) {
+  return {
+    resources: circuitResources(c.n, c.tape),
+    interaction: interactionGraph(namedCircuit(c.n, c.tape)).weight,
+    tanner: tannerGraph(lowerTape(c.n, c.tape)).checks.map((k) => ({ qubit: k.qubit, support: k.support })),
+    generators: cliffordGenerators(c.n, c.tape),
+    state: Array.from(new Register(c.n, c.tape).state),
+  };
 }
