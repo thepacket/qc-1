@@ -788,7 +788,7 @@ export class Calculator {
       })),
       {
         gate: "define", label: "DEFINE", group: "CUSTOM", arity: 1, params: [], argNames: [],
-        note: "the last k steps (entry k, else the whole tape) as a new gate",
+        note: "the last k steps (entry k, else the whole circuit) as a new gate",
       },
     ];
   }
@@ -895,7 +895,7 @@ export class Calculator {
       if (v === null) return;
       k = v;
     }
-    if (k < 1 || k > this.tape.length) throw new Error(this.tape.length ? `k = 1–${this.tape.length}` : "the tape is empty");
+    if (k < 1 || k > this.tape.length) throw new Error(this.tape.length ? `k = 1–${this.tape.length}` : "the circuit is empty");
     const entries = this.tape.slice(-k);
     if (entries.some((e) => e.some((s) => NONUNITARY.has(s.gateId)))) throw new Error("a gate can't measure, reset or prepare");
     let i = 1;
@@ -931,7 +931,7 @@ export class Calculator {
         return;
       }
       case "n": {
-        if (this.entry.length === 0) return this.error(`enter 1–${STAB_MAX}, then N (above ${MAX_QUBITS}: Clifford tapes)`);
+        if (this.entry.length === 0) return this.error(`enter 1–${STAB_MAX}, then N (above ${MAX_QUBITS}: Clifford circuits)`);
         const v = this.takeInt();
         if (v !== null) this.resize(v);
         return;
@@ -1030,7 +1030,7 @@ export class Calculator {
     if (!a?.result || a.result.error) return;
     const title = ANALYSIS_BY_ID[a.id]?.title ?? a.id;
     this.pins = [...this.pins.slice(-11), { title, result: a.result, at: new Date().toLocaleTimeString(), steps: this.tape.length, n: this.n }];
-    this.notify(`pinned to the report (${this.pins.length}): TAPE ≡ → Report`);
+    this.notify(`pinned to the report (${this.pins.length}): CIRC ≡ → Report`);
     this.changed();
   }
 

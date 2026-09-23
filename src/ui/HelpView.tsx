@@ -20,21 +20,21 @@ export function HelpView({ calc }: { calc: Calculator }) {
         <div className="help-grid">
           {shifted.map((k) => <span key={k.id}><b>{k.alt}</b> <span className="dim">on {k.label}</span></span>)}
         </div>
-        <p><b>t</b> and <b>VAR</b> (repeat to cycle θ φ λ α β γ δ τ ω) put symbols into angles; tap the symbol badge for sliders, t playback and ● REC (one period of t as a video). <b>STO</b>/<b>RCL</b> with a digit 1–9 store and recall whole tapes. <b>IF</b> with k (or k,v) makes the next gate run only when bit c[k] = v; measuring qubit q writes c[q]. <b>CAT</b> lists every other gate, the algorithm blocks (QFT, QFT†, Grover diffuser, a QAOA layer: on the CTRL-marked qubits and the selected one, or on the whole register), STATE… and MATRIX… (type a state or a unitary on the phone keyboard; it becomes a gate), custom gates and DEFINE.</p>
+        <p><b>t</b> and <b>VAR</b> (repeat to cycle θ φ λ α β γ δ τ ω) put symbols into angles; tap the symbol badge for sliders, t playback and ● REC (one period of t as a video). <b>STO</b>/<b>RCL</b> with a digit 1–9 store and recall whole circuits. <b>IF</b> with k (or k,v) makes the next gate run only when bit c[k] = v; measuring qubit q writes c[q]. <b>CAT</b> lists every other gate, the algorithm blocks (QFT, QFT†, Grover diffuser, a QAOA layer: on the CTRL-marked qubits and the selected one, or on the whole register), STATE… and MATRIX… (type a state or a unitary on the phone keyboard; it becomes a gate), custom gates and DEFINE.</p>
         <h3>Views</h3>
-        <p><b>KET</b> amplitudes · <b>PROB</b> probabilities · <b>BLOCH</b> one sphere per qubit · <b>SHOTS</b> sampled counts (tap again to re-roll) · <b>TAPE</b> the recorded steps (LIST, or CIRC as a circuit diagram), a scrubber to look at the state after any step, and ≡ for examples, OpenQASM import/export, Qiskit (Python) export, share links, QR codes and a printable report · <b>LAB</b> analyses and tools (PIN adds a result to the report).</p>
+        <p><b>KET</b> amplitudes · <b>PROB</b> probabilities · <b>BLOCH</b> one sphere per qubit · <b>SHOTS</b> sampled counts (tap again to re-roll) · <b>CIRC</b> the recorded steps (LIST of gates, or DRAW for the diagram), a scrubber to look at the state after any step, and ≡ for examples, OpenQASM import/export, Qiskit (Python) export, share links, QR codes and a printable report · <b>LAB</b> analyses and tools (PIN adds a result to the report).</p>
         <p>Turn the phone sideways for a full-screen display; <b>KEYS</b> slides the keypad in (and out).</p>
-        <h3>Editing the tape</h3>
-        <p>Scrub back (drag the slider, or tap a step or a gate in CIRC): gate keys now go in at that point, and the views follow. <b>DEL</b> removes the step before the scrub point (the last one when live). Later measurements keep their recorded outcomes unless one has become impossible. UNDO takes back each edit.</p>
+        <h3>Editing the circuit</h3>
+        <p>Scrub back (drag the slider, or tap a step, or a gate in DRAW): gate keys now go in at that point, and the views follow. <b>DEL</b> removes the step before the scrub point (the last one when live). Later measurements keep their recorded outcomes unless one has become impossible. UNDO takes back each edit.</p>
         <h3>Examples, step by step</h3>
-        <p>TAPE ≡ → Examples: tap a program, then <b>▶ step through</b>. It loads at the start; ◀ ▶ under the display walk the steps with the program's own comments, in any view (KET, PROB, BLOCH…). ✕ ends it.</p>
+        <p>CIRC ≡ → Examples: tap a program, then <b>▶ step through</b>. It loads at the start; ◀ ▶ under the display walk the steps with the program's own comments, in any view (KET, PROB, BLOCH…). ✕ ends it.</p>
         <h3>LAB</h3>
         <ul>
           {CATEGORIES.map((c) => <li key={c.id}>{c.label} <span className="dim">· {ANALYSES.filter((a) => a.category === c.id).length}</span></li>)}
         </ul>
         <p>Noise: LAB → Noise &amp; error → Noise model (Qiskit Aer conventions). With noise on, PROB, BLOCH, SHOTS and the noise and benchmarking analyses use it.</p>
         <h3>AI chat</h3>
-        <p>The <b>AI</b> button opens a chat with a model of your choice through OpenRouter, using your own API key (stored on this device only). It reads the tape and state and runs LAB analyses; a circuit it suggests comes with APPLY, and UNDO takes it back.</p>
+        <p>The <b>AI</b> button opens a chat with a model of your choice through OpenRouter, using your own API key (stored on this device only). It reads the circuit and state and runs LAB analyses; a circuit it suggests comes with APPLY, and UNDO takes it back.</p>
         <h3>Conventions</h3>
         <p>q0 is the leftmost (most significant) bit of |q0 q1 …⟩. Qiskit prints bitstrings the other way round (q0 rightmost); the exports take care of it. Angles are in radians; RX(θ) = e^(−iθX/2) as in Qiskit.</p>
         <h3>Checking the numbers</h3>

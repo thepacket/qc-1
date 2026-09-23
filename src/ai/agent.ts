@@ -48,12 +48,12 @@ const t = (name: string, description: string, properties: Record<string, unknown
 });
 
 export const TOOLS: ToolDef[] = [
-  t("get_state", "The register: qubit count, the tape as OpenQASM 3, symbol values, noise on/off, and (n ≤ 14) the largest amplitudes.", {}),
+  t("get_state", "The register: qubit count, the circuit as OpenQASM 3, symbol values, noise on/off, and (n ≤ 14) the largest amplitudes.", {}),
   t("list_analyses", "The LAB analyses: id, title, category, options (name, kind, allowed values). Optionally filtered by a word.", { filter: { type: "string" } }),
   t("run_analysis", "Run a LAB analysis on the current state (n ≤ 14 here) and return its numbers and notes. Options by name, as list_analyses shows.", {
     id: { type: "string" }, options: { type: "object", description: "option name → value", additionalProperties: true },
   }, ["id"]),
-  t("propose_tape", "Offer the user a new tape. It is checked by QC-1's importer and shown with an Apply button; nothing changes until they tap it.", {
+  t("propose_tape", "Offer the user a new circuit. It is checked by QC-1's importer and shown with an Apply button; nothing changes until they tap it.", {
     title: { type: "string", description: "a short name, e.g. 'GHZ on 4 qubits'" },
     qasm: { type: "string", description: "OpenQASM 3 with include \"stdgates.inc\"" },
   }, ["title", "qasm"]),

@@ -65,7 +65,7 @@ export function toolCircuit(n: number, tape: Entry[]): Circuit {
   const gates: PlacedGate[] = [];
   tape.forEach((entry, column) => {
     for (const step of entry) {
-      if (NONUNITARY.has(step.gateId)) throw new ToolInputError("the tools need a unitary tape (no measurements, resets or preps)");
+      if (NONUNITARY.has(step.gateId)) throw new ToolInputError("the tools need a unitary circuit (no measurements, resets or preps)");
       if (step.condition) throw new ToolInputError("the tools can't take conditional (IF) gates");
       for (const s of plainSteps(step)) {
         const nm = named(s.gateId, s.controls.length, s.params);

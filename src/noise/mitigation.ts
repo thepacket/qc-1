@@ -174,7 +174,7 @@ export const gammaOf = (inv: InverseTerm[]) => inv.reduce((a, t) => a + Math.abs
  * Also reports the total Γ (the estimator's standard deviation grows like Γ/√T).
  */
 export function pec(n: number, tape: Entry[], scope: Scope, m: NoiseModel, terms: PauliTerm[], opts: { trajectories?: number; seed?: number } = {}) {
-  if (tape.some((e) => e.some((s) => NONUNITARY.has(s.gateId) || s.condition))) throw new Error("PEC here needs a unitary tape");
+  if (tape.some((e) => e.some((s) => NONUNITARY.has(s.gateId) || s.condition))) throw new Error("PEC here needs a unitary circuit");
   const list = tape.flat().flatMap(exportedSteps);
   const plan = list.map((s) => ({ s, noise: channelsAfter(m, s), inv: inversesAfter(m, s) }));
   const gammaTotal = plan.reduce((acc, p) => acc * p.inv.reduce((a, inv) => a * gammaOf(inv), 1), 1);

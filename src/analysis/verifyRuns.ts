@@ -48,7 +48,7 @@ export const VERIFY_RUNS: Record<string, Run> = {
   compare(ctx, opts) {
     const other = opts.other as Slot | undefined;
     const slot = num("compare", "slot", opts, ctx.n);
-    if (!other) return { scalars: [{ label: `M${slot}`, value: "empty" }], notes: [`Store a tape first: entry ${slot}, then 2ND = (STO).`] };
+    if (!other) return { scalars: [{ label: `M${slot}`, value: "empty" }], notes: [`Store a circuit first: entry ${slot}, then 2ND = (STO).`] };
     if (other.n !== ctx.n) throw new Error(`M${slot} has ${other.n} qubits, the register ${ctx.n}`);
     const scalars: AnalysisResult["scalars"] = [];
     const unitary = [ctx.tape, other.tape].every((t) => t.every((e) => e.every((s) => !NONUNITARY.has(s.gateId) && !s.condition)));
@@ -124,7 +124,7 @@ export const VERIFY_RUNS: Record<string, Run> = {
     } else {
       const syms = [...new Set(ctx.tape.flat().flatMap(stepSymbols))];
       const name = sweep === 1 ? "t" : syms.find((s) => s !== "t");
-      if (!name || !syms.includes(name)) throw new Error(sweep === 1 ? "the tape has no t" : "the tape has no other symbol");
+      if (!name || !syms.includes(name)) throw new Error(sweep === 1 ? "the circuit has no t" : "the circuit has no other symbol");
       const [lo, hi] = sweep === 1 ? [0, 2 * Math.PI] : [-Math.PI, Math.PI];
       xs = Array.from({ length: 49 }, (_, i) => lo + ((hi - lo) * i) / 48);
       xLabel = `${name}`;
@@ -134,7 +134,7 @@ export const VERIFY_RUNS: Record<string, Run> = {
     const chart: Chart = perQubit && n > 3
       ? { kind: "heatmap", scale: qty <= 2 ? "div" : "seq", min: qty <= 2 ? -1 : 0, max: 1, rows: [...Array(n).keys()].map((q) => `q${q}`), cols: xs.map((x, i) => (i % Math.ceil(xs.length / 8) === 0 ? (sweep === 0 ? String(x) : x.toFixed(2)) : "")), values: [...Array(n).keys()].map((q) => values.map((v) => v[q])), title: `${names[qty]}: rows qubits` }
       : { kind: "lines", x: xs, xLabel, yLabel: names[qty], series: values[0].map((_, q) => ({ name: perQubit ? `q${q}` : names[qty], y: values.map((v) => v[q]) })) };
-    return { charts: [chart], notes: ["Each point is an exact statevector (the tape truncated, or a symbol swept); measurements keep their recorded outcomes."] };
+    return { charts: [chart], notes: ["Each point is an exact statevector (the circuit truncated, or a symbol swept); measurements keep their recorded outcomes."] };
   },
 
   async selftest() {
@@ -145,7 +145,7 @@ export const VERIFY_RUNS: Record<string, Run> = {
     type Sv = { n: number; tape: Entry[]; gates?: CustomGate[]; expected: { re: number[]; im: number[] } };
     for (const [name, load] of [
       ["gates vs Qiskit", () => import("../../test/fixtures/gates.json")],
-      ["random tapes vs Qiskit", () => import("../../test/fixtures/random-tapes.json")],
+      ["random circuits vs Qiskit", () => import("../../test/fixtures/random-tapes.json")],
     ] as const) {
       const fx = (await load()).default as unknown as { cases: Sv[] };
       let bad = 0, worst = 0;

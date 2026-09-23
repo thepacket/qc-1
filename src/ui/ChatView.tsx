@@ -75,7 +75,7 @@ export function ChatView({ calc }: { calc: Calculator }) {
       </div>
       <div className="rows chat-log" aria-live="polite">
         {items.length === 0 && (
-          <p className="dim note">Ask about the state, or for a circuit: “is this entangled?”, “make a 4-qubit GHZ state”, “why does Grover need 2 iterations here?”. The model reads the tape and runs LAB analyses; a circuit it suggests comes with Apply (UNDO takes it back).</p>
+          <p className="dim note">Ask about the state, or for a circuit: “is this entangled?”, “make a 4-qubit GHZ state”, “why does Grover need 2 iterations here?”. The model reads the circuit and runs LAB analyses; a circuit it suggests comes with Apply (UNDO takes it back).</p>
         )}
         {items.map((it, i) => <Item key={i} it={it} apply={() => apply(i)} />)}
         {busy && <div className="chat-tool busy">thinking…</div>}
@@ -109,7 +109,7 @@ function Item({ it, apply }: { it: ChatItem; apply: () => void }) {
     <div className="proposal chat-proposal">
       <span><b>{p.title}</b> · {p.n} qubit{p.n > 1 ? "s" : ""}, {p.steps} step{p.steps === 1 ? "" : "s"}{p.note ? ` · ${p.note}` : ""}</span>
       <details><summary>OpenQASM</summary><pre className="chat-code">{p.qasm}</pre></details>
-      {it.applied ? <span className="dim">applied (UNDO restores the previous tape)</span> : <button className="lab-status apply" onClick={apply}>APPLY · replace the tape</button>}
+      {it.applied ? <span className="dim">applied (UNDO restores the previous circuit)</span> : <button className="lab-status apply" onClick={apply}>APPLY · replace the circuit</button>}
     </div>
   );
 }
@@ -136,7 +136,7 @@ function ChatSettings({ apiKey, model, done, close }: { apiKey: string; model: s
         <label className="dim" htmlFor="or-key">OpenRouter API key</label>
         <input id="or-key" className="int-field chat-key" type="password" value={k} autoComplete="off" spellCheck={false}
           placeholder="sk-or-…" onChange={(e) => setK(e.target.value.trim())} onKeyDown={(e) => e.stopPropagation()} />
-        <p className="dim note">Your key stays on this device (its storage) and is sent only to openrouter.ai, which bills your account. The chat sends the model the tape (as OpenQASM), the state's largest amplitudes, symbol values and the results of the analyses it runs; nothing else leaves the calculator. Create a key at openrouter.ai; forget it here with the button below.</p>
+        <p className="dim note">Your key stays on this device (its storage) and is sent only to openrouter.ai, which bills your account. The chat sends the model the circuit (as OpenQASM), the state's largest amplitudes, symbol values and the results of the analyses it runs; nothing else leaves the calculator. Create a key at openrouter.ai; forget it here with the button below.</p>
         <label className="dim" htmlFor="or-filter">Model {m && <b>· {m}</b>}</label>
         <input id="or-filter" className="int-field chat-key" value={filter} placeholder="search models" onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
         {err && <div className="lab-error">E: {err}</div>}

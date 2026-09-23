@@ -79,7 +79,7 @@ export function qiskitPython(n: number, tape: Entry[]): string {
   const qasm = exportQasm3(n, tape);
   const symbols = new Set([...qasm.matchAll(/^input float (\w+);$/gm)].map((m) => m[1]));
   const out: string[] = [
-    "# Quantum Calculator One (QC-1) tape as a Qiskit circuit (qiskit >= 1.0).",
+    "# Quantum Calculator One (QC-1) circuit for Qiskit (qiskit >= 1.0).",
     "import math",
     "from math import pi",
     "from qiskit import ClassicalRegister, QuantumCircuit, QuantumRegister",

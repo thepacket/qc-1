@@ -592,7 +592,7 @@ Object.assign(RUNS, {
 
   async optimise(ctx, opts) {
     const syms = symbolsOfTape(ctx);
-    if (syms.length === 0) return { error: "the tape has no symbols to optimise (type θ or t into an angle)" };
+    if (syms.length === 0) return { error: "the circuit has no symbols to optimise (type θ or t into an angle)" };
     const terms = observable(opts, ctx.n);
     const method = (["adam", "sgd", "qng"] as const)[num("optimise", "method", opts, ctx.n)];
     const goal = num("optimise", "goal", opts, ctx.n) === 1 ? "maximize" : "minimize";
@@ -616,7 +616,7 @@ Object.assign(RUNS, {
 
   async landscape(ctx, opts) {
     const syms = symbolsOfTape(ctx);
-    if (syms.length === 0) return { error: "the tape has no symbols" };
+    if (syms.length === 0) return { error: "the circuit has no symbols" };
     const meta = ANALYSIS_BY_ID.landscape;
     const pick = (k: string) => symbolValue(meta.inputs.find((i) => i.key === k) as Extract<typeof meta.inputs[number], { kind: "symbol" }>, opts, syms);
     const s1 = pick("s1"), s2 = pick("s2");
@@ -639,7 +639,7 @@ Object.assign(RUNS, {
 
   async plateau(ctx, opts) {
     const syms = symbolsOfTape(ctx);
-    if (syms.length === 0) return { error: "the tape has no symbols" };
+    if (syms.length === 0) return { error: "the circuit has no symbols" };
     const res = await barrenPlateauDiagnostic(lowerTape(ctx.n, ctx.tape), [], { kind: "sum", terms: observable(opts, ctx.n) }, syms, num("plateau", "samples", opts, ctx.n));
     return {
       charts: [{
@@ -686,7 +686,7 @@ Object.assign(RUNS, {
 
   qgt(ctx) {
     const syms = symbolsOfTape(ctx);
-    if (syms.length === 0) return { error: "the tape has no symbols" };
+    if (syms.length === 0) return { error: "the circuit has no symbols" };
     const res = quantumGeometricTensor(lowerTape(ctx.n, ctx.tape), [], ctx.scope, syms.slice(0, 8));
     if (!res) return { error: "needs n ≤ 12 and ≤ 8 symbols" };
     const L = res.symbols.map(symbolGlyph);
@@ -700,7 +700,7 @@ Object.assign(RUNS, {
   },
 
   blochpath(ctx, opts) {
-    if (!(ctx.scope.t !== undefined && symbolsOfTape(ctx).includes("t"))) return { error: "needs t in the tape (2ND . in an angle)" };
+    if (!(ctx.scope.t !== undefined && symbolsOfTape(ctx).includes("t"))) return { error: "needs t in the circuit (2ND . in an angle)" };
     const q = num("blochpath", "q", opts, ctx.n);
     const res = blochTrajectories(lowerTape(ctx.n, ctx.tape), ctx.scope, [], 64)!;
     return { charts: [{ kind: "paths", paths: [{ label: `q${q}`, points: res.path[q] }] }], notes: ["Measurements are post-selected on their recorded outcomes."] };
@@ -723,14 +723,14 @@ Object.assign(RUNS, {
 /** Unitary-based analyses need a tape without measurements, resets or state preps. */
 function requireUnitary(ctx: AnalysisContext) {
   if (ctx.tape.some((e) => e.some((s) => NONUNITARY.has(s.gateId)))) {
-    throw new Error("the tape isn't unitary (it measures, resets or prepares a state)");
+    throw new Error("the circuit isn't unitary (it measures, resets or prepares a state)");
   }
 }
 const basisLabels = (n: number) => Array.from({ length: 1 << n }, (_, i) => i.toString(2).padStart(n, "0"));
 /** Two symbol inputs (s1, s2) of an analysis, resolved against the tape. */
 function twoSymbols(id: string, ctx: AnalysisContext, opts: Opts): [string, string] {
   const syms = symbolsOfTape(ctx);
-  if (syms.length < 2) throw new Error("needs two symbols in the tape (e.g. θ and φ)");
+  if (syms.length < 2) throw new Error("needs two symbols in the circuit (e.g. θ and φ)");
   const meta = ANALYSIS_BY_ID[id];
   const pick = (k: string) => symbolValue(meta.inputs.find((i) => i.key === k) as Extract<typeof meta.inputs[number], { kind: "symbol" }>, opts, syms);
   const a = pick("s1"), b = pick("s2");
@@ -1067,23 +1067,23 @@ Object.assign(RUNS, {
   },
 
   spacetime(ctx) {
-    if (!ctx.tape.length) return { error: "the tape is empty" };
+    if (!ctx.tape.length) return { error: "the circuit is empty" };
     const res = spaceTimeZ(lowerTape(ctx.n, ctx.tape), ctx.scope, [], { maxCols: 200 });
-    if (!res) return { error: "tape too long (≤ 200 steps)" };
+    if (!res) return { error: "circuit too long (≤ 200 steps)" };
     return { charts: [{ kind: "heatmap", scale: "div", min: -1, max: 1, rows: qlabels(ctx.n), cols: stepLabels(res.numCols), values: res.z, title: "⟨Z⟩: rows qubits, cols steps" }] };
   },
 
   spacetimeS(ctx) {
-    if (!ctx.tape.length) return { error: "the tape is empty" };
+    if (!ctx.tape.length) return { error: "the circuit is empty" };
     const res = spaceTimeEntropy(lowerTape(ctx.n, ctx.tape), ctx.scope, [], { maxCols: 200 });
-    if (!res) return { error: "tape too long (≤ 200 steps)" };
+    if (!res) return { error: "circuit too long (≤ 200 steps)" };
     return { charts: [{ kind: "heatmap", scale: "seq", min: 0, max: 1, rows: qlabels(ctx.n), cols: stepLabels(res.numCols), values: res.s, title: "S(qᵢ) bits: rows qubits, cols steps" }] };
   },
 
   asymmetry(ctx) {
-    if (!ctx.tape.length) return { error: "the tape is empty" };
+    if (!ctx.tape.length) return { error: "the circuit is empty" };
     const res = entanglementAsymmetrySweep(lowerTape(ctx.n, ctx.tape), ctx.scope, []);
-    if (!res) return { error: "tape too long (≤ 96 steps)" };
+    if (!res) return { error: "circuit too long (≤ 96 steps)" };
     return {
       scalars: [{ label: "subsystem", value: `q0…q${res.subsystemSize - 1}` }],
       charts: [{ kind: "lines", x: res.asymmetry.map((_, i) => i + 1), xLabel: "step", yLabel: "ΔS (bits)", yMin: 0, series: [{ name: "ΔS_A", y: res.asymmetry }] }],
@@ -1091,7 +1091,7 @@ Object.assign(RUNS, {
   },
 
   lightcone(ctx, opts) {
-    if (!ctx.tape.length) return { error: "the tape is empty" };
+    if (!ctx.tape.length) return { error: "the circuit is empty" };
     const q = num("lightcone", "q", opts, ctx.n);
     const dir = num("lightcone", "dir", opts, ctx.n) === 1 ? "forward" : "backward";
     const circ = lowerTape(ctx.n, ctx.tape);

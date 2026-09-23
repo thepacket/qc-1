@@ -291,5 +291,5 @@ export function exportQasm3(n: number, tape: Entry[]): string {
   const decls = syms.map((v) => `input float ${v};`);
   lines.splice(at, 0, ...(defs.length ? ["", ...defs] : []), ...(decls.length ? ["", ...decls] : []));
   const steps = tape.length === 1 ? "1 step" : `${tape.length} steps`;
-  return [`// Quantum Calculator One (QC-1) tape, ${steps}`, ...lines].join("\n") + "\n";
+  return [`// Quantum Calculator One (QC-1) circuit, ${steps}`, ...lines].join("\n") + "\n";
 }

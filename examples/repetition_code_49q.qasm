@@ -7,7 +7,7 @@
 // The two syndrome bits next to the error, c[36] and c[37] (checking
 // pairs 11–12 and 12–13), come out 1, and all the others 0: the pattern
 // points at q[12] without measuring (or disturbing) the logical state.
-// Scrub back to the error in TAPE, DEL it or key X on another data
+// Scrub back to the error in CIRC, DEL it or key X on another data
 // qubit, and the syndrome moves with it.
 
 OPENQASM 3.0;

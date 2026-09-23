@@ -19,7 +19,7 @@ install to your home screen, and it works offline.
 - **Symbols and the t clock** in angles, with sliders and playback;
   **STO/RCL** memories; **IF** for classical control after mid-circuit
   measurements.
-- **Views**: KET, PROB, BLOCH, SHOTS, TAPE (step list or circuit diagram, a
+- **Views**: KET, PROB, BLOCH, SHOTS, CIRC (gate list or circuit diagram, a
   step scrubber, and editing at any step) and **LAB**:
   119 analyses and tools in 14 categories. They cover state, measurement,
   phase space and magic, metrology, entanglement, dynamics, operators and
@@ -29,7 +29,7 @@ install to your home screen, and it works offline.
   and repetition codes with a union-find decoder) and verification.
 - **Noise** with Qiskit Aer's conventions: exact density matrices or
   trajectories, ZNE and PEC, device calibration import.
-- **AI chat** through OpenRouter with your own key: it reads the tape, runs LAB
+- **AI chat** through OpenRouter with your own key: it reads the circuit, runs LAB
   analyses and proposes circuits you apply with a tap.
 - **Import and export**: OpenQASM 2/3 import, 120 example programs (each can be
   stepped through with its comments), OpenQASM 3 and Qiskit (Python) export,

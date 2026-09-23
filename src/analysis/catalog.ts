@@ -142,7 +142,7 @@ ANALYSES.push(
       { kind: "choice", key: "method", label: "method", fallback: 0, options: [{ label: "Adam", value: 0 }, { label: "SGD", value: 1 }, { label: "QNG", value: 2 }] },
       { kind: "choice", key: "steps", label: "steps", fallback: 60, options: [{ label: "20", value: 20 }, { label: "60", value: 60 }, { label: "200", value: 200 }] },
     ],
-    summary: "Gradient descent on ⟨H⟩ over the tape's symbols (finite differences); apply the result to the sliders." },
+    summary: "Gradient descent on ⟨H⟩ over the circuit's symbols (finite differences); apply the result to the sliders." },
   { id: "landscape", title: "Landscape", category: "metrology", mode: "run", maxQubits: 12, inputs: [
       obs,
       { kind: "symbol", key: "s1", label: "x", fallback: "first" },
@@ -163,12 +163,12 @@ ANALYSES.push(
   { id: "squeezing", title: "Spin squeezing", category: "metrology", mode: "live", maxQubits: 14, minQubits: 2, inputs: [],
     summary: "Wineland ξ² = N·min ΔJ⊥² / |⟨J⟩|²; below 1 is squeezed (and entangled)." },
   { id: "qgt", title: "Quantum geometric tensor", category: "metrology", mode: "live", maxQubits: 12, inputs: [],
-    summary: "Fubini–Study metric and Berry curvature over the tape's symbols (finite differences)." },
+    summary: "Fubini–Study metric and Berry curvature over the circuit's symbols (finite differences)." },
   { id: "blochpath", title: "Bloch trajectory", category: "state", mode: "run", maxQubits: 12,
     inputs: [{ kind: "qubit", key: "q", label: "qubit", fallback: "first" }],
     summary: "Each qubit's Bloch vector as t sweeps [0, 2π]: the path it traces on its sphere." },
   { id: "participation", title: "Participation", category: "entanglement", mode: "live", maxQubits: 16, inputs: [],
-    summary: "Inverse participation ratio, participation ratio and entropies of the basis distribution; plus its growth along the tape." },
+    summary: "Inverse participation ratio, participation ratio and entropies of the basis distribution; plus its growth along the circuit." },
 );
 
 // Phase 5a: operator & spectrum (validated: spectrum-circuits, -hamiltonians, -geometry).
@@ -179,7 +179,7 @@ const twoSym = [
 ];
 ANALYSES.push(
   { id: "unitary", title: "Unitary matrix", category: "operator", mode: "live", maxQubits: 6, inputs: [],
-    summary: "The tape's whole operator U in the computational basis: colour = phase, opacity = |Uᵢⱼ|." },
+    summary: "The circuit's whole operator U in the computational basis: colour = phase, opacity = |Uᵢⱼ|." },
   { id: "ptm", title: "Pauli transfer matrix", category: "operator", mode: "live", maxQubits: 3, inputs: [],
     summary: "Rᵢⱼ = Tr(Pᵢ U Pⱼ U†)/2ⁿ: what the circuit does to each Pauli; a Clifford is a signed permutation." },
   { id: "opent", title: "Operator entanglement", category: "operator", mode: "live", maxQubits: 6, minQubits: 2, inputs: [],
@@ -207,7 +207,7 @@ ANALYSES.push(
   { id: "eigent", title: "Eigenstate entanglement", category: "operator", mode: "run", maxQubits: 6, minQubits: 2, inputs: [H],
     summary: "Half-chain entropy of every eigenstate of H against its energy: volume-law arch vs area law." },
   { id: "workdist", title: "Work distribution", category: "operator", mode: "run", maxQubits: 5, inputs: [H],
-    summary: "Two-point-measurement work W = Eₘ − Eₙ for the tape as a quench from |0…0⟩ (energy-level projectors)." },
+    summary: "Two-point-measurement work W = Eₘ − Eₙ for the circuit as a quench from |0…0⟩ (energy-level projectors)." },
   { id: "berry", title: "Berry phase", category: "operator", mode: "run", maxQubits: 12, inputs: [
       ...twoSym,
       { kind: "choice", key: "radius", label: "loop", fallback: 0.5, options: [
@@ -221,7 +221,7 @@ ANALYSES.push(
     ],
     summary: "Berry flux over the torus of two symbols in [0, 2π): an integer for a topological band." },
   { id: "zx", title: "ZX diagram", category: "structure", mode: "live", maxQubits: 1024, inputs: [],
-    summary: "The tape as a ZX-calculus diagram: green Z and red X spiders, Hadamard boxes." },
+    summary: "The circuit as a ZX-calculus diagram: green Z and red X spiders, Hadamard boxes." },
 );
 
 // Phase 5b: dynamics (validated: fixture dynamics). The t-sweeps need the symbol t in the tape.
@@ -257,16 +257,16 @@ ANALYSES.push(
     inputs: [{ kind: "qubit", key: "q", label: "qubit", fallback: "first" }],
     summary: "Infinite-temperature ⟨Z(t)Z(0)⟩ and its spectrum: how long a qubit remembers its polarisation." },
   { id: "spacetime", title: "Space-time ⟨Z⟩", category: "dynamics", mode: "live", maxQubits: 14, inputs: [],
-    summary: "⟨Z⟩ of every qubit after every tape step." },
+    summary: "⟨Z⟩ of every qubit after every circuit step." },
   { id: "spacetimeS", title: "Space-time entropy", category: "dynamics", mode: "live", maxQubits: 12, inputs: [],
-    summary: "Each qubit's entanglement entropy after every tape step: the entanglement front." },
+    summary: "Each qubit's entanglement entropy after every circuit step: the entanglement front." },
   { id: "asymmetry", title: "Entanglement asymmetry", category: "dynamics", mode: "live", maxQubits: 12, minQubits: 2, inputs: [],
     summary: "How much the first half breaks the excitation-number symmetry, after every step (quantum Mpemba)." },
   { id: "lightcone", title: "Light cone", category: "structure", mode: "live", maxQubits: 1024, inputs: [
       { kind: "qubit", key: "q", label: "qubit", fallback: "first" },
       { kind: "choice", key: "dir", label: "cone", fallback: 0, options: [{ label: "backward", value: 0 }, { label: "forward", value: 1 }] },
     ],
-    summary: "The tape steps that can influence a qubit's final state (backward) or that its input can reach (forward)." },
+    summary: "The circuit steps that can influence a qubit's final state (backward) or that its input can reach (forward)." },
 );
 
 // Phase 6: circuit tools (validated: fixtures tools, synth) and structure.
@@ -289,7 +289,7 @@ ANALYSES.push(
   { id: "inverse", title: "Inverse U†", category: "tools", mode: "run", maxQubits: 20, inputs: [
       { kind: "choice", key: "mode", label: "", fallback: 0, options: [{ label: "append U†", value: 0 }, { label: "replace by U†", value: 1 }] },
     ],
-    summary: "Reverse the tape and invert every gate. Appending gives a mirror circuit that returns to |0…0⟩." },
+    summary: "Reverse the circuit and invert every gate. Appending gives a mirror circuit that returns to |0…0⟩." },
   { id: "trotter", title: "Trotter circuit", category: "tools", mode: "run", maxQubits: 20, inputs: [
       { kind: "pauli", key: "ham", label: "H" },
       { kind: "int", key: "steps", label: "steps", min: 1, max: 8, fallback: 2 },
@@ -300,7 +300,7 @@ ANALYSES.push(
   { id: "stateprep", title: "State preparation", category: "tools", mode: "run", maxQubits: 20, inputs: [{ kind: "state", key: "target", label: "target" }],
     summary: "A circuit that prepares a target state (or the current one) from |0…0⟩ with RY, RZ and CX." },
   { id: "synth", title: "Unitary synthesis", category: "tools", mode: "run", maxQubits: 4, inputs: [],
-    summary: "Re-synthesise the tape's unitary from two-level controlled 2×2 gates (exact, not gate-optimal)." },
+    summary: "Re-synthesise the circuit's unitary from two-level controlled 2×2 gates (exact, not gate-optimal)." },
   { id: "resources", title: "Resources", category: "structure", mode: "live", maxQubits: 1024, inputs: [
       { kind: "choice", key: "coupling", label: "check map", fallback: 0, options: [{ label: "none", value: 0 }, { label: "line", value: 1 }, { label: "ring", value: 2 }, { label: "grid", value: 3 }] },
     ],
@@ -312,7 +312,7 @@ ANALYSES.push(
   { id: "branches", title: "Measurement branches", category: "measurement", mode: "live", maxQubits: 12, inputs: [],
     summary: "Every measurement history with its probability: the tree a program's mid-circuit measurements and IF gates produce." },
   { id: "tableau", title: "Stabilizer tableau", category: "structure", mode: "live", maxQubits: 1024, inputs: [],
-    summary: "For Clifford tapes: the n Pauli operators that fix the state (Bell → +XX, +ZZ)." },
+    summary: "For Clifford circuits: the n Pauli operators that fix the state (Bell → +XX, +ZZ)." },
 );
 
 // Phase 8: noise (validated: fixtures noise, noise-analyses). All need the noise model on.
@@ -322,7 +322,7 @@ ANALYSES.push(
   { id: "impact", title: "Noise impact", category: "noise", mode: "live", maxQubits: 10, inputs: [],
     summary: "Fidelity and trace distance of the noisy state to the ideal one, its purity and entropy." },
   { id: "decoherence", title: "Decoherence by depth", category: "noise", mode: "run", maxQubits: 6, inputs: [],
-    summary: "Fidelity to the ideal state and purity after every step: how noise accumulates along the tape." },
+    summary: "Fidelity to the ideal state and purity after every step: how noise accumulates along the circuit." },
   { id: "mixedspectrum", title: "Mixed-state spectrum", category: "noise", mode: "live", maxQubits: 8, inputs: [],
     summary: "Eigenvalues of the noisy ρ, its purity, effective rank and entropy." },
   { id: "coherentinfo", title: "Coherent information", category: "noise", mode: "live", maxQubits: 8, minQubits: 2, inputs: [cut],
@@ -389,11 +389,11 @@ ANALYSES.push(
   { id: "tomography", title: "Process tomography", category: "bench", mode: "run", maxQubits: 2, inputs: [
       { kind: "choice", key: "channel", label: "", fallback: 0, options: [{ label: "ideal", value: 0 }, { label: "noisy", value: 1 }] },
     ],
-    summary: "The tape's Pauli transfer matrix reconstructed from prepared inputs and Pauli readouts; process and gate fidelity." },
+    summary: "The circuit's Pauli transfer matrix reconstructed from prepared inputs and Pauli readouts; process and gate fidelity." },
   { id: "randclifford", title: "Random Clifford circuit", category: "tools", mode: "run", maxQubits: 20, inputs: [
       { kind: "int", key: "depth", label: "depth", min: 1, max: 8, fallback: 3 },
     ],
-    summary: "A random Clifford circuit (single-qubit Cliffords and CX layers) to replace the tape with." },
+    summary: "A random Clifford circuit (single-qubit Cliffords and CX layers) to replace the circuit with." },
 );
 
 // Phase 11: verification & export.
@@ -401,7 +401,7 @@ ANALYSES.push(
   { id: "compare", title: "Compare with memory", category: "verify", mode: "live", maxQubits: 20, inputs: [
       { kind: "int", key: "slot", label: "M", min: 1, max: 9, fallback: 1 },
     ],
-    summary: "The tape against a stored tape (STO): same operator?, process and average gate fidelity, state fidelity, resources." },
+    summary: "The circuit against a stored circuit (STO): same operator?, process and average gate fidelity, state fidelity, resources." },
   { id: "plot", title: "Custom plot", category: "verify", mode: "run", maxQubits: 14, inputs: [
       { kind: "choice", key: "quantity", label: "plot", fallback: 0, options: [
         { label: "⟨Z⟩", value: 0 }, { label: "⟨X⟩", value: 1 }, { label: "⟨Y⟩", value: 2 }, { label: "purity", value: 3 }, { label: "S(q)", value: 4 },
@@ -410,12 +410,12 @@ ANALYSES.push(
       { kind: "choice", key: "sweep", label: "over", fallback: 0, options: [{ label: "steps", value: 0 }, { label: "t", value: 1 }, { label: "symbol", value: 2 }] },
       obs,
     ],
-    summary: "Any of these quantities along the tape (after each step), over one period of t, or over another symbol." },
+    summary: "Any of these quantities along the circuit (after each step), over one period of t, or over another symbol." },
   { id: "plotprogram", title: "Plot program (JavaScript)", category: "verify", mode: "run", maxQubits: 14, inputs: [
     { kind: "code", key: "code", label: "program" },
   ], summary: "Draw anything from the state with a few lines of JavaScript: the program gets data (amplitudes, probabilities, per-qubit ρ, symbols) and returns shapes. It runs sandboxed: its own worker, no network or storage, a time limit." },
   { id: "selftest", title: "Self-test", category: "verify", mode: "run", maxQubits: 1024, inputs: [],
-    summary: "Replay the committed Qiskit/Aer references on this device: gates, random tapes, symbols, classical control, noise, stabilizer mode." },
+    summary: "Replay the committed Qiskit/Aer references on this device: gates, random circuits, symbols, classical control, noise, stabilizer mode." },
 );
 
 export const ANALYSIS_BY_ID: Record<string, AnalysisMeta> = Object.fromEntries(ANALYSES.map((a) => [a.id, a]));

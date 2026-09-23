@@ -40,7 +40,7 @@ const MODES: { id: Mode; label: string }[] = [
   { id: "prob", label: "PROB" },
   { id: "bloch", label: "BLOCH" },
   { id: "shots", label: "SHOTS" },
-  { id: "tape", label: "TAPE" },
+  { id: "tape", label: "CIRC" },
   { id: "lab", label: "LAB" },
 ];
 

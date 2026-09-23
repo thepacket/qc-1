@@ -36,7 +36,7 @@ export function ReportView({ calc }: { calc: Calculator }) {
         </p>
 
         <h2>Circuit</h2>
-        {tape.length === 0 ? <p>The tape is empty.</p> : (
+        {tape.length === 0 ? <p>The circuit is empty.</p> : (
           <figure className="report-figure">
             <CircuitDiagram n={n} tape={tape} scrub={null} />
           </figure>
@@ -68,7 +68,7 @@ export function ReportView({ calc }: { calc: Calculator }) {
           <section key={i} className="report-pin">
             <h3>
               {p.title}
-              <span className="report-dim"> · {p.at}, at step {p.steps}{p.n !== n ? `, n = ${p.n}` : ""}{p.steps !== tape.length ? " (the tape has changed since)" : ""}</span>
+              <span className="report-dim"> · {p.at}, at step {p.steps}{p.n !== n ? `, n = ${p.n}` : ""}{p.steps !== tape.length ? " (the circuit has changed since)" : ""}</span>
               <button className="report-unpin" onClick={() => calc.unpin(i)} aria-label={`Unpin ${p.title}`}>unpin</button>
             </h3>
             {p.result.scalars && (
@@ -85,7 +85,7 @@ export function ReportView({ calc }: { calc: Calculator }) {
           </section>
         ))}
 
-        <h2>Tape</h2>
+        <h2>Steps</h2>
         {tape.length === 0 ? <p>Empty.</p> : (
           <ol className="report-tape">{tape.map((e, i) => <li key={i}>{formatEntry(e)}</li>)}</ol>
         )}

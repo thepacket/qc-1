@@ -96,11 +96,11 @@ async function copyText(calc: Calculator, text: string, done = "QASM copied") {
   }
 }
 
-async function shareQasm(calc: Calculator, text: string, name = "qc1-tape.qasm") {
+async function shareQasm(calc: Calculator, text: string, name = "qc1-circuit.qasm") {
   const file = new File([text], name, { type: "text/plain" });
   try {
     if (navigator.canShare?.({ files: [file] })) {
-      await navigator.share({ files: [file], title: "QC-1 tape" });
+      await navigator.share({ files: [file], title: "QC-1 circuit" });
       return;
     }
   } catch (e) {
@@ -136,7 +136,7 @@ export function TapeView({ calc }: { calc: Calculator }) {
         <span>{tape.length} steps</span>
         <span className="lcd-btns">
           {tab("list", "LIST")}
-          {tab("circ", "CIRC")}
+          {tab("circ", "DRAW")}
           {tab("qasm", "QASM")}
           {tab("menu", "≡")}
         </span>
@@ -191,7 +191,7 @@ function QrPane({ calc, done }: { calc: Calculator; done: () => void }) {
   const qr = useMemo(() => (url ? makeQr(url) : null), [url]);
   if (!url) return <div className="rows dim">…</div>;
   if (!qr) {
-    return <div className="rows dim">This tape's link is {url.length} characters; a QR code holds at most {QR_MAX.L}. Use Share link or Share QASM file instead.</div>;
+    return <div className="rows dim">This circuit's link is {url.length} characters; a QR code holds at most {QR_MAX.L}. Use Share link or Share QASM file instead.</div>;
   }
   const side = qr.size + 8;
   return (
@@ -200,7 +200,7 @@ function QrPane({ calc, done }: { calc: Calculator; done: () => void }) {
         <rect width={side} height={side} fill="#fff" />
         <path d={qrPath(qr)} fill="#000" />
       </svg>
-      <p>Scan to open this tape in QC-1: {calc.tape.length} steps, n={calc.n}.</p>
+      <p>Scan to open this circuit in QC-1: {calc.tape.length} steps, n={calc.n}.</p>
       <p className="qr-small">{url.length} characters · QR version {qr.version} · tap to close</p>
     </div>
   );
@@ -212,7 +212,7 @@ function TapeMenu({ calc, go }: { calc: Calculator; go: (p: TapePane) => void })
     const url = await shareUrl(calc);
     try {
       if (navigator.share) {
-        await navigator.share({ url, title: "QC-1 tape" });
+        await navigator.share({ url, title: "QC-1 circuit" });
         return;
       }
     } catch (e) {
@@ -228,11 +228,11 @@ function TapeMenu({ calc, go }: { calc: Calculator; go: (p: TapePane) => void })
   const rows: [string, string, () => void][] = [
     ["Examples…", `${EXAMPLE_COUNT} programs in ${EXAMPLE_CATEGORIES.length} topics`, () => go("examples")],
     ["Import QASM…", "paste OpenQASM 2/3 or open a file", () => go("import")],
-    ["Copy QASM", "OpenQASM 3 of the tape (Qiskit loads it)", () => { void copyText(calc, qasm()); go("list"); }],
-    ["Share QASM file", "qc1-tape.qasm", () => { void shareQasm(calc, qasm()); go("list"); }],
+    ["Copy QASM", "OpenQASM 3 of the circuit (Qiskit loads it)", () => { void copyText(calc, qasm()); go("list"); }],
+    ["Share QASM file", "qc1-circuit.qasm", () => { void shareQasm(calc, qasm()); go("list"); }],
     ["Copy Qiskit (Python)", "a script that builds the QuantumCircuit", () => { void copyText(calc, qiskitPython(calc.n, calc.tape), "Qiskit script copied"); go("list"); }],
     ["Share Qiskit file", "qc1_tape.py", () => { void shareQasm(calc, qiskitPython(calc.n, calc.tape), "qc1_tape.py"); go("list"); }],
-    ["Share link", "the tape and symbol values in a URL", () => { void shareLink(); go("list"); }],
+    ["Share link", "the circuit and symbol values in a URL", () => { void shareLink(); go("list"); }],
     ["QR code", "the share link, for phones pointed at this screen", () => go("qr")],
     ["Report", `circuit, state${calc.pins.length ? `, ${calc.pins.length} pinned LAB result${calc.pins.length > 1 ? "s" : ""}` : ""}: print or save as PDF`, () => { calc.toggleReport(); go("list"); }],
   ];

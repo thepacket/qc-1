@@ -79,7 +79,7 @@ function applyChannelDensity(rho: Float64Array, n: number, c: Channel): Float64A
 }
 
 export function noisyDensity(n: number, tape: Entry[], scope: Scope, m: NoiseModel, initial?: Float64Array): Density {
-  if (!densityOk(n, tape)) throw new Error(`density matrix: unitary tapes up to ${DENSITY_MAX} qubits`);
+  if (!densityOk(n, tape)) throw new Error(`density matrix: unitary circuits up to ${DENSITY_MAX} qubits`);
   const d = 1 << n;
   let rho: Float64Array = new Float64Array(2 * d * d);
   if (initial) {

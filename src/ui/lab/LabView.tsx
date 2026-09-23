@@ -160,7 +160,7 @@ function Input({ calc, meta, spec }: { calc: Calculator; meta: AnalysisMeta; spe
   if (spec.kind === "symbol") {
     const cur = symbolValue(spec, calc.labOpts(meta.id), calc.symbols);
     const options = [...(spec.optional ? [""] : []), ...calc.symbols];
-    if (calc.symbols.length === 0) return <div className="cut-picker"><span className="dim">{spec.label}: no symbols in the tape</span></div>;
+    if (calc.symbols.length === 0) return <div className="cut-picker"><span className="dim">{spec.label}: no symbols in the circuit</span></div>;
     return (
       <div className="cut-picker" role="radiogroup" aria-label={spec.label}>
         <span className="dim">{spec.label}</span>
@@ -356,7 +356,7 @@ function NoiseSettings({ calc }: { calc: Calculator }) {
     ["pd", "phase damping γ (T2)", "after each gate, on each of its qubits"],
     ["readout", "readout flip p", "each measured bit flips with probability p"],
     ["crosstalk", "crosstalk λ", "depolarizing on coupling neighbours of a 2-qubit gate"],
-    ["trajectories", "trajectories", "when ρ is too big, or the tape measures"],
+    ["trajectories", "trajectories", "when ρ is too big, or the circuit measures"],
   ];
   return (
     <div className="view">
@@ -396,7 +396,7 @@ function NoiseSettings({ calc }: { calc: Calculator }) {
         }} />
         <p className="dim note">
           Qiskit Aer's conventions (depolarizing_error, amplitude/phase_damping_error). With noise on, PROB, BLOCH, SHOTS and the Noise & error
-          analyses use the exact density matrix (unitary tapes, n ≤ 10) or trajectories; KET, TAPE and the other analyses stay ideal.
+          analyses use the exact density matrix (unitary circuits, n ≤ 10) or trajectories; KET, CIRC and the other analyses stay ideal.
         </p>
       </div>
     </div>

@@ -17,7 +17,7 @@ export function ParamView({ calc }: { calc: Calculator }) {
     <div className="view">
       <div className="view-head lab-head">
         <button className="back" onClick={() => calc.closeParams()} aria-label="Close parameters">‹</button>
-        <span>PARAM · symbols in the tape</span>
+        <span>PARAM · symbols in the circuit</span>
       </div>
       <div className="rows lab-body">
         {symbols.length === 0 && (

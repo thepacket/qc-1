@@ -28,13 +28,13 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 ## Expectation & metrology
 
 - **Expectation value** (live, n ≤ 20; inputs: observable, shots) — ⟨H⟩ for a Pauli string or Pauli sum, with its variance and the shot-noise error σ/√N.
-- **Optimise ⟨H⟩ (VQE)** (RUN, n ≤ 12; inputs: observable, goal, method, steps) — Gradient descent on ⟨H⟩ over the tape's symbols (finite differences); apply the result to the sliders.
+- **Optimise ⟨H⟩ (VQE)** (RUN, n ≤ 12; inputs: observable, goal, method, steps) — Gradient descent on ⟨H⟩ over the circuit's symbols (finite differences); apply the result to the sliders.
 - **Landscape** (RUN, n ≤ 12; inputs: observable, x, y) — ⟨H⟩ as one or two symbols sweep [−π, π]: a curve or a heatmap.
 - **Barren-plateau check** (RUN, n ≤ 12; inputs: observable, samples) — Variance of ∂⟨H⟩/∂θ over random parameter points; exponentially small means a barren plateau.
 - **Quantum Fisher information** (live, n ≤ 20; inputs: axis) — F_Q = 4 Var(J) for collective rotations: > N witnesses entanglement, N² is the Heisenberg limit.
 - **QFI matrix** (live, n ≤ 14) — 3×3 QFI matrix over Jx, Jy, Jz; its top eigenvalue is the best single-axis QFI.
 - **Spin squeezing** (live, n ≤ 14, n ≥ 2) — Wineland ξ² = N·min ΔJ⊥² / |⟨J⟩|²; below 1 is squeezed (and entangled).
-- **Quantum geometric tensor** (live, n ≤ 12) — Fubini–Study metric and Berry curvature over the tape's symbols (finite differences).
+- **Quantum geometric tensor** (live, n ≤ 12) — Fubini–Study metric and Berry curvature over the circuit's symbols (finite differences).
 
 ## Entanglement & correlations
 
@@ -65,7 +65,7 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 - **Three-tangle** (live, n ≤ 3, n ≥ 3; inputs: focal) — Genuine tripartite entanglement τ₃ (CKW): 1 for GHZ, 0 for W.
 - **Multifractal dimensions** (live, n ≤ 16) — Generalized fractal dimensions D_q of the basis distribution: 1 delocalized, 0 localized.
 - **Coherence** (live, n ≤ 20) — l₁-norm and relative-entropy coherence in the computational basis.
-- **Participation** (live, n ≤ 16) — Inverse participation ratio, participation ratio and entropies of the basis distribution; plus its growth along the tape.
+- **Participation** (live, n ≤ 16) — Inverse participation ratio, participation ratio and entropies of the basis distribution; plus its growth along the circuit.
 
 ## Dynamics
 
@@ -81,13 +81,13 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 - **Lyapunov exponent** (RUN, n ≤ 6, n ≥ 2; inputs: W on, V on) — Early-time exponential growth rate of the OTOC, λ_L.
 - **Operator weight** (RUN, n ≤ 4; inputs: Z on) — How Z on one qubit spreads under W(t) = U†WU: weight by Pauli support size, over t.
 - **Autocorrelation** (RUN, n ≤ 6; inputs: qubit) — Infinite-temperature ⟨Z(t)Z(0)⟩ and its spectrum: how long a qubit remembers its polarisation.
-- **Space-time ⟨Z⟩** (live, n ≤ 14) — ⟨Z⟩ of every qubit after every tape step.
-- **Space-time entropy** (live, n ≤ 12) — Each qubit's entanglement entropy after every tape step: the entanglement front.
+- **Space-time ⟨Z⟩** (live, n ≤ 14) — ⟨Z⟩ of every qubit after every circuit step.
+- **Space-time entropy** (live, n ≤ 12) — Each qubit's entanglement entropy after every circuit step: the entanglement front.
 - **Entanglement asymmetry** (live, n ≤ 12, n ≥ 2) — How much the first half breaks the excitation-number symmetry, after every step (quantum Mpemba).
 
 ## Operator & spectrum
 
-- **Unitary matrix** (live, n ≤ 6) — The tape's whole operator U in the computational basis: colour = phase, opacity = |Uᵢⱼ|.
+- **Unitary matrix** (live, n ≤ 6) — The circuit's whole operator U in the computational basis: colour = phase, opacity = |Uᵢⱼ|.
 - **Pauli transfer matrix** (live, n ≤ 3) — Rᵢⱼ = Tr(Pᵢ U Pⱼ U†)/2ⁿ: what the circuit does to each Pauli; a Clifford is a signed permutation.
 - **Operator entanglement** (live, n ≤ 6, n ≥ 2) — Operator-Schmidt spectrum of U across the middle cut: 0 for a product, 1 ebit for a CNOT.
 - **Floquet spectrum** (RUN, n ≤ 6) — Eigenphases of U on the unit circle, with circular level-spacing statistics.
@@ -100,18 +100,18 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 - **Effective temperature** (live, n ≤ 6; inputs: H) — Boltzmann fit ln p = c − βE to the energy populations (non-degenerate H).
 - **ETH matrix elements** (RUN, n ≤ 5; inputs: H, O) — |⟨Eₘ|O|Eₙ⟩|² against ω = Eₘ − Eₙ, and the diagonal ⟨Eₙ|O|Eₙ⟩ (non-degenerate H).
 - **Eigenstate entanglement** (RUN, n ≤ 6, n ≥ 2; inputs: H) — Half-chain entropy of every eigenstate of H against its energy: volume-law arch vs area law.
-- **Work distribution** (RUN, n ≤ 5; inputs: H) — Two-point-measurement work W = Eₘ − Eₙ for the tape as a quench from |0…0⟩ (energy-level projectors).
+- **Work distribution** (RUN, n ≤ 5; inputs: H) — Two-point-measurement work W = Eₘ − Eₙ for the circuit as a quench from |0…0⟩ (energy-level projectors).
 - **Berry phase** (RUN, n ≤ 12; inputs: x, y, loop) — Geometric phase around a square loop in two symbols, centred on their current values (discrete Wilson loop).
 - **Chern number** (RUN, n ≤ 12; inputs: x, y, grid) — Berry flux over the torus of two symbols in [0, 2π): an integer for a topological band.
 
 ## Circuit structure
 
-- **ZX diagram** (live, any n (also above 20 qubits)) — The tape as a ZX-calculus diagram: green Z and red X spiders, Hadamard boxes.
-- **Light cone** (live, any n (also above 20 qubits); inputs: qubit, cone) — The tape steps that can influence a qubit's final state (backward) or that its input can reach (forward).
+- **ZX diagram** (live, any n (also above 20 qubits)) — The circuit as a ZX-calculus diagram: green Z and red X spiders, Hadamard boxes.
+- **Light cone** (live, any n (also above 20 qubits); inputs: qubit, cone) — The circuit steps that can influence a qubit's final state (backward) or that its input can reach (forward).
 - **Resources** (live, any n (also above 20 qubits); inputs: check map) — Gate counts, depth, T count and T-depth, CX and Clifford counts, as Qiskit counts the exported circuit.
 - **Interaction graph** (live, any n (also above 20 qubits), n ≥ 2) — How many gates act on each pair of qubits: the connectivity a device needs.
 - **Tanner graph** (live, any n (also above 20 qubits)) — Measurements (checks) against the qubits in each one's backward light cone.
-- **Stabilizer tableau** (live, any n (also above 20 qubits)) — For Clifford tapes: the n Pauli operators that fix the state (Bell → +XX, +ZZ).
+- **Stabilizer tableau** (live, any n (also above 20 qubits)) — For Clifford circuits: the n Pauli operators that fix the state (Bell → +XX, +ZZ).
 
 ## Circuit tools
 
@@ -119,17 +119,17 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 - **Transpile** (RUN, n ≤ 20; inputs: to) — Rewrite into a device gate set: Clifford+T, IBM (RZ, SX, CX) or Rigetti (RZ, RX±π/2, CZ); arbitrary 2-qubit gates go through a KAK decomposition.
 - **Route** (RUN, n ≤ 20, n ≥ 2; inputs: map) — Insert SWAPs so every 2-qubit gate acts on neighbours of a coupling map (greedy, shortest paths). Qubits end up relabelled.
 - **Compile** (RUN, n ≤ 20; inputs: to, map) — Transpile, optimise, route, optimise: one pass to a device, with the gate count after each stage.
-- **Inverse U†** (RUN, n ≤ 20; inputs: mode) — Reverse the tape and invert every gate. Appending gives a mirror circuit that returns to |0…0⟩.
+- **Inverse U†** (RUN, n ≤ 20; inputs: mode) — Reverse the circuit and invert every gate. Appending gives a mirror circuit that returns to |0…0⟩.
 - **Trotter circuit** (RUN, n ≤ 20; inputs: H, steps, order, mode) — Build e^{−iH·steps·t} as a product formula in the symbol t, and show its error against the exact evolution at the current t.
 - **State preparation** (RUN, n ≤ 20; inputs: target) — A circuit that prepares a target state (or the current one) from |0…0⟩ with RY, RZ and CX.
-- **Unitary synthesis** (RUN, n ≤ 4) — Re-synthesise the tape's unitary from two-level controlled 2×2 gates (exact, not gate-optimal).
-- **Random Clifford circuit** (RUN, n ≤ 20; inputs: depth) — A random Clifford circuit (single-qubit Cliffords and CX layers) to replace the tape with.
+- **Unitary synthesis** (RUN, n ≤ 4) — Re-synthesise the circuit's unitary from two-level controlled 2×2 gates (exact, not gate-optimal).
+- **Random Clifford circuit** (RUN, n ≤ 20; inputs: depth) — A random Clifford circuit (single-qubit Cliffords and CX layers) to replace the circuit with.
 
 ## Noise & error
 
 - **Noise model** (live, any n (also above 20 qubits)) — Turn noise on and set its rates: depolarizing, T1/T2 damping, readout, crosstalk; device presets and calibration files.
 - **Noise impact** (live, n ≤ 10) — Fidelity and trace distance of the noisy state to the ideal one, its purity and entropy.
-- **Decoherence by depth** (RUN, n ≤ 6) — Fidelity to the ideal state and purity after every step: how noise accumulates along the tape.
+- **Decoherence by depth** (RUN, n ≤ 6) — Fidelity to the ideal state and purity after every step: how noise accumulates along the circuit.
 - **Mixed-state spectrum** (live, n ≤ 8) — Eigenvalues of the noisy ρ, its purity, effective rank and entropy.
 - **Coherent information** (live, n ≤ 8, n ≥ 2; inputs: A) — I(A⟩B) = S(B) − S(AB) of the noisy state: positive means quantum correlations survive.
 - **Noisy coherence** (live, n ≤ 8) — Computational-basis coherence (l1 and relative entropy) of the noisy state against the ideal one.
@@ -147,7 +147,7 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 - **T1 / T2 experiments** (RUN, any n (also above 20 qubits)) — Relaxation, Ramsey and echo decays over idle gates, with fitted T1, T2*, T2.
 - **Repetition code** (RUN, any n (also above 20 qubits); inputs: shots) — Logical error rate of the bit-flip code for d = 3, 5, 7 against the physical flip rate: exact and decoded.
 - **Classical shadows** (RUN, n ≤ 12; inputs: observable, snapshots) — Estimate ⟨H⟩ from random-Pauli measurement snapshots of the current state, against the exact value.
-- **Process tomography** (RUN, n ≤ 2; inputs: channel) — The tape's Pauli transfer matrix reconstructed from prepared inputs and Pauli readouts; process and gate fidelity.
+- **Process tomography** (RUN, n ≤ 2; inputs: channel) — The circuit's Pauli transfer matrix reconstructed from prepared inputs and Pauli readouts; process and gate fidelity.
 
 ## Error correction
 
@@ -156,7 +156,7 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 
 ## Verification & export
 
-- **Compare with memory** (live, n ≤ 20; inputs: M) — The tape against a stored tape (STO): same operator?, process and average gate fidelity, state fidelity, resources.
-- **Custom plot** (RUN, n ≤ 14; inputs: plot, over, observable) — Any of these quantities along the tape (after each step), over one period of t, or over another symbol.
+- **Compare with memory** (live, n ≤ 20; inputs: M) — The circuit against a stored circuit (STO): same operator?, process and average gate fidelity, state fidelity, resources.
+- **Custom plot** (RUN, n ≤ 14; inputs: plot, over, observable) — Any of these quantities along the circuit (after each step), over one period of t, or over another symbol.
 - **Plot program (JavaScript)** (RUN, n ≤ 14; inputs: program) — Draw anything from the state with a few lines of JavaScript: the program gets data (amplitudes, probabilities, per-qubit ρ, symbols) and returns shapes. It runs sandboxed: its own worker, no network or storage, a time limit.
-- **Self-test** (RUN, any n (also above 20 qubits)) — Replay the committed Qiskit/Aer references on this device: gates, random tapes, symbols, classical control, noise, stabilizer mode.
+- **Self-test** (RUN, any n (also above 20 qubits)) — Replay the committed Qiskit/Aer references on this device: gates, random circuits, symbols, classical control, noise, stabilizer mode.

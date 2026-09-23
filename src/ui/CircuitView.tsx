@@ -56,7 +56,7 @@ export function CircuitDiagram({ n, tape, scrub, onTap }: { n: number; tape: Ent
 
   if (tape.length === 0) return <div className="rows dim">empty: key some gates</div>;
   if (!lay || !geo) {
-    return <div className="rows dim">{tooWide ? `the diagram shows up to ${DIAGRAM_MAX_QUBITS} wires (the tape uses ${wires!.length})` : `the diagram shows up to ${MAX_STEPS} steps`}: see LIST</div>;
+    return <div className="rows dim">{tooWide ? `the diagram shows up to ${DIAGRAM_MAX_QUBITS} wires (the circuit uses ${wires!.length})` : `the diagram shows up to ${MAX_STEPS} steps`}: see LIST</div>;
   }
   const rows = lay.wires.length;
   const H = TOP + rows * ROW;

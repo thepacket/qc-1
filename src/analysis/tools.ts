@@ -161,7 +161,7 @@ export const TOOL_RUNS: Record<string, Run> = {
       scalars: [{ label: "gates", value: `${r.before} → ${r.after}` }, { label: "passes", value: r.passes }],
       charts: [compareTable(ctx.n, ctx.tape, tape), ...(fired.length ? [{ kind: "table" as const, title: "rules fired", headers: ["rule", "times"], rows: fired }] : [])],
       notes: r.after === r.before ? ["Nothing to simplify: no adjacent cancellations or merges."] : [],
-      proposal: r.after < r.before ? proposal("APPLY · replace the tape", ctx.n, tape, sameOperator(ctx, ctx.tape, tape)) : undefined,
+      proposal: r.after < r.before ? proposal("APPLY · replace the circuit", ctx.n, tape, sameOperator(ctx, ctx.tape, tape)) : undefined,
     };
   },
 
@@ -174,7 +174,7 @@ export const TOOL_RUNS: Record<string, Run> = {
       scalars: [{ label: "target", value: TARGET_LABEL[target] }],
       charts: [compareTable(ctx.n, ctx.tape, tape)],
       notes: skipped.length ? [`Left as is (no exact ${TARGET_LABEL[target]} form here): ${skipped.join(", ")}.${target === "clifford-t" ? " Arbitrary angles need approximate synthesis, which isn't done." : " Symbolic angles block the 2-qubit (KAK) decomposition."}`] : [],
-      proposal: proposal("APPLY · replace the tape", ctx.n, tape, sameOperator(ctx, ctx.tape, tape)),
+      proposal: proposal("APPLY · replace the circuit", ctx.n, tape, sameOperator(ctx, ctx.tape, tape)),
     };
   },
 
@@ -197,7 +197,7 @@ export const TOOL_RUNS: Record<string, Run> = {
         ...[layoutNote(r.finalMapping)].filter((x): x is string => !!x),
       ],
       proposal: r.swapsInserted || r.violationsBefore || tape.length !== ctx.tape.length
-        ? proposal("APPLY · replace the tape", ctx.n, tape, sameOperator(ctx, ctx.tape, tape, { perm: r.finalMapping, what: "same operator up to the final layout and a global phase" }))
+        ? proposal("APPLY · replace the circuit", ctx.n, tape, sameOperator(ctx, ctx.tape, tape, { perm: r.finalMapping, what: "same operator up to the final layout and a global phase" }))
         : undefined,
     };
   },
@@ -214,7 +214,7 @@ export const TOOL_RUNS: Record<string, Run> = {
         compareTable(ctx.n, ctx.tape, tape),
       ],
       notes: [layoutNote(r.finalMapping)].filter((x): x is string => !!x),
-      proposal: proposal("APPLY · replace the tape", ctx.n, tape, sameOperator(ctx, ctx.tape, tape, { perm: r.finalMapping, what: "same operator up to the final layout and a global phase" })),
+      proposal: proposal("APPLY · replace the circuit", ctx.n, tape, sameOperator(ctx, ctx.tape, tape, { perm: r.finalMapping, what: "same operator up to the final layout and a global phase" })),
     };
   },
 
@@ -273,10 +273,10 @@ export const TOOL_RUNS: Record<string, Run> = {
     return {
       scalars,
       notes: [
-        `${qdrift ? "QDrift (16 random samples per step, fixed seed)" : `Order-${order} product formula`}, each step e^{−iH·t}; t is the tape's symbol (PARAM plays it).`,
+        `${qdrift ? "QDrift (16 random samples per step, fixed seed)" : `Order-${order} product formula`}, each step e^{−iH·t}; t is the circuit's symbol (PARAM plays it).`,
         ...(n !== ctx.n ? [`Replacing resizes the register to n = ${n}.`] : []),
       ],
-      proposal: proposal("APPLY · replace the tape", n, tape, { verified: true, check: "Trotter formula checked against Qiskit's PauliEvolutionGate (orders 1, 2, 4)" }),
+      proposal: proposal("APPLY · replace the circuit", n, tape, { verified: true, check: "Trotter formula checked against Qiskit's PauliEvolutionGate (orders 1, 2, 4)" }),
     };
   },
 
@@ -316,14 +316,14 @@ export const TOOL_RUNS: Record<string, Run> = {
     return {
       scalars: [{ label: "|⟨target|ψ⟩|", value: ov }, { label: "gates", value: res.gates }, { label: "CX", value: res.cxCount }],
       notes: ["Möttönen et al. uniformly controlled RY/RZ cascade from |0…0⟩; exact up to a global phase, not gate-optimal."],
-      proposal: proposal("APPLY · replace the tape", n, tape, {
+      proposal: proposal("APPLY · replace the circuit", n, tape, {
         verified: ok, check: ok ? `prepares the target from |0…0⟩ (overlap 1 − ${e2(1 - ov)})` : `misses the target (overlap ${ov}) — not offered`,
       }),
     };
   },
 
   synth(ctx) {
-    if (ctx.tape.some((e) => e.some((s) => NONUNITARY.has(s.gateId)))) throw new Error("the tape isn't unitary (it measures, resets or prepares a state)");
+    if (ctx.tape.some((e) => e.some((s) => NONUNITARY.has(s.gateId)))) throw new Error("the circuit isn't unitary (it measures, resets or prepares a state)");
     const d = 1 << ctx.n;
     const U: Cx[][] = Array.from({ length: d }, () => new Array<Cx>(d));
     for (let j = 0; j < d; j++) {
@@ -344,7 +344,7 @@ export const TOOL_RUNS: Record<string, Run> = {
         "Gray-code two-level decomposition into controlled 2×2 gates (u_arb): exact but not gate-optimal.",
         ...(syms ? ["Synthesised at the current symbol values: the output has numbers, not symbols."] : []),
       ],
-      proposal: proposal("APPLY · replace the tape", ctx.n, tape, {
+      proposal: proposal("APPLY · replace the circuit", ctx.n, tape, {
         verified: r.equal, check: r.equal ? `same operator up to a global phase at the current values (err ${e2(r.maxErr)})` : `differs (err ${e2(r.maxErr)}) — not offered`,
       }),
     };
@@ -379,7 +379,7 @@ export const TOOL_RUNS: Record<string, Run> = {
 
   tanner(ctx) {
     const t = tannerGraph(lowerTape(ctx.n, ctx.tape));
-    if (!t.checks.length) return { scalars: [{ label: "checks (measurements)", value: 0 }], notes: ["No measurements in the tape: key MEAS to add checks."] };
+    if (!t.checks.length) return { scalars: [{ label: "checks (measurements)", value: 0 }], notes: ["No measurements in the circuit: key MEAS to add checks."] };
     const q = [...Array(ctx.n).keys()].map((i) => `q${i}`);
     return {
       scalars: [{ label: "checks (measurements)", value: t.checks.length }],
@@ -410,8 +410,8 @@ export const TOOL_RUNS: Record<string, Run> = {
     const g = cliffordGenerators(ctx.n, ctx.tape);
     if (!g) {
       return {
-        scalars: [{ label: "Clifford tape", value: "no" }],
-        notes: ["Only for Clifford tapes (every gate Clifford, no symbols): Paulis, H, S, √X, √Y, SWAP, iSWAP, CX, CZ, ECR, rotations by multiples of π/2, measurements, resets, preps."],
+        scalars: [{ label: "Clifford circuit", value: "no" }],
+        notes: ["Only for Clifford circuits (every gate Clifford, no symbols): Paulis, H, S, √X, √Y, SWAP, iSWAP, CX, CZ, ECR, rotations by multiples of π/2, measurements, resets, preps."],
       };
     }
     return {

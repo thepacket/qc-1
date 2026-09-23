@@ -34,7 +34,7 @@ function model(ctx: AnalysisContext): NoiseModel {
 /** ρ of the noisy tape: exact when possible, else a trajectory estimate (small n). */
 function densityOf(ctx: AnalysisContext, m: NoiseModel): { rho: Float64Array; method: string } {
   if (densityOk(ctx.n, ctx.tape)) return { rho: noisyDensity(ctx.n, ctx.tape, ctx.scope, m).rho, method: "exact density matrix" };
-  if (ctx.n > 8) throw new Error(`needs a unitary tape up to ${DENSITY_MAX} qubits, or n ≤ 8 for a trajectory estimate`);
+  if (ctx.n > 8) throw new Error(`needs a unitary circuit up to ${DENSITY_MAX} qubits, or n ≤ 8 for a trajectory estimate`);
   const d = 1 << ctx.n, rho = new Float64Array(2 * d * d);
   let T = 0;
   runTrajectories(ctx.n, ctx.tape, ctx.scope, m, (st) => {
@@ -45,7 +45,7 @@ function densityOf(ctx: AnalysisContext, m: NoiseModel): { rho: Float64Array; me
     }
   });
   for (let i = 0; i < rho.length; i++) rho[i] /= T;
-  return { rho, method: `${T} trajectories (the tape measures, resets or uses IF)` };
+  return { rho, method: `${T} trajectories (the circuit measures, resets or uses IF)` };
 }
 
 const toComplex = (rho: Float64Array, d: number): Complex[][] =>
@@ -155,13 +155,13 @@ export const NOISE_RUNS: Record<string, Run> = {
         { label: "purity Tr ρ²", value: r4(purity) },
         { label: "entropy S(ρ)", value: r4(entropyOf(ev)), unit: "bits" },
       ],
-      notes: [noteMethod(method), "ψ is the ideal (noiseless) state of the tape."],
+      notes: [noteMethod(method), "ψ is the ideal (noiseless) state of the circuit."],
     };
   },
 
   decoherence(ctx) {
     const m = model(ctx);
-    if (!densityOk(ctx.n, ctx.tape) || ctx.n > 6) throw new Error("needs a unitary tape up to 6 qubits");
+    if (!densityOk(ctx.n, ctx.tape) || ctx.n > 6) throw new Error("needs a unitary circuit up to 6 qubits");
     const k = Math.min(ctx.tape.length, 64);
     const d = 1 << ctx.n;
     const fid: number[] = [], pur: number[] = [];
@@ -317,7 +317,7 @@ export const NOISE_RUNS: Record<string, Run> = {
     const ideal = unitary ? pauliSumExpectation(idealState(ctx), n, terms) : NaN;
     const noisy = noisyExpectation(n, ctx.tape, ctx.scope, m, terms);
     const scalars: AnalysisResult["scalars"] = [
-      { label: "ideal ⟨H⟩", value: unitary ? r4(ideal) : "— (the tape measures)" },
+      { label: "ideal ⟨H⟩", value: unitary ? r4(ideal) : "— (the circuit measures)" },
       { label: "noisy ⟨H⟩", value: noisy.stderr ? `${r4(noisy.value)} ± ${r4(noisy.stderr)}` : r4(noisy.value) },
     ];
     const charts: AnalysisResult["charts"] = [];
@@ -330,7 +330,7 @@ export const NOISE_RUNS: Record<string, Run> = {
         xLabel: "noise scale (0 = extrapolated)", yLabel: "⟨H⟩",
       });
     } else {
-      if (!unitary) throw new Error("PEC here needs a unitary tape");
+      if (!unitary) throw new Error("PEC here needs a unitary circuit");
       const T = num("mitigated", "samples", opts, n);
       const p = pec(n, ctx.tape, ctx.scope, m, terms, { trajectories: T });
       scalars.push({ label: "PEC", value: `${r4(p.value)} ± ${r4(p.stderr)}` }, { label: "sampling overhead Γ", value: r4(p.gamma) });

@@ -13,7 +13,7 @@ const body = (q: string) => q.split("\n").filter((l) => l && !l.startsWith("//")
 describe("QASM 3 export", () => {
   test("header and register", () => {
     const q = qasm("h");
-    expect(q).toMatch(/^\/\/ Quantum Calculator One \(QC-1\) tape, 1 step\nOPENQASM 3\.0;\ninclude "stdgates\.inc";/);
+    expect(q).toMatch(/^\/\/ Quantum Calculator One \(QC-1\) circuit, 1 step\nOPENQASM 3\.0;\ninclude "stdgates\.inc";/);
     expect(body(q)).toEqual(["qubit[2] q;", "h q[0];"]);
   });
 

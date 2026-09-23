@@ -6,7 +6,7 @@
 // IF tests one bit at a time, so a third syndrome qubit q[5] computes
 // "both parities fired" (the middle qubit flipped) with a Toffoli: the
 // corrections are then X on q[0] if c[3] alone, X on q[2] if c[4] alone,
-// X on q[1] if both. Move the error (scrub back in TAPE, DEL it, key X on
+// X on q[1] if both. Move the error (scrub back in CIRC, DEL it, key X on
 // another data qubit) and the syndrome and the correction follow.
 // Drag θ (tap the θ badge) to encode another state.
 

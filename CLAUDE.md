@@ -22,6 +22,8 @@ right-hand panel, the display reflowing beside it. Vite + React + TypeScript.
 - **No compute on the server.** fly.io (the live server and its builder) only serves and builds static files. All simulation and analysis runs in the browser. Python is dev-only (local and GitHub CI), never in the Docker context.
 - **Validate before porting.** Every ported Quantiom feature is checked against Qiskit or numpy first. See `validation/README.md`: seeded cases → `npm run validate` → committed `test/fixtures/*.json` → `test/validated/*.test.ts`. A mismatch is fixed, never recorded as a reference. Upstream bugs go in `docs/quantiom-bugs.md`; fixes in ported files go in `// QC-1 fix` blocks. The port's phase plan is in memory (qc1-port-plan).
 
+- **Words in the UI:** users see a quantum *circuit*, never a "tape". The sixth tab is CIRC (panes LIST, DRAW, QASM, ≡), and messages say "circuit" or "steps". The code keeps its internal names (`tape`, Mode id `"tape"`, `fromTape.ts`…).
+
 ## Layout
 - `src/sim/` is **ported from Quantiom**: `client/src/sim` plus `editor/{types,gates}.ts`.
   `src/qasm/emit.ts` is Quantiom's QASM 3 emitter, with one QC-1 block marked for

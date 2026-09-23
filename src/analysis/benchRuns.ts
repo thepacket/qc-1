@@ -18,7 +18,7 @@ const needNoise = (ctx: AnalysisContext): NoiseModel => {
   if (!ctx.noise?.enabled) throw new Error("benchmarks measure the noise model: turn it on in LAB → Noise & error → Noise model");
   return ctx.noise;
 };
-const NOISE_NOTE = "Runs on the noise model (not on the tape).";
+const NOISE_NOTE = "Runs on the noise model (not on the circuit).";
 
 export const BENCH_RUNS: Record<string, Run> = {
   rb(ctx, opts) {
@@ -125,7 +125,7 @@ export const BENCH_RUNS: Record<string, Run> = {
   },
 
   tomography(ctx, opts) {
-    if (ctx.tape.some((e) => e.some((s) => NONUNITARY.has(s.gateId) || s.condition))) throw new Error("process tomography needs a unitary tape");
+    if (ctx.tape.some((e) => e.some((s) => NONUNITARY.has(s.gateId) || s.condition))) throw new Error("process tomography needs a unitary circuit");
     const noisy = num("tomography", "channel", opts, ctx.n) === 1;
     if (noisy) needNoise(ctx);
     const R = processTomography(ctx.n, ctx.tape, noisy ? ctx.noise! : null);
@@ -139,7 +139,7 @@ export const BENCH_RUNS: Record<string, Run> = {
     return {
       scalars: [{ label: "process fidelity", value: Fp }, { label: "average gate fidelity", value: (d * Fp + 1) / (d + 1) }],
       charts: [{ kind: "heatmap", scale: "div", min: -1, max: 1, rows: labels, cols: labels, values: R, title: "Pauli transfer matrix R_ij (row: output, column: input)" }],
-      notes: ["Inputs |0⟩, |1⟩, |+⟩, |+i⟩ per qubit (prepared ideally: the channel is the tape's), every Pauli read out, linear inversion (exact expectation values)."],
+      notes: ["Inputs |0⟩, |1⟩, |+⟩, |+i⟩ per qubit (prepared ideally: the channel is the circuit's), every Pauli read out, linear inversion (exact expectation values)."],
     };
   },
 
@@ -154,7 +154,7 @@ export const BENCH_RUNS: Record<string, Run> = {
     }
     return {
       scalars: [{ label: "gates", value: tape.length }],
-      proposal: { label: "APPLY · replace the tape", n: ctx.n, tape, verified: true, check: "a random Clifford circuit (H, S, CX layers)" },
+      proposal: { label: "APPLY · replace the circuit", n: ctx.n, tape, verified: true, check: "a random Clifford circuit (H, S, CX layers)" },
       notes: ["Random single-qubit Cliffords on every qubit, then a brickwork CX layer, repeated. Re-run for another draw."],
     };
   },
