@@ -3,7 +3,7 @@ import { runAnalysis } from "./run";
 import type { AnalysisReply, AnalysisRequest } from "./types";
 import type { Entry } from "../calc/steps";
 
-type Job = { req: AnalysisRequest; snap: { rev: number; n: number; tape: Entry[]; state: Float64Array } };
+type Job = { req: AnalysisRequest; snap: { rev: number; n: number; tape: Entry[]; scope: Record<string, number>; state: Float64Array } };
 
 /**
  * The analysis worker: receives register snapshots from the core worker over
@@ -14,7 +14,7 @@ self.onmessage = (e: MessageEvent<{ port: MessagePort }>) => {
   e.data.port.onmessage = (m: MessageEvent<Job>) => {
     const { req, snap } = m.data;
     const t0 = performance.now();
-    const result = runAnalysis(req.id, { n: snap.n, state: snap.state, tape: snap.tape }, req.opts);
+    const result = runAnalysis(req.id, { n: snap.n, state: snap.state, tape: snap.tape, scope: snap.scope }, req.opts);
     const reply: AnalysisReply = { seq: req.seq, rev: snap.rev, id: req.id, result, ms: performance.now() - t0 };
     (self as DedicatedWorkerGlobalScope).postMessage(reply);
   };

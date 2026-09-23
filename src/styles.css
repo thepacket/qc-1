@@ -553,3 +553,23 @@ button {
 .disk-needle { stroke: var(--series-2); stroke-width: 2.5; stroke-linecap: round; }
 .disk-tip { fill: var(--series-2); stroke: var(--lcd); stroke-width: 1.5; }
 .qsphere { width: 100%; max-width: 300px; height: auto; align-self: center; }
+
+/* ── PARAM ─────────────────────────────────────────────────── */
+.sym-badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 3px;
+  border: 1px solid var(--series-1);
+  color: var(--ink);
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.param-row { display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 4px; }
+.param-row.on { background: rgba(57, 135, 229, 0.16); box-shadow: inset 3px 0 0 var(--series-1); }
+.param-top { display: flex; align-items: baseline; gap: 10px; }
+.param-name { font-size: 18px; min-width: 1.2em; }
+.param-val { flex: 1; font-variant-numeric: tabular-nums; }
+.param-row input[type="range"] { width: 100%; accent-color: var(--series-1); }

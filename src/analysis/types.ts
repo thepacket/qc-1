@@ -81,7 +81,7 @@ export type Chart =
 export type AnalysisResult = { scalars?: Scalar[]; charts?: Chart[]; notes?: string[]; error?: string };
 
 /** What an analysis sees: a private copy of the register. */
-export type AnalysisContext = { n: number; state: Float64Array; tape: Entry[] };
+export type AnalysisContext = { n: number; state: Float64Array; tape: Entry[]; scope: Record<string, number> };
 
 export type AnalysisRequest = { seq: number; id: string; opts: Opts };
 export type AnalysisReply = { seq: number; rev: number; id: string; result: AnalysisResult; ms: number };

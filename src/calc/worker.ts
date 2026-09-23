@@ -31,6 +31,9 @@ self.onmessage = (e: MessageEvent<WorkerIn>) => {
     scheduled = true;
     setTimeout(() => {
       scheduled = false;
+      // A deferred symbol replay may have changed the tape (re-sampled
+      // outcomes): send the mirror an update that consumes no reporter.
+      if (core.flush()) post({ sync: core.result() });
       post({ view: core.view(req) });
     }, 0);
   }

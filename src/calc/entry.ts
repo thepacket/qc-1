@@ -21,17 +21,32 @@ export const TOKENS: Record<string, Token> = {
   minus: { disp: "−", expr: "-" },
   mul: { disp: "×", expr: "*" },
   div: { disp: "÷", expr: "/" },
+  tsym: { disp: "t", expr: "t" },
+  sin: { disp: "sin(", expr: "sin(" },
+  cos: { disp: "cos(", expr: "cos(" },
+  exp: { disp: "exp(", expr: "exp(" },
 };
 
-const ENDS_VALUE = /[\d.π)]$/;
-const STARTS_VALUE = /^(π|\(|sqrt\()/;
+/** Symbols the VAR key cycles through (2ND+, repeatedly). Glyphs; sim/expr.ts maps them to ASCII. */
+export const VARS = ["θ", "φ", "λ", "α", "β", "γ", "δ", "τ", "ω"];
+export const varToken = (g: string): Token => ({ disp: g, expr: g });
+
+/** ASCII scope name → display glyph (theta → θ; t stays t). */
+const ASCII: Record<string, string> = {
+  theta: "θ", phi: "φ", lambda: "λ", alpha: "α", beta: "β", gamma: "γ", delta: "δ", tau: "τ", omega: "ω",
+};
+export const symbolGlyph = (name: string) => ASCII[name] ?? name;
+
+const VALUE_END = `[\\d.π)t${VARS.join("")}]$`;
+const VALUE_START = `^(π|\\(|sqrt\\(|sin\\(|cos\\(|exp\\(|t|[${VARS.join("")}])`;
+const ENDS_VALUE = new RegExp(VALUE_END);
+const STARTS_VALUE = new RegExp(VALUE_START);
 
 export function toExpr(tokens: Token[]): string {
   let out = "";
   for (const t of tokens) {
-    const implicit =
-      (ENDS_VALUE.test(out) && STARTS_VALUE.test(t.expr)) ||
-      (/[π)]$/.test(out) && /^\d/.test(t.expr));
+    // Implicit ×: 3π, 2θ, πt, (…)(…), θ2 (a value followed by a value).
+    const implicit = ENDS_VALUE.test(out) && (STARTS_VALUE.test(t.expr) || (!/[\d.]$/.test(out) && /^\d/.test(t.expr)));
     out += (implicit ? "*" : "") + t.expr;
   }
   // Close any open parentheses so "√(2" works.

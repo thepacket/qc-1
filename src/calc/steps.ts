@@ -73,17 +73,37 @@ export const MACROS: Record<string, [string, number[], number[]][]> = {
 
 const EXPR_CACHE = new Map<string, ReturnType<typeof compileExpr>>();
 
-/** Evaluate an angle expression. Returns NaN on a syntax error. */
-export function evalParam(src: string): number {
+/** Symbol values by ASCII name (θ → "theta", t → "t"; see sim/expr.ts). */
+export type Scope = Record<string, number>;
+
+function compiled(src: string) {
   let c = EXPR_CACHE.get(src);
   if (!c) {
     c = compileExpr(src);
     EXPR_CACHE.set(src, c);
+    if (EXPR_CACHE.size > 4096) EXPR_CACHE.delete(EXPR_CACHE.keys().next().value!);
   }
-  // compileExpr returns 0 for runtime failures and NaN only when the source
-  // doesn't parse; treat free variables as a syntax error too.
-  if (c.freeVars.length > 0) return NaN;
-  return c.eval({});
+  return c;
+}
+
+/**
+ * Evaluate an angle expression. NaN on a syntax error or when it uses a
+ * symbol that `scope` doesn't define.
+ */
+export function evalParam(src: string, scope: Scope = {}): number {
+  const c = compiled(src);
+  for (const v of c.freeVars) if (!(v in scope)) return NaN;
+  return c.eval(scope);
+}
+
+/** Symbols (ASCII names) an expression uses. */
+export function symbolsOf(src: string): string[] {
+  return compiled(src).freeVars;
+}
+
+/** True when the expression parses (symbols allowed). */
+export function exprOk(src: string): boolean {
+  return !Number.isNaN(compiled(src).eval({}));
 }
 
 /** An RNG that makes measureZ return `o` (it tests `rng() < p1`). */
@@ -93,12 +113,12 @@ const forced = (o: 0 | 1) => () => (o === 1 ? -1 : 2);
  * Apply one step to the state in place. Measurements sample with `rng` the
  * first time and record the outcome; later replays force that outcome.
  */
-export function applyStep(state: Float64Array, n: number, s: Step, rng: () => number): Step {
+export function applyStep(state: Float64Array, n: number, s: Step, rng: () => number, scope: Scope = {}): Step {
   const prep = s.gateId === "initialize" ? [initMatrix(s.params[0])] : PREP[s.gateId];
   if (prep) {
-    const done = applyStep(state, n, { ...s, gateId: "reset" }, rng);
+    const done = applyStep(state, n, { ...s, gateId: "reset" }, rng, scope);
     for (const U of prep) applyKQubit(state, n, s.targets, U);
-    return s.outcome === undefined ? { ...s, outcome: done.outcome } : s;
+    return done.outcome === s.outcome ? s : { ...s, outcome: done.outcome };
   }
 
   const macro = MACROS[s.gateId];
@@ -111,25 +131,41 @@ export function applyStep(state: Float64Array, n: number, s: Step, rng: () => nu
         controlStates: s.controlStates && [...s.controlStates, ...cs.map(() => true)],
         targets: ts.map((q) => s.targets[q]),
         params: [],
-      }, rng);
+      }, rng, scope);
     }
     return s;
   }
 
   if (MEASURE_IDS.has(s.gateId)) {
     const q = s.targets[0];
-    const r = s.outcome === undefined ? rng : forced(s.outcome);
+    const measure = (r: () => number) => {
+      switch (s.gateId) {
+        case "measure_x": return measureX(state, n, q, r);
+        case "measure_y": return measureY(state, n, q, r);
+        default: return measureZ(state, n, q, r);
+      }
+    };
     let o: number;
-    switch (s.gateId) {
-      case "measure_x": o = measureX(state, n, q, r); break;
-      case "measure_y": o = measureY(state, n, q, r); break;
-      default: o = measureZ(state, n, q, r);
+    if (s.outcome === undefined) {
+      o = measure(rng);
+    } else {
+      // Replay forces the recorded outcome, unless changed parameters made it
+      // impossible: then sample afresh (the caller sees the new outcome).
+      const before = state.slice();
+      o = measure(forced(s.outcome));
+      let norm = 0;
+      for (let i = 0; i < state.length; i++) norm += state[i] * state[i];
+      if (norm < 1e-12) {
+        state.set(before);
+        o = measure(rng);
+      }
     }
     if (s.gateId === "reset" && o === 1) applyKQubit(state, n, [q], M_X);
-    return s.outcome === undefined ? { ...s, outcome: o as 0 | 1 } : s;
+    return o === s.outcome ? s : { ...s, outcome: o as 0 | 1 };
   }
 
-  const params = s.params.map(evalParam);
+  const params = s.params.map((p) => evalParam(p, scope));
+  if (params.some(Number.isNaN)) throw new Error(`undefined symbol in ${s.params.join(", ")}`);
   let U = buildMatrix(s.gateId, params);
   if (!U) throw new Error(`unknown gate ${s.gateId}`);
   if (s.targets.length === 1) {
@@ -204,6 +240,7 @@ const LABEL: Record<string, string> = {
 /** Pretty-print an expression the way it was keyed in (π/4, 3π/4, √(2)). */
 export function prettyExpr(e: string): string {
   return e
+    .replace(/(\d|\)|π)\*(π|t\b|[θφλαβγδτω]|sin\(|cos\(|exp\(|sqrt\()/g, "$1$2")
     .replace(/(\d|\))\*π/g, "$1π")
     .replace(/(\d|\)|π)\*\(/g, "$1(")
     .replace(/sqrt\(/g, "√(")

@@ -13,12 +13,14 @@ export interface Engine {
   /** Abandon any running analysis (restarts the analysis worker). */
   cancelAnalysis(): void;
   onResult: (r: Result) => void;
+  /** Register update not tied to a command (after a coalesced scope replay). */
+  onSync: (r: Result) => void;
   onView: (v: ViewData) => void;
   onAnalysis: (r: AnalysisReply) => void;
 }
 
 export type WorkerIn = { cmd: Cmd } | { attach: MessagePort } | { analyze: AnalysisRequest };
-export type WorkerOut = { result: Result } | { view: ViewData };
+export type WorkerOut = { result: Result } | { sync: Result } | { view: ViewData };
 
 type Analyzer = (id: string, ctx: AnalysisContext, opts: Opts) => AnalysisResult;
 
@@ -27,6 +29,7 @@ export class InlineEngine implements Engine {
   core = new Core();
   private req: ViewReq = { mode: "ket", shots: 1024, shotSeed: 0 };
   onResult: (r: Result) => void = () => {};
+  onSync: (r: Result) => void = () => {};
   onView: (v: ViewData) => void = () => {};
   onAnalysis: (r: AnalysisReply) => void = () => {};
 
@@ -36,6 +39,7 @@ export class InlineEngine implements Engine {
   send(cmd: Cmd) {
     if (cmd.t === "view") this.req = cmd.req;
     this.onResult(this.core.handle(cmd));
+    if (this.core.flush()) this.onSync(this.core.result());
     this.onView(this.core.view(this.req));
   }
 
@@ -43,7 +47,7 @@ export class InlineEngine implements Engine {
     const snap = this.core.snapshot();
     const t0 = performance.now();
     const result = this.analyzer
-      ? this.analyzer(req.id, { n: snap.n, state: snap.state, tape: snap.tape }, req.opts)
+      ? this.analyzer(req.id, { n: snap.n, state: snap.state, tape: snap.tape, scope: snap.scope }, req.opts)
       : { error: "analyses unavailable" };
     this.onAnalysis({ seq: req.seq, rev: snap.rev, id: req.id, result, ms: performance.now() - t0 });
   }
@@ -55,6 +59,7 @@ export class WorkerEngine implements Engine {
   private worker: Worker;
   private analysisWorker!: Worker;
   onResult: (r: Result) => void = () => {};
+  onSync: (r: Result) => void = () => {};
   onView: (v: ViewData) => void = () => {};
   onAnalysis: (r: AnalysisReply) => void = () => {};
 
@@ -62,6 +67,7 @@ export class WorkerEngine implements Engine {
     this.worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
     this.worker.onmessage = (e: MessageEvent<WorkerOut>) => {
       if ("result" in e.data) this.onResult(e.data.result);
+      else if ("sync" in e.data) this.onSync(e.data.sync);
       else this.onView(e.data.view);
     };
     this.startAnalysisWorker();

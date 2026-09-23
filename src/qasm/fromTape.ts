@@ -1,5 +1,5 @@
 import type { Circuit, PlacedGate } from "../sim/types";
-import { evalParam, initAngles, MACROS, MEASURE_IDS, type Entry } from "../calc/steps";
+import { evalParam, initAngles, MACROS, MEASURE_IDS, symbolsOf, type Entry } from "../calc/steps";
 import { emitQasm3 } from "./emit";
 
 /**
@@ -92,11 +92,21 @@ function definitionsFor(used: Set<string>): string[] {
 }
 
 /**
- * Keep π arithmetic symbolic (3*π/4 → 3*pi/4); fold anything using a
- * function (sqrt) to its double value — valid QASM 3 either way, but common
- * importers (Qiskit's) can't evaluate function calls.
+ * The QASM identifier for a QC-1 symbol. `t` names the T gate in
+ * stdgates.inc, so the symbol t is exported as `t_`; Greek symbols use their
+ * ASCII names (θ → theta), as the emitter writes them.
+ */
+export const qasmSymbol = (name: string) => (name === "t" ? "t_" : name);
+
+/**
+ * A gate parameter for export. Numeric expressions stay symbolic in π
+ * (3*π/4 → 3*pi/4) and fold to a double when they use a function (sqrt…),
+ * which Qiskit's importer can't evaluate. Expressions with symbols are kept,
+ * with t renamed (see qasmSymbol); functions *of* symbols stay as written:
+ * valid OpenQASM 3, but not loadable by qiskit-qasm3-import 0.6.
  */
 export function qasmParam(expr: string): string {
+  if (symbolsOf(expr).length > 0) return expr.replace(/\bt\b/g, "t_");
   return /[a-z]/i.test(expr) ? String(evalParam(expr)) : expr;
 }
 
@@ -133,9 +143,13 @@ export function tapeToCircuit(n: number, tape: Entry[]): Circuit {
 export function exportQasm3(n: number, tape: Entry[]): string {
   const circuit = tapeToCircuit(n, tape);
   const defs = definitionsFor(new Set(circuit.gates.map((g) => g.gateId)));
-  const lines = emitQasm3(circuit).split("\n");
+  // The emitter declares only a fixed list of Greek names; declare every
+  // symbol the tape uses instead (t included, as t_).
+  const syms = [...new Set(tape.flatMap((e) => e.flatMap((s) => s.params.flatMap(symbolsOf))))].sort().map(qasmSymbol);
+  const lines = emitQasm3(circuit).split("\n").filter((l) => !l.startsWith("input float "));
   const at = lines.findIndex((l) => l.startsWith("include")) + 1;
-  if (defs.length > 0) lines.splice(at, 0, "", ...defs);
+  const decls = syms.map((v) => `input float ${v};`);
+  lines.splice(at, 0, ...(defs.length ? ["", ...defs] : []), ...(decls.length ? ["", ...decls] : []));
   const steps = tape.length === 1 ? "1 step" : `${tape.length} steps`;
   return [`// Quantum Calculator One (QC-1) tape, ${steps}`, ...lines].join("\n") + "\n";
 }

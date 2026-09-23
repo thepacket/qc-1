@@ -5,6 +5,8 @@ import { KEYBOARD, KEYPAD, type KeyDef } from "./keys";
 import { BlochView, CatalogView, KetView, Pending, ProbView, ShotsView, TapeView } from "./views";
 import { createEngine } from "../calc/engine";
 import { LabView } from "./lab/LabView";
+import { ParamView } from "./ParamView";
+import { symbolGlyph } from "../calc/entry";
 
 export const STORAGE_KEY = "qc1:session:v1";
 const UI_KEY = "qc1:ui:v1";
@@ -115,6 +117,7 @@ export function App() {
   // A view summary is shown only once it matches the selected mode.
   const data = calc.view?.mode === calc.mode ? calc.view : null;
   const view = (() => {
+    if (calc.param.open) return <ParamView calc={calc} />;
     if (calc.catalog.open) return <CatalogView calc={calc} />;
     if (calc.mode === "lab") return <LabView calc={calc} />;
     if (calc.mode === "tape") return <TapeView calc={calc} />;
@@ -151,6 +154,13 @@ export function App() {
             {calc.marks.length > 0 && <b>CTRL</b>}
           </span>
           <span className="grow" />
+          {calc.symbols.length > 0 && (
+            <button className="sym-badge" onClick={() => (calc.param.open ? calc.closeParams() : calc.openParams())}
+              aria-label="Parameters">
+              {calc.playback ? "▶ " : ""}
+              {calc.symbols.map((s) => `${symbolGlyph(s)}=${(calc.scope[s] ?? 0).toFixed(2)}`).join(" ")}
+            </button>
+          )}
           <span>{calc.tape.length} steps</span>
           <button
             className="expand-btn"

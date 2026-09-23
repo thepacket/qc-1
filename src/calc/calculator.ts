@@ -1,9 +1,9 @@
 import { MAX_QUBITS } from "./register";
-import { evalParam, formatEntry, NONUNITARY, type Entry, type Step } from "./steps";
+import { evalParam, exprOk, formatEntry, NONUNITARY, type Entry, type Scope, type Step } from "./steps";
 import { CATALOG } from "./catalog";
 import { ANALYSIS_BY_ID, CATEGORIES, analysesIn } from "../analysis/catalog";
 import type { AnalysisReply, AnalysisResult, Opts } from "../analysis/types";
-import { splitArgs, TOKENS, toDisplay, type Token } from "./entry";
+import { splitArgs, TOKENS, toDisplay, VARS, varToken, symbolGlyph, type Token } from "./entry";
 import type { Cmd, Mode, Result, ViewData } from "./core";
 import type { Engine } from "./engine";
 
@@ -53,7 +53,11 @@ export const SHIFTED: Partial<Record<KeyId, string>> = {
   swap: "iswap", meas: "reset", h: "sy", x: "measx", y: "measy",
   sx: "sxdg", s: "sdg", t: "tdg", rx: "rxx", ry: "ryy", rz: "rzz",
   p: "u", div: "lparen", mul: "rparen", minus: "plus", pi: "sqrt",
+  ".": "tsym", ",": "var", "7": "sin", "8": "cos", "9": "exp", eq: "sto", bs: "rcl",
 };
+
+/** A saved register in a memory slot M1–M9. */
+export type Memory = { n: number; tape: Entry[]; scope: Scope };
 
 export type Mark = { q: number; anti: boolean };
 export type Message = { text: string; kind: "info" | "error" };
@@ -61,7 +65,13 @@ export type Message = { text: string; kind: "info" | "error" };
 export type LabLevel = "cats" | "list" | "view";
 export type LabState = { level: LabLevel; cat: number; index: number; id: string | null; opts: Record<string, Opts> };
 
-export type Saved = { v: 1; n: number; sel: number; mode: Mode; shots: number; tape: Entry[]; lab?: LabState };
+export type Saved = {
+  v: 1; n: number; sel: number; mode: Mode; shots: number; tape: Entry[];
+  lab?: LabState; scope?: Scope; memory?: Record<number, Memory>;
+};
+
+/** t playback on the PARAM screen: pull-based (next frame after the last view). */
+export type Playback = { name: string; hz: number; startValue: number; startAt: number; frames: number; fps: number };
 
 /** The analysis currently shown in LAB, and where its computation stands. */
 export type AnalysisView = {
@@ -97,6 +107,13 @@ const BUSY_DELAY = 120;
 export class Calculator {
   n: number;
   tape: Entry[];
+  /** Symbol values (ASCII names) and the symbols the tape uses. */
+  scope: Scope = {};
+  symbols: string[] = [];
+  memory: Record<number, Memory> = {};
+  /** PARAM screen (symbol sliders) and its highlighted row. */
+  param = { open: false, index: 0 };
+  playback: Playback | null = null;
   redoDepth = 0;
   view: ViewData | null = null;
   busy = false;
@@ -133,6 +150,7 @@ export class Calculator {
     engine.onResult = (r) => this.onResult(r);
     engine.onView = (v) => this.onView(v);
     engine.onAnalysis = (r) => this.onAnalysis(r);
+    engine.onSync = (r) => this.onSync(r);
     const ok = saved && saved.v === 1 && Array.isArray(saved.tape);
     // Mirror the saved session up front so the first save can't clobber it.
     this.n = ok ? saved.n : 2;
@@ -142,9 +160,11 @@ export class Calculator {
       this.mode = saved.mode;
       this.shots = saved.shots;
       if (saved.lab && typeof saved.lab === "object") this.lab = { ...this.lab, ...saved.lab, opts: saved.lab.opts ?? {} };
+      if (saved.scope) this.scope = { ...saved.scope };
+      if (saved.memory) this.memory = saved.memory;
     }
     this.send({ t: "view", req: this.viewReq() });
-    if (ok) this.send({ t: "load", n: saved.n, tape: saved.tape });
+    if (ok) this.send({ t: "load", n: saved.n, tape: saved.tape, scope: saved.scope });
   }
 
   subscribe = (fn: () => void) => {
@@ -162,7 +182,10 @@ export class Calculator {
   }
 
   save(): Saved {
-    return { v: 1, n: this.n, sel: this.sel, mode: this.mode, shots: this.shots, tape: this.tape, lab: this.lab };
+    return {
+      v: 1, n: this.n, sel: this.sel, mode: this.mode, shots: this.shots, tape: this.tape,
+      lab: this.lab, scope: this.scope, memory: this.memory,
+    };
   }
 
   get entryText(): string {
@@ -196,15 +219,34 @@ export class Calculator {
     this.n = r.n;
     this.tape = r.tape;
     this.redoDepth = r.redo;
+    this.symbols = r.symbols;
+    // Keep the local value of a symbol being dragged/played; take the rest.
+    this.scope = { ...r.scope, ...this.localScope };
     if (this.sel >= r.n) this.sel = r.n - 1;
     this.marks = this.marks.filter((m) => m.q < r.n);
     if (r.error) this.error(r.error);
     else report?.(r);
+    if (!r.error && r.notes?.length) this.info(r.notes[r.notes.length - 1]);
+    if (changed) this.refreshLiveAnalysis();
+    this.changed();
+  }
+
+  /** A register update not tied to a command (deferred symbol replay). */
+  private onSync(r: Result) {
+    const changed = r.rev !== this.rev;
+    this.rev = r.rev;
+    this.n = r.n;
+    this.tape = r.tape;
+    this.redoDepth = r.redo;
+    this.symbols = r.symbols;
+    this.scope = { ...r.scope, ...this.localScope };
+    if (r.notes?.length) this.info(r.notes[r.notes.length - 1]);
     if (changed) this.refreshLiveAnalysis();
     this.changed();
   }
 
   private onView(v: ViewData) {
+    if (this.playback) this.scheduleFrame();
     // More views follow while commands are still in flight.
     this.awaitingView = this.reporters.length > 0;
     if (!this.awaitingView) {
@@ -377,12 +419,114 @@ export class Calculator {
     const id = this.shift ? (SHIFTED[key] ?? key) : key;
     if (key !== "2nd") this.shift = false;
     try {
+      if (this.param.open && this.paramKey(id)) return this.changed();
       if (this.mode === "lab" && !this.catalog.open && this.labKey(id)) return this.changed();
       this.dispatch(id);
     } catch (e) {
       this.error(e instanceof Error ? e.message : String(e));
     }
+    if (key !== "2nd") this.lastKey = id;
     this.changed();
+  }
+
+  private lastKey = "";
+  /** Symbol values set locally (slider, playback) and not yet confirmed by the core. */
+  private localScope: Scope = {};
+
+  // ─── Symbols and the PARAM screen ─────────────────────────────────
+
+  openParams() {
+    this.param = { open: true, index: Math.min(this.param.index, Math.max(0, this.symbols.length - 1)) };
+    this.changed();
+  }
+
+  /** Close PARAM; a running t playback keeps going (watch it in any view). */
+  closeParams() {
+    this.param = { ...this.param, open: false };
+    this.changed();
+  }
+
+  /** Set one symbol's value (slider, keypad, playback). Coalesced in the core. */
+  setSymbol(name: string, value: number) {
+    this.scope = { ...this.scope, [name]: value };
+    this.localScope[name] = value;
+    this.send({ t: "scope", values: { [name]: value } }, () => {
+      if (this.localScope[name] === value) delete this.localScope[name];
+    });
+    this.changed();
+  }
+
+  /** Keys on the PARAM screen: ◀ ▶ pick a symbol, = sets it from the entry. */
+  private paramKey(id: string): boolean {
+    const len = this.symbols.length;
+    switch (id) {
+      case "left": case "right":
+        if (len) this.param = { ...this.param, index: (this.param.index + (id === "left" ? len - 1 : 1)) % len };
+        return true;
+      case "eq": {
+        const name = this.symbols[this.param.index];
+        if (!name || this.entry.length === 0) return true;
+        const [expr] = splitArgs(this.entry);
+        const v = evalParam(expr, this.scope);
+        this.entry = [];
+        if (Number.isFinite(v)) this.setSymbol(name, v);
+        else this.error("not a number");
+        return true;
+      }
+    }
+    return false;
+  }
+
+  togglePlayback(name = "t", hz = this.playback?.hz ?? 0.25) {
+    if (this.playback) return this.stopPlayback();
+    this.playback = { name, hz, startValue: this.scope[name] ?? 0, startAt: Date.now(), frames: 0, fps: 0 };
+    this.scheduleFrame();
+    this.changed();
+  }
+
+  setPlaybackSpeed(hz: number) {
+    if (!this.playback) return;
+    const { name } = this.playback;
+    this.playback = { name, hz, startValue: this.scope[name] ?? 0, startAt: Date.now(), frames: 0, fps: this.playback.fps };
+    this.changed();
+  }
+
+  stopPlayback() {
+    this.playback = null;
+    this.changed();
+  }
+
+  private frameQueued = false;
+  /** Advance the played symbol to wall-clock time. Pull-based: called after each view. */
+  private scheduleFrame() {
+    const pb = this.playback;
+    if (!pb || this.frameQueued) return;
+    this.frameQueued = true;
+    setTimeout(() => {
+      this.frameQueued = false;
+      const cur = this.playback;
+      if (!cur) return;
+      const secs = (Date.now() - cur.startAt) / 1000;
+      const v = (cur.startValue + 2 * Math.PI * cur.hz * secs) % (2 * Math.PI);
+      cur.frames++;
+      cur.fps = secs > 0.5 ? cur.frames / secs : cur.fps;
+      this.setSymbol(cur.name, v);
+    }, 16);
+  }
+
+  /** Memory slot 1–9 from the entry line (STO/RCL argument). */
+  private slotFromEntry(what: string): number | null {
+    if (this.entry.length === 0) {
+      this.error(`enter 1–9, then ${what}`);
+      return null;
+    }
+    const k = this.takeInt();
+    if (k === null) return null;
+    if (k < 1 || k > 9) {
+      this.error("memory M1–M9");
+      return null;
+    }
+    return k;
   }
 
   /** Show a status line from outside the key flow (copy / share results). */
@@ -491,18 +635,43 @@ export class Calculator {
       case "all": this.all = !this.all; return;
       case "cat": this.catalog.open = true; return;
       case "undo":
-        return this.send({ t: "undo" }, (r) => this.info(r.done ? `undo ${formatEntry(r.done)}` : "nothing to undo"));
+        return this.send({ t: "undo" }, (r) => this.info(r.op ? `undo ${opLabel(r.op)}` : "nothing to undo"));
       case "redo":
-        return this.send({ t: "redo" }, (r) => this.info(r.done ? `redo ${formatEntry(r.done)}` : "nothing to redo"));
+        return this.send({ t: "redo" }, (r) => this.info(r.op ? `redo ${opLabel(r.op)}` : "nothing to redo"));
+      case "var": {
+        // Repeated 2ND+, cycles the symbol just inserted: θ → φ → λ → …
+        const last = this.entry[this.entry.length - 1];
+        const i = last ? VARS.indexOf(last.disp) : -1;
+        if (this.lastKey === "var" && i >= 0) this.entry[this.entry.length - 1] = varToken(VARS[(i + 1) % VARS.length]);
+        else if (this.entry.length < 40) this.entry.push(varToken(VARS[0]));
+        return;
+      }
+      case "sto": {
+        const k = this.slotFromEntry("STO");
+        if (k === null) return;
+        this.memory = { ...this.memory, [k]: { n: this.n, tape: [...this.tape], scope: { ...this.scope } } };
+        return this.info(`M${k} ← ${this.tape.length} steps, n=${this.n}`);
+      }
+      case "rcl": {
+        const k = this.slotFromEntry("RCL");
+        if (k === null) return;
+        const m = this.memory[k];
+        if (!m) return this.error(`M${k} is empty`);
+        return this.send({ t: "replace", n: m.n, tape: m.tape, scope: m.scope, label: `RCL M${k}` }, () => this.info(`RCL M${k}`));
+      }
       case "bs": this.entry.pop(); return;
       case "ac": {
+        if (this.param.open && this.entry.length === 0) {
+          this.closeParams();
+          return;
+        }
         if (this.entry.length > 0 || this.marks.length > 0 || this.all) {
           this.entry = [];
           this.marks = [];
           this.all = false;
           return;
         }
-        return this.send({ t: "clear" }, (r) => this.info(`|${"0".repeat(r.n)}⟩`));
+        return this.send({ t: "clear" }, (r) => this.info(`|${"0".repeat(r.n)}⟩ (UNDO restores)`));
       }
       case "eq":
         return this.send({ t: "repeat" }, (r) => r.done && this.info(formatEntry(r.done)));
@@ -513,7 +682,7 @@ export class Calculator {
   private amplitudes(): string {
     const args = splitArgs(this.entry);
     if (this.entry.length === 0 || (args.length !== 2 && args.length !== 4)) throw new Error("enter α,β then |ψ⟩");
-    const v = args.map(evalParam);
+    const v = args.map((a) => evalParam(a));
     if (v.some((x) => !Number.isFinite(x))) throw new Error("syntax error");
     const [ar, ai, br, bi] = v.length === 2 ? [v[0], 0, v[1], 0] : v;
     const norm = Math.hypot(ar, ai, br, bi);
@@ -534,7 +703,7 @@ export class Calculator {
     } else if (k.params.length > 0 && this.entry.length > 0) {
       const args = splitArgs(this.entry);
       if (args.length > k.params.length) throw new Error(`${k.params.length} argument${k.params.length > 1 ? "s" : ""} max`);
-      for (const a of args) if (!Number.isFinite(evalParam(a))) throw new Error("syntax error");
+      for (const a of args) if (!exprOk(a)) throw new Error("syntax error");
       params = k.params.map((d, i) => args[i] ?? d);
     }
     if (NONUNITARY.has(k.gate) && this.marks.length > 0) throw new Error("can't control a non-unitary");
@@ -571,3 +740,10 @@ export class Calculator {
     this.send({ t: "push", entry }, (r) => r.done && this.info(formatEntry(r.done)));
   }
 }
+
+/** Short label of an undone/redone operation. */
+function opLabel(op: NonNullable<Result["op"]>): string {
+  return op.k === "entry" ? formatEntry(op.entry) : op.label;
+}
+
+export { symbolGlyph };

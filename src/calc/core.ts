@@ -1,6 +1,7 @@
 import { Register } from "./register";
 import { bloch, sampleState, topK, type Vec3 } from "./analysis";
-import type { Entry } from "./steps";
+import type { Entry, Scope } from "./steps";
+import type { Op } from "./register";
 
 /**
  * The simulator side of the calculator: owns the Register (statevector,
@@ -28,7 +29,11 @@ export type Cmd =
   | { t: "redo" }
   | { t: "resize"; n: number }
   | { t: "clear" }
-  | { t: "load"; n: number; tape: Entry[] }
+  | { t: "load"; n: number; tape: Entry[]; scope?: Scope }
+  /** Set symbol values; coalesced, applied before the next view/command. */
+  | { t: "scope"; values: Scope }
+  /** Swap in whole new contents as one undoable operation. */
+  | { t: "replace"; n: number; tape: Entry[]; scope: Scope; label: string }
   | { t: "view"; req: ViewReq };
 
 export type Result = {
@@ -36,9 +41,16 @@ export type Result = {
   rev: number;
   n: number;
   tape: Entry[];
+  scope: Scope;
+  /** Symbols the tape uses (ASCII names, sorted). */
+  symbols: string[];
   redo: number;
-  /** The entry pushed / undone / redone; null when there was nothing to do. */
+  /** The entry pushed; null when there was nothing to do. */
   done?: Entry | null;
+  /** The operation undone / redone; null when there was nothing to do. */
+  op?: Op | null;
+  /** Notes from the operation (e.g. a re-sampled measurement). */
+  notes?: string[];
   error?: string;
 };
 
@@ -50,10 +62,28 @@ let repeatId = 0;
 export class Core {
   reg = new Register(2);
   rev = 0;
+  /** Symbol values waiting to be applied (a slider sends a burst). */
+  private pendingScope: Scope | null = null;
+
+  /** Apply coalesced symbol values now (before anything reads the state). True if it did. */
+  flush(): boolean {
+    if (!this.pendingScope) return false;
+    const v = this.pendingScope;
+    this.pendingScope = null;
+    this.reg.setScope(v);
+    return true;
+  }
 
   handle(cmd: Cmd): Result {
     let done: Entry | null | undefined;
+    let op: Op | null | undefined;
     let error: string | undefined;
+    if (cmd.t === "scope") {
+      this.pendingScope = { ...this.pendingScope, ...cmd.values };
+      this.rev++;
+      return this.result({});
+    }
+    this.flush();
     try {
       switch (cmd.t) {
         case "push":
@@ -67,13 +97,17 @@ export class Core {
           done = this.reg.push(last.map((s) => ({ ...s, id: `r${repeatId++}`, column: col, outcome: undefined })));
           break;
         }
-        case "undo": done = this.reg.undo(); break;
-        case "redo": done = this.reg.redo(); break;
+        case "undo": op = this.reg.undo(); break;
+        case "redo": op = this.reg.redo(); break;
+        case "replace":
+          this.check2(cmd.n, cmd.tape);
+          this.reg.replace({ n: cmd.n, tape: cmd.tape, scope: cmd.scope }, cmd.label);
+          break;
         case "resize": this.reg.resize(cmd.n); break;
         case "clear": this.reg.clear(); break;
         case "load":
           try {
-            this.reg = new Register(cmd.n, cmd.tape);
+            this.reg = new Register(cmd.n, cmd.tape, cmd.scope);
           } catch {
             this.reg = new Register(2);
             throw new Error("saved session unreadable");
@@ -85,12 +119,30 @@ export class Core {
       error = e instanceof Error ? e.message : String(e);
     }
     if (cmd.t !== "view" && !error) this.rev++;
-    return { rev: this.rev, n: this.reg.n, tape: this.reg.tape, redo: this.reg.redoStack.length, done, error };
+    return this.result({ done, op, error });
+  }
+
+  /** The register as the UI mirrors it (copies: the tape is mutated in place). */
+  result(extra: Partial<Result> = {}): Result {
+    const notes = this.reg.notes.length ? [...this.reg.notes] : undefined;
+    return {
+      rev: this.rev, n: this.reg.n, tape: [...this.reg.tape], scope: { ...this.reg.scope, ...this.pendingScope },
+      symbols: this.reg.symbols(), redo: this.reg.redoOps.length, notes, ...extra,
+    };
+  }
+
+  /** A replacement tape must fit its register. */
+  private check2(n: number, tape: Entry[]) {
+    if (n < 1 || n > 20) throw new Error("n must be 1–20");
+    for (const e of tape) for (const s of e) for (const q of [...s.controls, ...s.targets]) {
+      if (q >= n) throw new Error(`no q${q} (n=${n})`);
+    }
   }
 
   /** A private copy of the register for the analysis worker. */
-  snapshot(): { rev: number; n: number; tape: Entry[]; state: Float64Array } {
-    return { rev: this.rev, n: this.reg.n, tape: this.reg.tape, state: this.reg.state.slice() };
+  snapshot(): { rev: number; n: number; tape: Entry[]; scope: Scope; state: Float64Array } {
+    this.flush();
+    return { rev: this.rev, n: this.reg.n, tape: this.reg.tape, scope: { ...this.reg.scope }, state: this.reg.state.slice() };
   }
 
   /** Reject steps that address qubits outside the register (a resize may have raced ahead). */
@@ -101,6 +153,7 @@ export class Core {
   }
 
   view(req: ViewReq): ViewData {
+    this.flush();
     const { n, state } = this.reg;
     const p = (i: number) => state[2 * i] ** 2 + state[2 * i + 1] ** 2;
     switch (req.mode) {

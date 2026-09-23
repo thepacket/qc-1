@@ -54,6 +54,14 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
   - Phase 2: every state-only analysis (fixture `state2`).
   - Their fixes are `// QC-1 fix` blocks: pageCurve, anticoncentration, chsh, quantumDiscord (bugs #6–#9).
   - LAB inputs are cut / qubit / int / choice (`inputValue` in catalog.ts). Chart kinds add scatter+fit, hist+curve, and Majorana stars.
+- **Symbols and memory (Phase 3).**
+  - Angles can use symbols: 2ND+`.` gives `t`; 2ND+`,` gives θ, and repeating it cycles φ λ α β γ δ τ ω; 2ND+7/8/9 give sin( cos( exp(.
+  - `Register.scope` holds symbol values by ASCII name (θ → theta). `setScope` replays from the first symbolic entry, starting from a cached prefix state. Replays force each measurement's recorded outcome and re-sample it if it has become impossible (`notes`).
+  - The core coalesces `{t:"scope"}` bursts and applies them before the next read. After a deferred replay it sends a `sync` message that consumes no reporter.
+  - The PARAM screen (tap the symbol badge) has sliders, = to set a value from the entry, and t playback, which is pull-based and keeps running after PARAM closes.
+  - History is a list of `Op`s: an entry, or a whole-tape `replace` (AC, RCL, and later the tools and imports), so undo covers both.
+  - STO/RCL are 2ND+`=` and 2ND+`⌫`, with the slot digit 1–9 typed first. `Saved` gains `scope` and `memory`.
+  - QASM export declares every symbol as `input float`. `t` is exported as `t_` because `t` is the T gate in stdgates.inc. Qiskit's importer can't evaluate functions *of* symbols (sin(θ)).
 - `src/qasm/fromTape.ts` turns the tape into OpenQASM 3. It uses stdgates names where
   they exist and `ctrl @`/`negctrl @` otherwise, adds exact `gate` definitions for
   non-stdgates (sy, sxdg, iswap, rxx, ryy, rzz), and folds `sqrt(...)` params to numbers.

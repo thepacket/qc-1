@@ -29,9 +29,9 @@ export const KEYPAD: KeyDef[] = [
   { id: "ry", label: "RY", alt: "RYY", kind: "gate", aria: "Rotate Y" },
   { id: "rz", label: "RZ", alt: "RZZ", kind: "gate", aria: "Rotate Z" },
 
-  { id: "7", label: "7", kind: "digit", aria: "7" },
-  { id: "8", label: "8", kind: "digit", aria: "8" },
-  { id: "9", label: "9", kind: "digit", aria: "9" },
+  { id: "7", label: "7", alt: "sin", kind: "digit", aria: "7" },
+  { id: "8", label: "8", alt: "cos", kind: "digit", aria: "8" },
+  { id: "9", label: "9", alt: "exp", kind: "digit", aria: "9" },
   { id: "div", label: "÷", alt: "(", kind: "op", aria: "Divide" },
   { id: "p", label: "P", alt: "U", kind: "gate", aria: "Phase" },
 
@@ -45,12 +45,12 @@ export const KEYPAD: KeyDef[] = [
   { id: "2", label: "2", kind: "digit", aria: "2" },
   { id: "3", label: "3", kind: "digit", aria: "3" },
   { id: "pi", label: "π", alt: "√", kind: "op", aria: "Pi" },
-  { id: "bs", label: "⌫", kind: "op", aria: "Backspace" },
+  { id: "bs", label: "⌫", alt: "RCL", kind: "op", aria: "Backspace" },
 
   { id: "0", label: "0", kind: "digit", wide: true, aria: "0" },
-  { id: ".", label: ".", kind: "digit", aria: "Decimal point" },
-  { id: ",", label: ",", kind: "digit", aria: "Argument separator" },
-  { id: "eq", label: "=", kind: "eq", aria: "Repeat last" },
+  { id: ".", label: ".", alt: "t", kind: "digit", aria: "Decimal point" },
+  { id: ",", label: ",", alt: "VAR", kind: "digit", aria: "Argument separator" },
+  { id: "eq", label: "=", alt: "STO", kind: "eq", aria: "Repeat last" },
 ];
 
 /** Hardware-keyboard shortcuts (desktop / Bluetooth keyboards). */
