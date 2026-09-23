@@ -463,9 +463,10 @@ button {
   display: none;
   grid-template-columns: repeat(5, 1fr);
   gap: 8px;
-  flex: 0 0 44px;
+  flex: 0 0 26px; /* as tall as the mode buttons above */
 }
 .calc.expanded .mini-keys { display: grid; }
+.mini-keys .key { height: 26px; border-radius: 13px; font-size: 13px; }
 @media (prefers-reduced-motion: reduce) {
   .keypad { transition: none; }
 }
