@@ -734,3 +734,36 @@ button {
 .lat-key.X { background: #3a3a36; }
 .lat-key.Z { background: #2a2a27; border: 1px solid #3a3a36; }
 .int-field { width: 5.5em; font: inherit; font-family: var(--mono); font-size: 12px; padding: 2px 5px; border-radius: 3px; border: 1px solid var(--ink-dim); background: #111110; color: var(--ink); text-align: center; }
+
+/* ── Landscape (a phone on its side) ───────────────────────────────────────
+   The display takes the screen; the keypad is a panel that slides in from the
+   right (KEYS), and the display reflows to the left of it while it is open. */
+.calc.landscape {
+  --panel: min(46vw, 430px);
+  max-width: none; width: 100%; height: 100dvh; aspect-ratio: auto; border-radius: 0; margin: 0;
+  gap: 5px;
+  padding: max(6px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+}
+.calc.landscape .brand, .calc.landscape .handle, .calc.landscape .mini-keys, .calc.landscape .expand-btn[aria-label="Expand display"],
+.calc.landscape .expand-btn[aria-label="Show keypad"] { display: none; }
+.calc.landscape .lcd, .calc.landscape .modes { transition: margin-right 0.25s ease; }
+.calc.landscape.keys-open .lcd, .calc.landscape.keys-open .modes { margin-right: calc(var(--panel) + 8px); }
+.calc.landscape .modes { grid-template-columns: auto repeat(6, 1fr); }
+.calc.landscape .modes button { height: 24px; }
+.keys-toggle { padding: 0 10px; color: #fff !important; background: #3a3e46 !important; }
+.keys-toggle.on { background: var(--key-eq) !important; }
+.calc.landscape .keypad {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 20;
+  width: var(--panel); height: auto; opacity: 1; pointer-events: auto;
+  padding: max(6px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) 10px;
+  background: linear-gradient(180deg, var(--body-hi), var(--body) 30%);
+  box-shadow: -6px 0 18px rgba(0, 0, 0, 0.45);
+  column-gap: 6px; row-gap: 1px;
+  transform: translateX(105%); transition: transform 0.25s ease;
+}
+.calc.landscape.keys-open .keypad { transform: none; }
+.calc.landscape .alt { flex-basis: 10px; font-size: 8px; line-height: 10px; }
+.calc.landscape .key { font-size: 13px; border-radius: 7px; }
+@media (prefers-reduced-motion: reduce) {
+  .calc.landscape .keypad, .calc.landscape .lcd, .calc.landscape .modes { transition: none; }
+}

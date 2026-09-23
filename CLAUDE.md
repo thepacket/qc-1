@@ -1,7 +1,9 @@
 # QC-1 — Quantum Calculator One
 
-A pocket-calculator PWA for quantum states, for phones in portrait orientation. It has
-an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
+A pocket-calculator PWA for quantum states, for phones. In portrait it has an LCD
+display on top and a 5×8 key grid below; on a phone turned sideways (landscape,
+height ≤ 540px) the display takes the screen and KEYS slides the keypad in as a
+right-hand panel, the display reflowing beside it. Vite + React + TypeScript.
 
 ## Rules
 - **No ties to Quantiom's brand.** Code is ported from ~/Projects/quantiom (MIT, same

@@ -51,10 +51,28 @@ function buzz() {
   }
 }
 
+/** A phone on its side: the display takes the screen and the keypad slides in on demand. */
+const LANDSCAPE = "(orientation: landscape) and (max-height: 540px)";
+
+function useMedia(query: string): boolean {
+  const [on, setOn] = useState(() => typeof matchMedia === "function" && matchMedia(query).matches);
+  useEffect(() => {
+    if (typeof matchMedia !== "function") return;
+    const m = matchMedia(query);
+    const f = () => setOn(m.matches);
+    m.addEventListener("change", f);
+    f();
+    return () => m.removeEventListener("change", f);
+  }, [query]);
+  return on;
+}
+
 export function App() {
   const [calc] = useState(() => new Calculator(createEngine(), load()));
   const version = useSyncExternalStore(calc.subscribe, calc.getVersion);
   const [expanded, setExpanded] = useState(loadExpanded);
+  const landscape = useMedia(LANDSCAPE);
+  const [keysOpen, setKeysOpen] = useState(false);
   const dragY = useRef<number | null>(null);
 
   useEffect(() => {
@@ -161,7 +179,7 @@ export function App() {
     (k.id === "ctrl" && calc.marks.some((m) => m.q === calc.sel));
 
   return (
-    <div className={`calc${expanded ? " expanded" : ""}`}>
+    <div className={`calc${expanded && !landscape ? " expanded" : ""}${landscape ? " landscape" : ""}${landscape && keysOpen ? " keys-open" : ""}`}>
       <header className="brand">
         <span className="logo">QC-1</span>
         <span className="model">QUANTUM CALCULATOR ONE</span>
@@ -252,6 +270,12 @@ export function App() {
       </div>
 
       <nav className="modes">
+        {landscape && (
+          <button className={`keys-toggle${keysOpen ? " on" : ""}`} aria-pressed={keysOpen} aria-label={keysOpen ? "Hide the keypad" : "Show the keypad"}
+            onClick={() => setKeysOpen((x) => !x)}>
+            {keysOpen ? "KEYS ›" : "‹ KEYS"}
+          </button>
+        )}
         {MODES.map((m) => (
           <button key={m.id} className={calc.mode === m.id ? "on" : ""} onClick={() => { buzz(); calc.setMode(m.id); }}>
             {m.label}
@@ -276,7 +300,7 @@ export function App() {
         </button>
       </section>
 
-      <section className="keypad" aria-hidden={expanded}>
+      <section className="keypad" aria-hidden={landscape ? !keysOpen : expanded}>
         {KEYPAD.map((k) => (
           <div key={k.id} className={`cell${k.wide ? " wide" : ""}`}>
             <span className={`alt${calc.shift && SHIFTED[k.id] ? " lit" : ""}`}>{k.alt ?? " "}</span>
