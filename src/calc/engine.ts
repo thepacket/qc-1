@@ -22,7 +22,7 @@ export interface Engine {
 export type WorkerIn = { cmd: Cmd } | { attach: MessagePort } | { analyze: AnalysisRequest };
 export type WorkerOut = { result: Result } | { sync: Result } | { view: ViewData };
 
-type Analyzer = (id: string, ctx: AnalysisContext, opts: Opts) => AnalysisResult;
+type Analyzer = (id: string, ctx: AnalysisContext, opts: Opts) => AnalysisResult | Promise<AnalysisResult>;
 
 /** Synchronous in-process engine: tests, and browsers without module workers. */
 export class InlineEngine implements Engine {
@@ -49,7 +49,10 @@ export class InlineEngine implements Engine {
     const result = this.analyzer
       ? this.analyzer(req.id, { n: snap.n, state: snap.state, tape: snap.tape, scope: snap.scope }, req.opts)
       : { error: "analyses unavailable" };
-    this.onAnalysis({ seq: req.seq, rev: snap.rev, id: req.id, result, ms: performance.now() - t0 });
+    const reply = (r: AnalysisResult) => this.onAnalysis({ seq: req.seq, rev: snap.rev, id: req.id, result: r, ms: performance.now() - t0 });
+    // Synchronous analyses reply at once (tests rely on it); async ones when done.
+    if (result instanceof Promise) void result.then(reply);
+    else reply(result);
   }
 
   cancelAnalysis() {}

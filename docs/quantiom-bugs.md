@@ -17,6 +17,9 @@ Upstream file paths are relative to that project's `client/src/`.
 | 7 | `sim/anticoncentration.ts` | Porter–Thomas histogram puts dyadic probabilities (Bell, GHZ, uniform states: D·p exactly on a bin edge) in the bin *below* after a 1e-16 rounding error | numpy histogram of exact probabilities | `QC-1 fix`: bin with a 1e-9 edge tolerance; fixture `state2` |
 | 8 | `sim/chsh.ts` | Maximal CHSH value only accurate to ~5e-9: closed-form cubic eigenvalues (`eig3`) lose precision for near-degenerate singular values (e.g. product states, exactly 2) | numpy SVD of the Pauli correlation matrix | `QC-1 fix`: Jacobi eigenvalues; fixture `state2` |
 | 9 | `sim/quantumDiscord.ts` | Discord over-estimated by up to 0.011 bits: the conditional entropy is minimised only on a 10×12 grid of measurement axes | scipy multi-start Nelder–Mead (true optimum) | `QC-1 fix`: grid + Nelder–Mead refinement; now within 4e-14; fixture `state2` |
+| 10 | `sim/trotter.ts` `parsePauliSum` | Coefficients with a signed exponent (`1e-3*ZZ`, `2.5E-1*X`) throw or parse to the wrong value: the character loop stops at the exponent sign | independent regex parser + Qiskit `SparsePauliOp` | `QC-1 fix`: full number match; fixture `metrology` |
+| 11 | `sim/multiparamQfi.ts` | QFI-matrix eigenvalues off by ~2e-8 when degenerate (its private closed-form `eig3`, same flaw as #8) | numpy `eigvalsh` | `QC-1 fix`: Jacobi eigenvalues; fixture `metrology` |
+| 12 | `sim/optimize.ts` `optimizeExpectation` | Stops after one step at any stationary point: symbols default to 0, where e.g. ⟨Z⟩ = cos θ has its *maximum*, so minimising from the defaults returns the maximum as "converged" | analytic (cos θ); found in the browser | `QC-1 fix`: one symmetry-breaking nudge when the first gradient vanishes; test `optimize.test.ts` |
 
 ## Quirks in the reference tools (not upstream bugs)
 

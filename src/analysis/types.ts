@@ -17,7 +17,11 @@ export type InputSpec =
   | { kind: "qubit"; key: string; label: string; fallback: "first" | "second" | "last" }
   /** An integer in [min, max] (max ≤ 0 means n + max). */
   | { kind: "int"; key: string; label: string; min: number; max: number; fallback: number }
-  | { kind: "choice"; key: string; label: string; options: { label: string; value: number }[]; fallback: number };
+  | { kind: "choice"; key: string; label: string; options: { label: string; value: number }[]; fallback: number }
+  /** Pauli string or Pauli sum, typed on the phone keyboard (presets for the current n). */
+  | { kind: "pauli"; key: string; label: string }
+  /** One of the tape's symbols; `optional` adds "none". */
+  | { kind: "symbol"; key: string; label: string; optional?: boolean; fallback: "first" | "second" | "t" };
 
 export type Opts = Record<string, unknown>;
 
@@ -66,6 +70,8 @@ export type Chart =
       curve?: { name: string; y: number[] };
     }
   | { kind: "stars"; title?: string; stars: { theta: number; phi: number }[] }
+  /** Paths on the Bloch sphere (Bloch trajectory over t). */
+  | { kind: "paths"; title?: string; paths: { label: string; points: { x: number; y: number; z: number }[] }[] }
   | {
       kind: "lines"; title?: string; x: number[]; xLabel: string; yLabel: string;
       series: { name: string; y: number[]; dashed?: boolean }[];
@@ -78,7 +84,11 @@ export type Chart =
       points: { label: string; x: number; y: number; z: number; mag: number; phase: number }[];
     };
 
-export type AnalysisResult = { scalars?: Scalar[]; charts?: Chart[]; notes?: string[]; error?: string };
+export type AnalysisResult = {
+  scalars?: Scalar[]; charts?: Chart[]; notes?: string[]; error?: string;
+  /** Offer to set these symbol values (e.g. the optimizer's result). */
+  apply?: { label: string; scope: Record<string, number> };
+};
 
 /** What an analysis sees: a private copy of the register. */
 export type AnalysisContext = { n: number; state: Float64Array; tape: Entry[]; scope: Record<string, number> };

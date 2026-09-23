@@ -4,7 +4,7 @@
  * ported module validated against Qiskit/numpy (test/validated/*).
  */
 import type { AnalysisContext, AnalysisResult, Chart, Opts } from "./types";
-import { ANALYSIS_BY_ID, defaultCut, inputValue } from "./catalog";
+import { ANALYSIS_BY_ID, defaultCut, inputValue, pauliValue, symbolValue } from "./catalog";
 import { topK, bloch } from "../calc/analysis";
 import { reducedDensityMatrix, purity } from "../sim/density";
 import {
@@ -42,6 +42,19 @@ import { characteristicFunction } from "../sim/charFunction";
 import { majoranaStars } from "../sim/majoranaStars";
 import { anticoncentration } from "../sim/anticoncentration";
 import { allPauliExpectations } from "../sim/pauliSpectrum";
+import { parsePauliSum } from "../sim/trotter";
+import { pauliSumExpectation } from "../sim/expectation";
+import { observableMoments, shotError } from "../sim/observableVariance";
+import { collectiveSpinGenerator, quantumFisherPure } from "../sim/qfi";
+import { spinSqueezing } from "../sim/spinSqueezing";
+import { multiparameterQFI } from "../sim/multiparamQfi";
+import { quantumGeometricTensor } from "../sim/qgt";
+import { blochTrajectories } from "../sim/blochPath";
+import { participation, participationSweep } from "../sim/participation";
+import { barrenPlateauDiagnostic, computeLandscape, optimizeExpectation } from "../sim/optimize";
+import { lowerTape } from "../calc/lower";
+import { symbolsOf } from "../calc/steps";
+import { symbolGlyph } from "../calc/entry";
 
 const ROWS = 64;
 const ket = (i: number, n: number) => `|${i.toString(2).padStart(n, "0")}⟩`;
@@ -63,7 +76,18 @@ function amplitudeRows(ctx: AnalysisContext): number[] {
   return nonzero <= ROWS ? [...idx].sort((a, b) => a - b) : idx;
 }
 
-type Run = (ctx: AnalysisContext, opts: Opts) => AnalysisResult;
+type Run = (ctx: AnalysisContext, opts: Opts) => AnalysisResult | Promise<AnalysisResult>;
+
+/** The observable input, parsed; throws a readable error for bad text. */
+function observable(opts: Opts, n: number) {
+  const text = pauliValue(opts, "obs", n);
+  const terms = parsePauliSum(text);
+  if (terms[0].paulis.length !== n) throw new Error(`Pauli strings need ${n} letters (one per qubit), got ${terms[0].paulis.length}`);
+  return terms;
+}
+/** Symbols (ASCII names) the tape uses — the same rule the register applies. */
+const symbolsOfTape = (ctx: AnalysisContext) =>
+  [...new Set(ctx.tape.flatMap((e) => e.flatMap((s) => s.params.flatMap(symbolsOf))))].sort();
 
 /** Value of a qubit / int / choice input of analysis `id`. */
 function num(id: string, key: string, opts: Opts, n: number): number {
@@ -509,16 +533,168 @@ Object.assign(RUNS, {
   },
 } satisfies Record<string, Run>);
 
-export function runAnalysis(id: string, ctx: AnalysisContext, opts: Opts): AnalysisResult {
+Object.assign(RUNS, {
+  expectation(ctx, opts) {
+    const { n, state } = ctx;
+    const terms = observable(opts, n);
+    const m = observableMoments(state, n, terms);
+    const shots = num("expectation", "shots", opts, n);
+    return {
+      scalars: [
+        { label: "⟨H⟩", value: r3(pauliSumExpectation(state, n, terms)) },
+        { label: "Var(H)", value: r3(m.variance) },
+        { label: "σ", value: r3(m.std) },
+        { label: `shot error (N=${shots})`, value: r3(shotError(m.std, shots)) },
+      ],
+      charts: terms.length > 1 ? [{
+        kind: "bars", title: "term contributions hₖ⟨Pₖ⟩", signed: true,
+        labels: terms.map((t) => t.paulis), values: terms.map((t) => t.coefficient * pauliSumExpectation(state, n, [{ coefficient: 1, paulis: t.paulis }])),
+      }] : [],
+    };
+  },
+
+  async optimise(ctx, opts) {
+    const syms = symbolsOfTape(ctx);
+    if (syms.length === 0) return { error: "the tape has no symbols to optimise (type θ or t into an angle)" };
+    const terms = observable(opts, ctx.n);
+    const method = (["adam", "sgd", "qng"] as const)[num("optimise", "method", opts, ctx.n)];
+    const goal = num("optimise", "goal", opts, ctx.n) === 1 ? "maximize" : "minimize";
+    const history: number[] = [];
+    const res = await optimizeExpectation(lowerTape(ctx.n, ctx.tape), [], {
+      symbols: syms, observable: { kind: "sum", terms }, initial: { ...ctx.scope },
+      steps: num("optimise", "steps", opts, ctx.n), learningRate: 0.1, epsilon: 1e-4, goal, optimizer: method,
+      onProgress: (_step, value) => { history.push(value); },
+    });
+    const final = Object.fromEntries(syms.map((s) => [s, res.finalParams[s] ?? 0]));
+    return {
+      scalars: [
+        { label: `final ⟨H⟩ (${goal})`, value: r3(res.finalValue) },
+        { label: "steps", value: `${res.steps} · ${res.stopped}` },
+        ...syms.map((s) => ({ label: symbolGlyph(s), value: r3(final[s]) })),
+      ],
+      charts: [{ kind: "lines", x: history.map((_, i) => i + 1), xLabel: "step", yLabel: "⟨H⟩", series: [{ name: "⟨H⟩", y: history }] }],
+      apply: { label: "use these values", scope: final },
+    };
+  },
+
+  async landscape(ctx, opts) {
+    const syms = symbolsOfTape(ctx);
+    if (syms.length === 0) return { error: "the tape has no symbols" };
+    const meta = ANALYSIS_BY_ID.landscape;
+    const pick = (k: string) => symbolValue(meta.inputs.find((i) => i.key === k) as Extract<typeof meta.inputs[number], { kind: "symbol" }>, opts, syms);
+    const s1 = pick("s1"), s2 = pick("s2");
+    const two = s2 && s2 !== s1;
+    const grid = two ? 21 : 61;
+    const obs = { kind: "sum" as const, terms: observable(opts, ctx.n) };
+    const out = await computeLandscape(lowerTape(ctx.n, ctx.tape), ctx.scope, [], obs, two ? [s1, s2] : [s1], grid, [-Math.PI, Math.PI]);
+    const axis = Array.from({ length: grid }, (_, i) => -Math.PI + (2 * Math.PI * i) / (grid - 1));
+    if (!two) {
+      return { charts: [{ kind: "lines", x: axis.map((x) => x / Math.PI), xLabel: `${symbolGlyph(s1)} / π`, yLabel: "⟨H⟩", series: [{ name: "⟨H⟩", y: out[0] }] }] };
+    }
+    const lab = (i: number) => (i % 5 === 0 ? `${r3(axis[i] / Math.PI)}π` : "");
+    return {
+      charts: [{
+        kind: "heatmap", scale: "div", rows: axis.map((_, i) => lab(i)), cols: axis.map((_, i) => lab(i)), values: out,
+        title: `⟨H⟩: rows ${symbolGlyph(s2)}, cols ${symbolGlyph(s1)} (both −π … π)`,
+      }],
+    };
+  },
+
+  async plateau(ctx, opts) {
+    const syms = symbolsOfTape(ctx);
+    if (syms.length === 0) return { error: "the tape has no symbols" };
+    const res = await barrenPlateauDiagnostic(lowerTape(ctx.n, ctx.tape), [], { kind: "sum", terms: observable(opts, ctx.n) }, syms, num("plateau", "samples", opts, ctx.n));
+    return {
+      charts: [{
+        kind: "table", headers: ["symbol", "Var ∂⟨H⟩", "mean ∂⟨H⟩"],
+        rows: syms.map((s, i) => [symbolGlyph(s), res.variancePerSymbol[i].toExponential(3), r3(res.meanGradPerSymbol[i])]),
+      }],
+      notes: ["Random points are drawn afresh on every run."],
+    };
+  },
+
+  qfi(ctx, opts) {
+    const axis = (["X", "Y", "Z"] as const)[num("qfi", "axis", opts, ctx.n)];
+    const res = quantumFisherPure(ctx.state, ctx.n, collectiveSpinGenerator(ctx.n, axis));
+    return {
+      scalars: [
+        { label: `F_Q (J${axis.toLowerCase()})`, value: r3(res.qfi) }, { label: "F_Q / N", value: r3(res.qfiDensity) },
+        { label: "SQL (N)", value: res.sql }, { label: "Heisenberg (N²)", value: res.heisenberg },
+        { label: "entanglement witnessed", value: res.witnessesEntanglement ? "yes (F_Q > N)" : "no" },
+      ],
+    };
+  },
+
+  multiqfi(ctx) {
+    const res = multiparameterQFI(ctx.state, ctx.n)!;
+    const L = ["Jx", "Jy", "Jz"];
+    return {
+      scalars: [{ label: "max eigenvalue", value: r3(res.maxEig) }, { label: "det F", value: r3(res.det) }],
+      charts: [{ kind: "heatmap", scale: "div", rows: L, cols: L, values: res.F, title: "F_ab" }],
+    };
+  },
+
+  squeezing(ctx) {
+    const res = spinSqueezing(ctx.state, ctx.n)!;
+    return {
+      scalars: [
+        { label: "ξ²", value: Number.isFinite(res.xiR2) ? r3(res.xiR2) : "undefined (⟨J⟩ = 0)" },
+        { label: "gain", value: Number.isFinite(res.xiR2) ? `${r3(res.dB)} dB` : "—" },
+        { label: "|⟨J⟩|", value: r3(res.meanLength) },
+        { label: "squeezed", value: res.squeezed ? "yes" : "no" },
+      ],
+      notes: res.meanLength < 1e-9 ? ["No mean spin (e.g. GHZ): use the QFI instead."] : [],
+    };
+  },
+
+  qgt(ctx) {
+    const syms = symbolsOfTape(ctx);
+    if (syms.length === 0) return { error: "the tape has no symbols" };
+    const res = quantumGeometricTensor(lowerTape(ctx.n, ctx.tape), [], ctx.scope, syms.slice(0, 8));
+    if (!res) return { error: "needs n ≤ 12 and ≤ 8 symbols" };
+    const L = res.symbols.map(symbolGlyph);
+    return {
+      scalars: [{ label: "det g", value: r3(res.metricDet) }, { label: "eigenvalues of g", value: res.metricEigenvalues.map(r3).join(", ") }],
+      charts: [
+        { kind: "heatmap", scale: "div", rows: L, cols: L, values: res.metric, title: "Fubini–Study metric g" },
+        { kind: "heatmap", scale: "div", rows: L, cols: L, values: res.berry, title: "Berry curvature F" },
+      ],
+    };
+  },
+
+  blochpath(ctx, opts) {
+    if (!(ctx.scope.t !== undefined && symbolsOfTape(ctx).includes("t"))) return { error: "needs t in the tape (2ND . in an angle)" };
+    const q = num("blochpath", "q", opts, ctx.n);
+    const res = blochTrajectories(lowerTape(ctx.n, ctx.tape), ctx.scope, [], 64)!;
+    return { charts: [{ kind: "paths", paths: [{ label: `q${q}`, points: res.path[q] }] }], notes: ["Measurements are post-selected on their recorded outcomes."] };
+  },
+
+  participation(ctx) {
+    const { n, state } = ctx;
+    const p = participation(probsOf(state, n), n);
+    const sweep = ctx.tape.length ? participationSweep(lowerTape(n, ctx.tape), ctx.scope, [], { maxCols: 400 }) : null;
+    return {
+      scalars: [
+        { label: "IPR Σp²", value: r3(p.ipr) }, { label: "participation ratio", value: r3(p.participationRatio) },
+        { label: "PR / 2ⁿ", value: r3(p.fraction) }, { label: "Shannon (nats)", value: r3(p.shannon) },
+      ],
+      charts: sweep ? [{ kind: "lines", x: sweep.pr.map((_, i) => i + 1), xLabel: "step", yLabel: "PR", series: [{ name: "PR", y: sweep.pr }], yMin: 1 }] : [],
+    };
+  },
+} satisfies Record<string, Run>);
+
+export function runAnalysis(id: string, ctx: AnalysisContext, opts: Opts): AnalysisResult | Promise<AnalysisResult> {
   const meta = ANALYSIS_BY_ID[id];
   const run = RUNS[id];
   if (!meta || !run) return { error: `unknown analysis ${id}` };
   if (ctx.n > meta.maxQubits) return { error: `needs n ≤ ${meta.maxQubits} (n = ${ctx.n})` };
   if (meta.minQubits && ctx.n < meta.minQubits) return { error: `needs n ≥ ${meta.minQubits}` };
+  const fail = (e: unknown): AnalysisResult => ({ error: e instanceof Error ? e.message : String(e) });
   try {
-    return run(ctx, opts);
+    const out = run(ctx, opts);
+    return out instanceof Promise ? out.catch(fail) : out;
   } catch (e) {
-    return { error: e instanceof Error ? e.message : String(e) };
+    return fail(e);
   }
 }
 

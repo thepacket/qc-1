@@ -456,6 +456,13 @@ export class Calculator {
     this.changed();
   }
 
+  /** Set several symbols at once (e.g. the optimizer's result). */
+  applyScope(values: Scope) {
+    for (const [k, v] of Object.entries(values)) this.setSymbol(k, v);
+    this.info(`set ${Object.entries(values).map(([k, v]) => `${symbolGlyph(k)}=${v.toFixed(3)}`).join(" ")}`);
+    this.changed();
+  }
+
   /** Keys on the PARAM screen: ◀ ▶ pick a symbol, = sets it from the entry. */
   private paramKey(id: string): boolean {
     const len = this.symbols.length;

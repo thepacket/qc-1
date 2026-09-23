@@ -10,6 +10,7 @@ import { gateCases, randomCases, type Case } from "./cases/groups/statevector";
 import * as ent from "./cases/groups/entanglement";
 import * as st2 from "./cases/groups/state2";
 import * as sym from "./cases/groups/symbolic";
+import * as met from "./cases/groups/metrology";
 
 const OUT = new URL("./out/", import.meta.url);
 
@@ -21,7 +22,7 @@ function bundle(group: string, cases: Case[]) {
   writeFileSync(new URL(`${group}.cases.json`, OUT), JSON.stringify({ group, cases: rows }));
 }
 
-test("dump validation cases", () => {
+test("dump validation cases", async () => {
   mkdirSync(OUT, { recursive: true });
   bundle("gates", gateCases());
   bundle("random-tapes", randomCases());
@@ -47,6 +48,16 @@ test("dump validation cases", () => {
       group: "symbolic",
       points: sym.POINTS,
       cases: sym.cases().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: sym.compute(c) })),
+    }),
+  );
+  writeFileSync(
+    new URL("metrology.cases.json", OUT),
+    JSON.stringify({
+      group: "metrology",
+      states: met.stateCasesM().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), hamTexts: met.hams(c.n), qc1: met.computeState(c) })),
+      symbolic: await Promise.all(met.symCases().map(async (c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: await met.computeSym(c) }))),
+      pathPoints: met.PATH_POINTS,
+      grid: met.LANDSCAPE_GRID,
     }),
   );
 });

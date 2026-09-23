@@ -11,10 +11,10 @@ type Job = { req: AnalysisRequest; snap: { rev: number; n: number; tape: Entry[]
  * time (cancel / stale work) without touching the register.
  */
 self.onmessage = (e: MessageEvent<{ port: MessagePort }>) => {
-  e.data.port.onmessage = (m: MessageEvent<Job>) => {
+  e.data.port.onmessage = async (m: MessageEvent<Job>) => {
     const { req, snap } = m.data;
     const t0 = performance.now();
-    const result = runAnalysis(req.id, { n: snap.n, state: snap.state, tape: snap.tape, scope: snap.scope }, req.opts);
+    const result = await runAnalysis(req.id, { n: snap.n, state: snap.state, tape: snap.tape, scope: snap.scope }, req.opts);
     const reply: AnalysisReply = { seq: req.seq, rev: snap.rev, id: req.id, result, ms: performance.now() - t0 };
     (self as DedicatedWorkerGlobalScope).postMessage(reply);
   };

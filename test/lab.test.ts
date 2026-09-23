@@ -22,23 +22,29 @@ describe("LAB framework", () => {
     expect(ANALYSES.map((a) => a.id).sort()).toEqual([...RUN_IDS].sort());
   });
 
-  test("every analysis runs on a GHZ state of a size it accepts, without error", () => {
+  test("every analysis runs on an entangled, symbolic state of a size it accepts, without error", async () => {
     for (const a of ANALYSES) {
       const n = Math.min(a.maxQubits, Math.max(a.minQubits ?? 1, 4));
       const c = calc();
-      // A generically entangled state: H layer, CZ ring, RX(0.7) + T layers, CZ ring again.
+      // A generically entangled state: H layer, CZ ring, RX(0.7) + T layers,
+      // CZ ring again; plus symbols θ and t for the analyses that sweep them.
       keys(c, ...(String(n).split("") as KeyId[]), "2nd", "q", "all", "h");
       const czRing = () => { for (let q = 0; q < n; q++) keys(c, "ctrl", "right", "z"); };
       czRing();
       keys(c, "0", ".", "7", "all", "rx", "all", "t");
       czRing();
+      keys(c, "2nd", ",", "ry", "2nd", ".", "rz");
+      c.setSymbol("theta", 0.4);
+      c.setSymbol("t", 0.9);
       c.setMode("lab");
       c.openAnalysis(a.id);
+      for (let i = 0; i < 200 && c.analysis?.status !== "done"; i++) await new Promise((r) => setTimeout(r, 0));
       expect(c.n, a.id).toBe(n);
       expect(c.analysis?.result?.error, a.id).toBeUndefined();
-      expect((c.analysis?.result?.charts?.length ?? 0) + (c.analysis?.result?.scalars?.length ?? 0), a.id).toBeGreaterThan(0);
+      const r = c.analysis!.result!;
+      expect((r.charts?.length ?? 0) + (r.scalars?.length ?? 0), a.id).toBeGreaterThan(0);
     }
-  });
+  }, 60_000);
 
   test("Bell pair: MI = 2, E_N = 1, C = 1, ρ₀ maximally mixed", () => {
     const c = bell();
@@ -106,15 +112,22 @@ describe("LAB framework", () => {
     expect(c.tape).toHaveLength(2);
   });
 
-  test("◀ ▶ = navigate categories and lists", () => {
+  test("◀ ▶ = navigate categories and lists, skipping empty categories", async () => {
+    const { CATEGORIES, analysesIn } = await import("../src/analysis/catalog");
     const c = calc();
     c.setMode("lab");
-    keys(c, "right", "eq"); // State → Measurement
+    const usable = CATEGORIES.map((cat, i) => [i, analysesIn(cat.id).length] as const).filter(([, k]) => k > 0).map(([i]) => i);
+    keys(c, "right");
+    expect(c.lab.index).toBe(usable[1]);
+    keys(c, "eq");
     expect(c.lab.level).toBe("list");
     keys(c, "eq");
     expect(c.lab.level).toBe("view");
-    expect(c.lab.id).toBe("anticoncentration");
-    keys(c, "ac", "ac", "right", "right", "eq", "eq"); // Measurement → Phase space → (skips empty Expectation) Entanglement
+    expect(c.lab.id).toBe(analysesIn(CATEGORIES[usable[1]].id)[0].id);
+    keys(c, "ac", "ac");
+    const ent = CATEGORIES.findIndex((x) => x.id === "entanglement");
+    while (c.lab.index !== ent) keys(c, "right");
+    keys(c, "eq", "eq");
     expect(c.lab.id).toBe("density");
   });
 

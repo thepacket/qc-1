@@ -352,6 +352,37 @@ function Stars({ c }: { c: Extract<Chart, { kind: "stars" }> }) {
   );
 }
 
+// ─── Bloch paths ─────────────────────────────────────────────────────
+function Paths({ c }: { c: Extract<Chart, { kind: "paths" }> }) {
+  const R = 80, S = 200, m = S / 2;
+  const P = (x: number, y: number, z: number) => {
+    const [sx, sy, d] = project(x, y, z);
+    return { x: m + sx * R, y: m - sy * R, d };
+  };
+  return (
+    <Frame title={c.title}>
+      <svg viewBox={`0 0 ${S} ${S}`} className="qsphere" role="img" aria-label="Bloch trajectory">
+        <circle cx={m} cy={m} r={R} className="sphere" />
+        <ellipse cx={m} cy={m} rx={R} ry={R * 0.26} className="eq back" />
+        <text x={m} y={m - R - 6} className="axis-label">|0⟩</text>
+        <text x={m} y={m + R + 10} className="axis-label">|1⟩</text>
+        {c.paths.map((p, k) => {
+          const pts = p.points.map((v) => P(v.x, v.y, v.z));
+          const start = pts[0], end = pts[pts.length - 1];
+          return (
+            <g key={p.label}>
+              <polyline points={pts.map((q) => `${q.x},${q.y}`).join(" ")} fill="none" stroke={SERIES[k % 3]} strokeWidth={2} strokeLinejoin="round" />
+              <circle cx={start.x} cy={start.y} r={4} fill="var(--lcd)" stroke={SERIES[k % 3]} strokeWidth={2} />
+              <circle cx={end.x} cy={end.y} r={4} fill={SERIES[k % 3]} stroke="var(--lcd)" strokeWidth={1.5} />
+            </g>
+          );
+        })}
+      </svg>
+      <div className="readout">{c.paths.map((p) => p.label).join(", ")}: open dot t = 0, filled dot t = 2π</div>
+    </Frame>
+  );
+}
+
 export function ChartView({ chart }: { chart: Chart }) {
   switch (chart.kind) {
     case "heatmap": return <Heatmap c={chart} />;
@@ -363,5 +394,6 @@ export function ChartView({ chart }: { chart: Chart }) {
     case "scatter": return <Scatter c={chart} />;
     case "hist": return <Hist c={chart} />;
     case "stars": return <Stars c={chart} />;
+    case "paths": return <Paths c={chart} />;
   }
 }

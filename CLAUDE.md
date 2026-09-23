@@ -62,6 +62,13 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
   - History is a list of `Op`s: an entry, or a whole-tape `replace` (AC, RCL, and later the tools and imports), so undo covers both.
   - STO/RCL are 2ND+`=` and 2ND+`⌫`, with the slot digit 1–9 typed first. `Saved` gains `scope` and `memory`.
   - QASM export declares every symbol as `input float`. `t` is exported as `t_` because `t` is the T gate in stdgates.inc. Qiskit's importer can't evaluate functions *of* symbols (sin(θ)).
+- **Expectation & metrology (Phase 4).**
+  - `src/sim/simulate.ts` is a **QC-1 adapter, not a port**. It has upstream's `simulate()` signature but runs QC-1's validated `applyStep` over `lowerTape(n, tape)` (`src/calc/lower.ts`). Measurements are post-selected on their recorded outcomes.
+  - `src/calc/ids.ts` replaces the upstream React-coupled `newGateId`.
+  - `optimize.ts` is the ideal-state subset: its noisy paths and ZNE come with noise mode (Phase 8), and WebGPU is deferred.
+  - Analyses may be async (the optimiser); the worker awaits, and InlineEngine replies at once when the analysis is synchronous.
+  - LAB inputs add a `pauli` text field (phone keyboard, `pauliPresets.ts`) and a `symbol` picker. Results can offer `apply` (set symbol values). A `paths` chart shows Bloch trajectories.
+  - Fixtures: `metrology` and `metrology-symbolic`. Bugs #10–#12 are the Pauli-sum exponents, the QFI-matrix eigenvalues, and the optimiser stopping at a stationary start.
 - `src/qasm/fromTape.ts` turns the tape into OpenQASM 3. It uses stdgates names where
   they exist and `ctrl @`/`negctrl @` otherwise, adds exact `gate` definitions for
   non-stdgates (sy, sxdg, iswap, rxx, ryy, rzz), and folds `sqrt(...)` params to numbers.

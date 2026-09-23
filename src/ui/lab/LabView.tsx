@@ -1,6 +1,9 @@
 import { useEffect, useRef } from "react";
 import type { Calculator } from "../../calc/calculator";
-import { ANALYSIS_BY_ID, CATEGORIES, analysesIn, cutDefault, inputValue } from "../../analysis/catalog";
+import { ANALYSIS_BY_ID, CATEGORIES, analysesIn, cutDefault, inputValue, pauliValue, symbolValue } from "../../analysis/catalog";
+import { pauliPresets } from "../../analysis/pauliPresets";
+import { symbolGlyph } from "../../calc/entry";
+import { useState } from "react";
 import type { AnalysisMeta, InputSpec } from "../../analysis/types";
 import { ChartView } from "../charts/Charts";
 import { fmt } from "../charts/colors";
@@ -103,6 +106,9 @@ function AnalysisScreen({ calc, meta }: { calc: Calculator; meta: AnalysisMeta }
             ))}
           </dl>
         )}
+        {res?.apply && Object.keys(res.apply.scope).length > 0 && (
+          <button className="lab-status apply" onClick={() => calc.applyScope(res.apply!.scope)}>{res.apply.label}</button>
+        )}
         {res?.charts?.map((c, i) => <ChartView key={i} chart={c} />)}
         {res?.notes?.map((n) => <p key={n} className="dim note">{n}</p>)}
         <p className="dim note">{meta.summary}</p>
@@ -127,6 +133,23 @@ function Input({ calc, meta, spec }: { calc: Calculator; meta: AnalysisMeta; spe
         {[...Array(calc.n).keys()].map((q) => (
           <button key={q} className={`qb${sel.includes(q) ? " sel" : ""}`} aria-pressed={sel.includes(q)} onClick={() => toggle(q)}>
             q{q}
+          </button>
+        ))}
+      </div>
+    );
+  }
+  if (spec.kind === "pauli") return <PauliField calc={calc} meta={meta} spec={spec} />;
+  if (spec.kind === "symbol") {
+    const cur = symbolValue(spec, calc.labOpts(meta.id), calc.symbols);
+    const options = [...(spec.optional ? [""] : []), ...calc.symbols];
+    if (calc.symbols.length === 0) return <div className="cut-picker"><span className="dim">{spec.label}: no symbols in the tape</span></div>;
+    return (
+      <div className="cut-picker" role="radiogroup" aria-label={spec.label}>
+        <span className="dim">{spec.label}</span>
+        {options.map((o) => (
+          <button key={o || "none"} role="radio" aria-checked={o === cur} className={`qb${o === cur ? " sel" : ""}`}
+            onClick={() => calc.setLabOpts(meta.id, { [spec.key]: o })}>
+            {o ? symbolGlyph(o) : "none"}
           </button>
         ))}
       </div>
@@ -161,6 +184,37 @@ function Input({ calc, meta, spec }: { calc: Calculator; meta: AnalysisMeta; spe
       {spec.options.map((o) => (
         <button key={o.label} role="radio" aria-checked={o.value === value} className={`qb${o.value === value ? " sel" : ""}`} onClick={() => set(o.value)}>{o.label}</button>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Observable input: a text field on the phone keyboard (characters, no
+ * autocorrect) plus presets for the current n. Applied on Enter / blur so
+ * the analysis doesn't rerun on every keystroke.
+ */
+function PauliField({ calc, meta, spec }: { calc: Calculator; meta: AnalysisMeta; spec: Extract<InputSpec, { kind: "pauli" }> }) {
+  const committed = pauliValue(calc.labOpts(meta.id), spec.key, calc.n);
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft !== null && draft.trim() !== committed) calc.setLabOpts(meta.id, { [spec.key]: draft.trim() });
+    setDraft(null);
+  };
+  return (
+    <div className="pauli-field">
+      <input
+        value={draft ?? committed} aria-label={spec.label} spellCheck={false} autoCapitalize="characters"
+        autoCorrect="off" autoComplete="off" inputMode="text" enterKeyHint="done"
+        onChange={(e) => setDraft(e.target.value.toUpperCase().replace(/[^IXYZ0-9.EE+\-* ]/g, ""))}
+        onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); e.stopPropagation(); }}
+      />
+      <div className="cut-picker">
+        {pauliPresets(calc.n).map((p) => (
+          <button key={p.label} className={`qb${p.text === committed ? " sel" : ""}`} onClick={() => { setDraft(null); calc.setLabOpts(meta.id, { [spec.key]: p.text }); }}>
+            {p.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

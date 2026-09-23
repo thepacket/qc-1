@@ -1,4 +1,5 @@
 import type { AnalysisMeta, Category, InputSpec, Opts } from "./types";
+import { defaultObservable } from "./pauliPresets";
 
 /** LAB categories, in display order (Quantiom's grouping, phone-sized labels). */
 export const CATEGORIES: { id: Category; label: string }[] = [
@@ -120,6 +121,51 @@ ANALYSES.push(
     summary: "l₁-norm and relative-entropy coherence in the computational basis." },
 );
 
+// Phase 4: expectation & metrology (validated: fixtures metrology, metrology-symbolic).
+const obs = { kind: "pauli" as const, key: "obs", label: "observable" };
+ANALYSES.push(
+  { id: "expectation", title: "Expectation value", category: "metrology", mode: "live", maxQubits: 20, inputs: [
+      obs,
+      { kind: "choice", key: "shots", label: "shots", fallback: 1000, options: [
+        { label: "100", value: 100 }, { label: "1k", value: 1000 }, { label: "10k", value: 10000 }, { label: "100k", value: 100000 },
+      ] },
+    ],
+    summary: "⟨H⟩ for a Pauli string or Pauli sum, with its variance and the shot-noise error σ/√N." },
+  { id: "optimise", title: "Optimise ⟨H⟩ (VQE)", category: "metrology", mode: "run", maxQubits: 12, inputs: [
+      obs,
+      { kind: "choice", key: "goal", label: "goal", fallback: 0, options: [{ label: "min", value: 0 }, { label: "max", value: 1 }] },
+      { kind: "choice", key: "method", label: "method", fallback: 0, options: [{ label: "Adam", value: 0 }, { label: "SGD", value: 1 }, { label: "QNG", value: 2 }] },
+      { kind: "choice", key: "steps", label: "steps", fallback: 60, options: [{ label: "20", value: 20 }, { label: "60", value: 60 }, { label: "200", value: 200 }] },
+    ],
+    summary: "Gradient descent on ⟨H⟩ over the tape's symbols (finite differences); apply the result to the sliders." },
+  { id: "landscape", title: "Landscape", category: "metrology", mode: "run", maxQubits: 12, inputs: [
+      obs,
+      { kind: "symbol", key: "s1", label: "x", fallback: "first" },
+      { kind: "symbol", key: "s2", label: "y", fallback: "second", optional: true },
+    ],
+    summary: "⟨H⟩ as one or two symbols sweep [−π, π]: a curve or a heatmap." },
+  { id: "plateau", title: "Barren-plateau check", category: "metrology", mode: "run", maxQubits: 12, inputs: [
+      obs,
+      { kind: "choice", key: "samples", label: "samples", fallback: 50, options: [{ label: "20", value: 20 }, { label: "50", value: 50 }, { label: "200", value: 200 }] },
+    ],
+    summary: "Variance of ∂⟨H⟩/∂θ over random parameter points; exponentially small means a barren plateau." },
+  { id: "qfi", title: "Quantum Fisher information", category: "metrology", mode: "live", maxQubits: 20, inputs: [
+      { kind: "choice", key: "axis", label: "axis", fallback: 0, options: [{ label: "Jx", value: 0 }, { label: "Jy", value: 1 }, { label: "Jz", value: 2 }] },
+    ],
+    summary: "F_Q = 4 Var(J) for collective rotations: > N witnesses entanglement, N² is the Heisenberg limit." },
+  { id: "multiqfi", title: "QFI matrix", category: "metrology", mode: "live", maxQubits: 14, inputs: [],
+    summary: "3×3 QFI matrix over Jx, Jy, Jz; its top eigenvalue is the best single-axis QFI." },
+  { id: "squeezing", title: "Spin squeezing", category: "metrology", mode: "live", maxQubits: 14, minQubits: 2, inputs: [],
+    summary: "Wineland ξ² = N·min ΔJ⊥² / |⟨J⟩|²; below 1 is squeezed (and entangled)." },
+  { id: "qgt", title: "Quantum geometric tensor", category: "metrology", mode: "live", maxQubits: 12, inputs: [],
+    summary: "Fubini–Study metric and Berry curvature over the tape's symbols (finite differences)." },
+  { id: "blochpath", title: "Bloch trajectory", category: "state", mode: "run", maxQubits: 12,
+    inputs: [{ kind: "qubit", key: "q", label: "qubit", fallback: "first" }],
+    summary: "Each qubit's Bloch vector as t sweeps [0, 2π]: the path it traces on its sphere." },
+  { id: "participation", title: "Participation", category: "entanglement", mode: "live", maxQubits: 16, inputs: [],
+    summary: "Inverse participation ratio, participation ratio and entropies of the basis distribution; plus its growth along the tape." },
+);
+
 export const ANALYSIS_BY_ID: Record<string, AnalysisMeta> = Object.fromEntries(ANALYSES.map((a) => [a.id, a]));
 
 /** Default bipartition: the first half of the register. */
@@ -146,6 +192,21 @@ export function inputValue(spec: InputSpec, opts: Opts, n: number): number {
     return typeof v === "number" && spec.options.some((o) => o.value === v) ? v : spec.fallback;
   }
   return 0;
+}
+
+/** Text of a Pauli input (options or the default observable). */
+export function pauliValue(opts: Opts, key: string, n: number): string {
+  const v = opts[key];
+  return typeof v === "string" && v.trim() ? v : defaultObservable(n);
+}
+
+/** A symbol input: the chosen symbol if the tape still uses it, else the default ("" = none). */
+export function symbolValue(spec: Extract<InputSpec, { kind: "symbol" }>, opts: Opts, symbols: string[]): string {
+  const v = opts[spec.key];
+  if (typeof v === "string" && (v === "" ? spec.optional : symbols.includes(v))) return v;
+  if (spec.fallback === "t") return symbols.includes("t") ? "t" : symbols[0] ?? "";
+  if (spec.fallback === "second") return spec.optional ? symbols[1] ?? "" : symbols[1] ?? symbols[0] ?? "";
+  return symbols[0] ?? "";
 }
 
 export function analysesIn(cat: Category): AnalysisMeta[] {
