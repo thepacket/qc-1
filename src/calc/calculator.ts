@@ -149,6 +149,8 @@ export class Calculator {
   catalog: { open: boolean; index: number; typing: "state" | "matrix" | null } = { open: false, index: 0, typing: null };
   /** The help screen is open. */
   helpOpen = false;
+  /** The AI chat screen (ui/ChatView.tsx). */
+  chatOpen = false;
   /** LAB results pinned for the session report (newest last, at most 12; this session only). */
   pins: { title: string; result: AnalysisResult; at: string; steps: number; n: number }[] = [];
   /** The session report overlay, and the live KET view it shows (fetched on open). */
@@ -1036,6 +1038,11 @@ export class Calculator {
     this.reportOpen = !this.reportOpen;
     this.reportKet = null;
     this.send({ t: "view", req: this.reportOpen ? { ...this.viewReq(), mode: "ket", upTo: null } : this.viewReq() });
+    this.changed();
+  }
+
+  toggleChat() {
+    this.chatOpen = !this.chatOpen;
     this.changed();
   }
 

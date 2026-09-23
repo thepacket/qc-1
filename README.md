@@ -29,6 +29,8 @@ install to your home screen, and it works offline.
   and repetition codes with a union-find decoder) and verification.
 - **Noise** with Qiskit Aer's conventions: exact density matrices or
   trajectories, ZNE and PEC, device calibration import.
+- **AI chat** through OpenRouter with your own key: it reads the tape, runs LAB
+  analyses and proposes circuits you apply with a tap.
 - **Import and export**: OpenQASM 2/3 import, 120 example programs (each can be
   stepped through with its comments), OpenQASM 3 and Qiskit (Python) export,
   share links and QR codes.

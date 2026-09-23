@@ -33,6 +33,8 @@ export function HelpView({ calc }: { calc: Calculator }) {
           {CATEGORIES.map((c) => <li key={c.id}>{c.label} <span className="dim">· {ANALYSES.filter((a) => a.category === c.id).length}</span></li>)}
         </ul>
         <p>Noise: LAB → Noise &amp; error → Noise model (Qiskit Aer conventions). With noise on, PROB, BLOCH, SHOTS and the noise and benchmarking analyses use it.</p>
+        <h3>AI chat</h3>
+        <p>The <b>AI</b> button opens a chat with a model of your choice through OpenRouter, using your own API key (stored on this device only). It reads the tape and state and runs LAB analyses; a circuit it suggests comes with APPLY, and UNDO takes it back.</p>
         <h3>Conventions</h3>
         <p>q0 is the leftmost (most significant) bit of |q0 q1 …⟩. Qiskit prints bitstrings the other way round (q0 rightmost); the exports take care of it. Angles are in radians; RX(θ) = e^(−iθX/2) as in Qiskit.</p>
         <h3>Checking the numbers</h3>
