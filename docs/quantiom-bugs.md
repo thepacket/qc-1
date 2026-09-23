@@ -48,4 +48,5 @@ Upstream file paths are relative to that project's `client/src/`.
 - stdgates.inc has no `sxdg`, `ccz`, `rzz`, `rxx`, `ryy`, `xx_plus_yy`, … Upstream examples use them without a definition; QC-1's importer takes its own gates of those names (with a note), and the reference adds Qiskit's library definitions.
 - Convention change, not a bug: upstream's depolarizing rate is the probability of some Pauli (p/3 each), i.e. 3/4 of Qiskit's λ; QC-1 uses Qiskit's `depolarizing_error` λ, and converts upstream's presets.
 - `qiskit.quantum_info.Clifford(circuit)` maps `ecr`, `dcx`, `iswap` by name to Qiskit's own gates and ignores the program's `gate` definitions (QC-1's ECR and DCX have the qubit roles reversed, #3). `g_stabilizer.py` builds the Clifford from each instruction's Operator instead.
+- Qiskit's `Gate.control()` on a custom gate named like a standard gate (`rzx`, `ecr`, …) uses the standard gate's definition, with its free `theta`. QC-1's Qiskit export names its sub-circuit gates `qc1_…`.
 

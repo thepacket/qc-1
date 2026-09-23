@@ -626,3 +626,9 @@ button {
 .noise-row { display: grid; grid-template-columns: 1fr 5.5em; gap: 6px; align-items: center; font-size: 11px; }
 .noise-row input { font: 12px var(--mono); background: transparent; color: var(--ink); border: 1px solid var(--grid); border-radius: 3px; padding: 3px 4px; text-align: right; }
 .gen-row { grid-template-columns: auto 1fr; font-family: var(--mono); word-break: break-all; }
+
+/* ── Help ──────────────────────────────────────────────────── */
+.help h3 { font-size: 12px; margin: 10px 0 2px; color: var(--ink); }
+.help p, .help li { font-size: 11px; line-height: 1.45; margin: 3px 0; }
+.help ul { margin: 2px 0; padding-left: 16px; }
+.help-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 2px 8px; font-size: 11px; }

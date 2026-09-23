@@ -142,6 +142,8 @@ export class Calculator {
   message: Message | null = null;
   /** CATALOG list open on the LCD, and its highlighted row. */
   catalog = { open: false, index: 0 };
+  /** The help screen is open. */
+  helpOpen = false;
   /** Custom gates defined with DEFINE (G1, G2, …). */
   customGates: CustomGate[] = [];
   /** The noise model; when on, PROB/BLOCH/SHOTS and the noise analyses use it. */
@@ -389,7 +391,9 @@ export class Calculator {
     this.aInflight = { seq, at: now };
     this.aPending = false;
     this.analysis = { id, status: "busy", result: this.analysis?.id === id ? this.analysis.result : null, rev: this.analysis?.rev ?? -1, ms: 0 };
-    this.engine.analyze({ seq, id, opts: this.labOpts(id), noise: this.noiseOn ? this.noise : undefined });
+    // Compare reads a memory slot, which lives here, not in the workers.
+    const opts = id === "compare" ? { ...this.labOpts(id), other: this.memory[Number(this.labOpts(id).slot) || 1] } : this.labOpts(id);
+    this.engine.analyze({ seq, id, opts, noise: this.noiseOn ? this.noise : undefined });
   }
 
   /** True when the noise model is on and does something. */
@@ -853,6 +857,11 @@ export class Calculator {
   private resize(n: number) {
     if (n < 1 || n > STAB_MAX) throw new Error(`n must be 1–${STAB_MAX}`);
     this.send({ t: "resize", n }, (r) => this.info(r.n > MAX_QUBITS ? `n = ${r.n} · stabilizer mode (Clifford gates only)` : `n = ${r.n}`));
+  }
+
+  toggleHelp() {
+    this.helpOpen = !this.helpOpen;
+    this.changed();
   }
 
   /** Above 20 qubits the register is a stabilizer tableau. */

@@ -167,6 +167,19 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
   - Fixture `stabilizer`:
     - Qiskit StabilizerState of each export up to n = 200, with the Clifford built per instruction because `Clifford(circuit)` maps ecr/dcx/iswap by name;
     - post-selected statevectors for measured tapes.
+- **Qiskit export, verification, help (Phase 11).**
+  - `src/qasm/toQiskit.ts`: `qiskitPython(n, tape)` translates QC-1's own QASM 3 export into a Python script, statement by statement.
+    - Each `gate` definition becomes `_gate_NAME`, a sub-circuit named `qc1_NAME`. The prefix stops `.control()` dispatching on standard names.
+    - Modifiers become `.control(k, ctrl_state)` / `.inverse()`; conditions become `if_test`; symbols become Parameters (renamed with `pyName` when they clash with Python keywords).
+    - Upstream emitQiskit is not ported.
+  - Fixture `qiskit`: `validation/ref/g_qiskit.py` executes each generated script and compares its statevector with QC-1's exactly.
+  - `src/analysis/verifyRuns.ts`:
+    - compare: current tape vs memory slot `opts.other`, attached by `Calculator.requestAnalysis`;
+    - plot: a declarative custom sweep;
+    - selftest: dynamically imports fixtures and replays them on the device.
+  - Fixture `verify` covers the compare results.
+  - `src/ui/HelpView.tsx` opens from the "?" button (`Calculator.toggleHelp`). `npm run docs:help` regenerates `docs/help/analyses.md` from the catalog.
+  - Workers build as ES modules (`worker.format: "es"` in vite.config.ts); the IIFE build failed with code-split workers.
 - `src/qasm/fromTape.ts` turns the tape into OpenQASM 3. It uses stdgates names where
   they exist and `ctrl @`/`negctrl @` otherwise, adds exact `gate` definitions for
   non-stdgates (sy, sxdg, iswap, rxx, ryy, rzz), and folds `sqrt(...)` params to numbers.

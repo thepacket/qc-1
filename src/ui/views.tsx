@@ -4,6 +4,7 @@ import { KET_ROWS, type ViewData } from "../calc/core";
 import { formatEntry } from "../calc/steps";
 import { exportQasm3 } from "../qasm/fromTape";
 import { shareHash } from "../qasm/share";
+import { qiskitPython } from "../qasm/toQiskit";
 import { EXAMPLE_CATEGORIES, describeProgram, loadExample } from "../examples";
 import type { Vec3 } from "../calc/analysis";
 import { complex, ket, num, pct } from "./format";
@@ -84,17 +85,16 @@ export function ShotsView({ data }: ViewProps<"shots">) {
   return <Bars items={items} head={`${data.shots.toLocaleString()} shots · ${data.distinct} outcomes · tap SHOTS to re-roll`} />;
 }
 
-async function copyText(calc: Calculator, text: string) {
+async function copyText(calc: Calculator, text: string, done = "QASM copied") {
   try {
     await navigator.clipboard.writeText(text);
-    calc.notify("QASM copied");
+    calc.notify(done);
   } catch {
     calc.notify("copy blocked", "error");
   }
 }
 
-async function shareQasm(calc: Calculator, text: string) {
-  const name = "qc1-tape.qasm";
+async function shareQasm(calc: Calculator, text: string, name = "qc1-tape.qasm") {
   const file = new File([text], name, { type: "text/plain" });
   try {
     if (navigator.canShare?.({ files: [file] })) {
@@ -193,6 +193,8 @@ function TapeMenu({ calc, go }: { calc: Calculator; go: (p: TapePane) => void })
     ["Import QASM…", "paste OpenQASM 2/3 or open a file", () => go("import")],
     ["Copy QASM", "OpenQASM 3 of the tape (Qiskit loads it)", () => { void copyText(calc, qasm()); go("list"); }],
     ["Share QASM file", "qc1-tape.qasm", () => { void shareQasm(calc, qasm()); go("list"); }],
+    ["Copy Qiskit (Python)", "a script that builds the QuantumCircuit", () => { void copyText(calc, qiskitPython(calc.n, calc.tape), "Qiskit script copied"); go("list"); }],
+    ["Share Qiskit file", "qc1_tape.py", () => { void shareQasm(calc, qiskitPython(calc.n, calc.tape), "qc1_tape.py"); go("list"); }],
     ["Share link", "the tape and symbol values in a URL", () => { void shareLink(); go("list"); }],
   ];
   return (

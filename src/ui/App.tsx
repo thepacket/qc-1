@@ -8,6 +8,7 @@ import { LabView } from "./lab/LabView";
 import { ParamView } from "./ParamView";
 import { symbolGlyph } from "../calc/entry";
 import { readShareHash } from "../qasm/share";
+import { HelpView } from "./HelpView";
 
 export const STORAGE_KEY = "qc1:session:v1";
 const UI_KEY = "qc1:ui:v1";
@@ -134,6 +135,7 @@ export function App() {
   const nv = noisy ? calc.noisyView : null;
   const data = noisy ? (nv?.view?.mode === calc.mode ? nv.view : null) : calc.view?.mode === calc.mode ? calc.view : null;
   const view = (() => {
+    if (calc.helpOpen) return <HelpView calc={calc} />;
     if (calc.param.open) return <ParamView calc={calc} />;
     if (calc.catalog.open) return <CatalogView calc={calc} />;
     if (calc.mode === "lab") return <LabView calc={calc} />;
@@ -188,6 +190,7 @@ export function App() {
           ) : (
             <span>{calc.tape.length} steps</span>
           )}
+          <button className="expand-btn" aria-label="Help" aria-pressed={calc.helpOpen} onClick={() => calc.toggleHelp()}>?</button>
           <button
             className="expand-btn"
             aria-label={expanded ? "Show keypad" : "Expand display"}

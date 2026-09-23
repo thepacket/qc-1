@@ -383,6 +383,25 @@ ANALYSES.push(
     summary: "A random Clifford circuit (single-qubit Cliffords and CX layers) to replace the tape with." },
 );
 
+// Phase 11: verification & export.
+ANALYSES.push(
+  { id: "compare", title: "Compare with memory", category: "verify", mode: "live", maxQubits: 20, inputs: [
+      { kind: "int", key: "slot", label: "M", min: 1, max: 9, fallback: 1 },
+    ],
+    summary: "The tape against a stored tape (STO): same operator?, process and average gate fidelity, state fidelity, resources." },
+  { id: "plot", title: "Custom plot", category: "verify", mode: "run", maxQubits: 14, inputs: [
+      { kind: "choice", key: "quantity", label: "plot", fallback: 0, options: [
+        { label: "⟨Z⟩", value: 0 }, { label: "⟨X⟩", value: 1 }, { label: "⟨Y⟩", value: 2 }, { label: "purity", value: 3 }, { label: "S(q)", value: 4 },
+        { label: "mid S", value: 5 }, { label: "Q", value: 6 }, { label: "M₂", value: 7 }, { label: "⟨H⟩", value: 8 },
+      ] },
+      { kind: "choice", key: "sweep", label: "over", fallback: 0, options: [{ label: "steps", value: 0 }, { label: "t", value: 1 }, { label: "symbol", value: 2 }] },
+      obs,
+    ],
+    summary: "Any of these quantities along the tape (after each step), over one period of t, or over another symbol." },
+  { id: "selftest", title: "Self-test", category: "verify", mode: "run", maxQubits: 1024, inputs: [],
+    summary: "Replay the committed Qiskit/Aer references on this device: gates, random tapes, symbols, classical control, noise, stabilizer mode." },
+);
+
 export const ANALYSIS_BY_ID: Record<string, AnalysisMeta> = Object.fromEntries(ANALYSES.map((a) => [a.id, a]));
 
 /** Default bipartition: the first half of the register. */

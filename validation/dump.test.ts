@@ -22,6 +22,10 @@ import * as nse from "./cases/groups/noise";
 import * as nsa from "./cases/groups/noiseAnalyses";
 import * as bch from "./cases/groups/bench";
 import * as stb from "./cases/groups/stabilizer";
+import * as vfy from "./cases/groups/verify";
+import { qiskitPython } from "../src/qasm/toQiskit";
+import type { Entry } from "../src/calc/steps";
+import { readFileSync } from "node:fs";
 
 const OUT = new URL("./out/", import.meta.url);
 
@@ -116,6 +120,16 @@ test("dump validation cases", async () => {
     JSON.stringify({ group: "noise-analyses", cases: nsa.cases().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: nsa.compute(c) })), calibration: nsa.calibration() }),
   );
   writeFileSync(new URL("bench.cases.json", OUT), JSON.stringify({ group: "bench", qc1: bch.compute() }));
+  // Qiskit Python export of every validated program (the statevector references are in their fixtures).
+  const py = (group: string) => {
+    const fx = JSON.parse(readFileSync(new URL(`../test/fixtures/${group}.json`, import.meta.url), "utf8"));
+    return fx.cases.map((c: { id: string; n: number; tape: Entry[]; gates?: import("../src/calc/custom").CustomGate[] }) => {
+      setCustomGates(c.gates ?? []);
+      return { group, id: c.id, n: c.n, python: qiskitPython(c.n, c.tape) };
+    });
+  };
+  writeFileSync(new URL("qiskit.cases.json", OUT), JSON.stringify({ group: "qiskit", cases: ["gates", "random-tapes", "symbolic", "classical"].flatMap(py) }));
+  writeFileSync(new URL("verify.cases.json", OUT), JSON.stringify({ group: "verify", cases: await Promise.all(vfy.cases().map(async (c) => ({ ...c, qc1: await vfy.compute(c) }))) }));
   writeFileSync(new URL("stabilizer.cases.json", OUT), JSON.stringify({
     group: "stabilizer",
     large: stb.largeCases().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: stb.compute(c) })),

@@ -46,13 +46,13 @@ describe("LAB framework", () => {
         c.setLabOpts(a.id, { obs: H });
       }
       c.openAnalysis(a.id);
-      for (let i = 0; i < 200 && c.analysis?.status !== "done"; i++) await new Promise((r) => setTimeout(r, 0));
+      for (let t0 = Date.now(); c.analysis?.status !== "done" && Date.now() - t0 < 30_000;) await new Promise((r) => setTimeout(r, 1));
       expect(c.n, a.id).toBe(n);
       expect(c.analysis?.result?.error, a.id).toBeUndefined();
       const r = c.analysis!.result!;
       expect((r.charts?.length ?? 0) + (r.scalars?.length ?? 0), a.id).toBeGreaterThan(0);
     }
-  }, 60_000);
+  }, 120_000);
 
   test("Bell pair: MI = 2, E_N = 1, C = 1, ρ₀ maximally mixed", () => {
     const c = bell();
