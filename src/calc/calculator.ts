@@ -604,7 +604,8 @@ export class Calculator {
       this.send({ t: "gates", defs: this.customGates });
     }
     this.sel = Math.min(this.sel, r.n - 1);
-    this.send({ t: "replace", n: r.n, tape: r.tape, scope: { ...scope }, label }, () => this.info(`${label}: ${r.tape.length} steps, n=${r.n}`));
+    // No confirmation message: the loaded tape speaks for itself (and the entry line stays clear).
+    this.send({ t: "replace", n: r.n, tape: r.tape, scope: { ...scope }, label });
     if (guide && r.tape.length) {
       // Start before the first step (set directly: the mirrored tape isn't updated yet).
       this.scrub = 0;
