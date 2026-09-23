@@ -21,11 +21,12 @@ install to your home screen, and it works offline.
   measurements.
 - **Views**: KET, PROB, BLOCH, SHOTS, TAPE (step list or circuit diagram, a
   step scrubber, and editing at any step) and **LAB**:
-  116 analyses and tools in 13 categories. They cover state, measurement,
+  118 analyses and tools in 14 categories. They cover state, measurement,
   phase space and magic, metrology, entanglement, dynamics, operators and
   spectra, circuit structure, and circuit tools (simplify, transpile, route,
   compile, inverse, Trotter, state prep, synthesis). They also cover noise,
-  benchmarking (RB, QV, XEB, T1/T2, tomography…) and verification.
+  benchmarking (RB, QV, XEB, T1/T2, tomography…), error correction (surface
+  and repetition codes with a union-find decoder) and verification.
 - **Noise** with Qiskit Aer's conventions: exact density matrices or
   trajectories, ZNE and PEC, device calibration import.
 - **Import and export**: OpenQASM 2/3 import, 120 example programs (each can be

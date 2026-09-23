@@ -149,6 +149,11 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 - **Classical shadows** (RUN, n ≤ 12; inputs: observable, snapshots) — Estimate ⟨H⟩ from random-Pauli measurement snapshots of the current state, against the exact value.
 - **Process tomography** (RUN, n ≤ 2; inputs: channel) — The tape's Pauli transfer matrix reconstructed from prepared inputs and Pauli readouts; process and gate fidelity.
 
+## Error correction
+
+- **QEC playground** (live, any n (also above 20 qubits); inputs: code, distance d, errors, random error rate %, random seed) — Put errors on a surface or repetition code (or draw them at random): the lit checks, the union-find decoder's correction, and whether a logical error slips through.
+- **QEC threshold** (RUN, any n (also above 20 qubits); inputs: code, errors, shots per point) — Logical error rate against the physical error rate for d = 3, 5, 7 (code capacity, union-find decoding): the curves cross at the threshold.
+
 ## Verification & export
 
 - **Compare with memory** (live, n ≤ 20; inputs: M) — The tape against a stored tape (STO): same operator?, process and average gate fidelity, state fidelity, resources.

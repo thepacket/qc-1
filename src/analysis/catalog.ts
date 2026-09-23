@@ -14,6 +14,7 @@ export const CATEGORIES: { id: Category; label: string }[] = [
   { id: "tools", label: "Circuit tools" },
   { id: "noise", label: "Noise & error" },
   { id: "bench", label: "Characterization & benchmarking" },
+  { id: "qec", label: "Error correction" },
   { id: "verify", label: "Verification & export" },
 ];
 
@@ -344,6 +345,18 @@ ANALYSES.push(
 
 // Phase 9: characterization & benchmarking (validated: fixture bench). Protocols run on the noise model.
 ANALYSES.push(
+  { id: "qecplay", title: "QEC playground", category: "qec", mode: "live", maxQubits: 1024, inputs: [
+    { kind: "choice", key: "code", label: "code", options: [{ label: "surface", value: 0 }, { label: "repetition", value: 1 }], fallback: 0 },
+    { kind: "choice", key: "d", label: "distance d", options: [3, 5, 7, 9, 11].map((d) => ({ label: String(d), value: d })), fallback: 3 },
+    { kind: "text", key: "errors", label: "errors", placeholder: "X4 Z7 Y12 (empty: random)" },
+    { kind: "int", key: "p", label: "random error rate %", min: 0, max: 40, fallback: 8 },
+    { kind: "int", key: "seed", label: "random seed", min: 0, max: 9999, fallback: 1 },
+  ], summary: "Put errors on a surface or repetition code (or draw them at random): the lit checks, the union-find decoder's correction, and whether a logical error slips through." },
+  { id: "qecthreshold", title: "QEC threshold", category: "qec", mode: "run", maxQubits: 1024, inputs: [
+    { kind: "choice", key: "code", label: "code", options: [{ label: "surface", value: 0 }, { label: "repetition", value: 1 }], fallback: 0 },
+    { kind: "choice", key: "noise", label: "errors", options: [{ label: "bit flips", value: 0 }, { label: "depolarizing", value: 1 }], fallback: 0 },
+    { kind: "int", key: "shots", label: "shots per point", min: 200, max: 20000, fallback: 2000 },
+  ], summary: "Logical error rate against the physical error rate for d = 3, 5, 7 (code capacity, union-find decoding): the curves cross at the threshold." },
   { id: "rb", title: "Randomized benchmarking", category: "bench", mode: "run", maxQubits: 1024, inputs: [
       { kind: "choice", key: "interleave", label: "interleave", fallback: 0, options: [{ label: "none", value: 0 }, { label: "X", value: 1 }, { label: "H", value: 2 }, { label: "S", value: 3 }, { label: "√X", value: 4 }] },
       { kind: "choice", key: "sequences", label: "sequences", fallback: 12, options: [{ label: "6", value: 6 }, { label: "12", value: 12 }, { label: "30", value: 30 }] },

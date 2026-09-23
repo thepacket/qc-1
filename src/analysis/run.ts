@@ -91,6 +91,7 @@ import { TOOL_RUNS } from "./tools";
 import { NOISE_RUNS, noisyView } from "./noiseRuns";
 import { BENCH_RUNS } from "./benchRuns";
 import { VERIFY_RUNS } from "./verifyRuns";
+import { QEC_RUNS } from "./qecRuns";
 
 const ROWS = 64;
 const ket = (i: number, n: number) => `|${i.toString(2).padStart(n, "0")}⟩`;
@@ -1105,7 +1106,7 @@ Object.assign(RUNS, {
   },
 } satisfies Record<string, Run>);
 
-Object.assign(RUNS, TOOL_RUNS, NOISE_RUNS, BENCH_RUNS, VERIFY_RUNS);
+Object.assign(RUNS, TOOL_RUNS, NOISE_RUNS, BENCH_RUNS, QEC_RUNS, VERIFY_RUNS);
 
 export function runAnalysis(id: string, ctx: AnalysisContext, opts: Opts): AnalysisResult | Promise<AnalysisResult> {
   if (id === "__view") {

@@ -153,6 +153,7 @@ function Input({ calc, meta, spec }: { calc: Calculator; meta: AnalysisMeta; spe
     );
   }
   if (spec.kind === "pauli") return <PauliField calc={calc} meta={meta} spec={spec} />;
+  if (spec.kind === "text") return <TextField calc={calc} meta={meta} spec={spec} />;
   if (spec.kind === "state") return <StateField calc={calc} meta={meta} spec={spec} />;
   if (spec.kind === "symbol") {
     const cur = symbolValue(spec, calc.labOpts(meta.id), calc.symbols);
@@ -184,6 +185,7 @@ function Input({ calc, meta, spec }: { calc: Calculator; meta: AnalysisMeta; spe
   }
   if (spec.kind === "int") {
     const hi = spec.max <= 0 ? calc.n + spec.max : spec.max;
+    if (hi - spec.min > 16) return <IntStepper label={spec.label} value={value} min={spec.min} max={hi} set={set} />;
     return (
       <div className="cut-picker" role="radiogroup" aria-label={spec.label}>
         <span className="dim">{spec.label}</span>
@@ -245,6 +247,49 @@ function statePresets(n: number): { label: string; text: string }[] {
     ...(n >= 2 ? [{ label: "W", text: amps((i) => ((i & (i - 1)) === 0 && i > 0 ? 1 : 0)) }] : []),
     { label: "uniform", text: amps(() => 1) },
   ];
+}
+
+/** A wide integer range: − value + (the value is also typed on the phone keyboard). */
+function IntStepper({ label, value, min, max, set }: { label: string; value: number; min: number; max: number; set: (v: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const clamp = (v: number) => Math.max(min, Math.min(max, Math.round(v)));
+  const step = 10 ** Math.max(0, Math.floor(Math.log10((max - min) / 20)));
+  const commit = () => {
+    if (draft !== null && Number.isFinite(Number(draft)) && draft.trim() !== "") set(clamp(Number(draft)));
+    setDraft(null);
+  };
+  return (
+    <div className="cut-picker" role="group" aria-label={label}>
+      <span className="dim">{label}</span>
+      <button className="qb" onClick={() => set(clamp(value - step))} aria-label={`${label} − ${step}`} disabled={value <= min}>−</button>
+      <input className="int-field" value={draft ?? String(value)} inputMode="numeric" aria-label={label} enterKeyHint="done"
+        onChange={(e) => setDraft(e.target.value)} onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); e.stopPropagation(); }} />
+      <button className="qb" onClick={() => set(clamp(value + step))} aria-label={`${label} + ${step}`} disabled={value >= max}>+</button>
+      <span className="dim">{min}–{max}</span>
+    </div>
+  );
+}
+
+/** Free text (phone keyboard), committed on Enter or blur; empty means the analysis's default. */
+function TextField({ calc, meta, spec }: { calc: Calculator; meta: AnalysisMeta; spec: Extract<InputSpec, { kind: "text" }> }) {
+  const v = calc.labOpts(meta.id)[spec.key];
+  const committed = typeof v === "string" ? v : "";
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft !== null && draft.trim() !== committed) calc.setLabOpts(meta.id, { [spec.key]: draft.trim() });
+    setDraft(null);
+  };
+  return (
+    <div className="pauli-field text-field">
+      <input
+        value={draft ?? committed} aria-label={spec.label} spellCheck={false} autoCapitalize="characters"
+        autoCorrect="off" autoComplete="off" inputMode="text" enterKeyHint="done" placeholder={spec.placeholder}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); e.stopPropagation(); }}
+      />
+    </div>
+  );
 }
 
 /** Target state: |bits⟩ or amplitudes (1, 0, 0.5i, …) on the phone keyboard, with presets. */

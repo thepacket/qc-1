@@ -10,7 +10,7 @@ import type { ViewData } from "../calc/core";
 
 export type Category =
   | "state" | "measurement" | "phase" | "metrology" | "entanglement" | "dynamics"
-  | "operator" | "structure" | "noise" | "bench" | "verify" | "tools";
+  | "operator" | "structure" | "noise" | "bench" | "qec" | "verify" | "tools";
 
 /** Inputs an analysis screen shows. `key` names the field in the options object. */
 export type InputSpec =
@@ -24,6 +24,8 @@ export type InputSpec =
   | { kind: "pauli"; key: string; label: string }
   /** A target state typed on the phone keyboard (|011⟩ or amplitudes), with presets. */
   | { kind: "state"; key: string; label: string }
+  /** Free text on the phone keyboard (empty = the analysis's own default). */
+  | { kind: "text"; key: string; label: string; placeholder: string }
   /** One of the tape's symbols; `optional` adds "none". */
   | { kind: "symbol"; key: string; label: string; optional?: boolean; fallback: "first" | "second" | "t" };
 
@@ -76,6 +78,16 @@ export type Chart =
       curve?: { name: string; y: number[] };
     }
   | { kind: "stars"; title?: string; stars: { theta: number; phi: number }[] }
+  /**
+   * An error-correcting code's lattice: data qubits at grid points, checks as
+   * plaquettes over their qubits (lit = the syndrome), errors and the
+   * decoder's correction on the qubits.
+   */
+  | {
+      kind: "lattice"; title?: string; rows: number; cols: number;
+      qubits: { r: number; c: number; label: string; error?: "X" | "Y" | "Z"; fix?: "X" | "Y" | "Z" }[];
+      checks: { type: "X" | "Z"; qubits: number[]; lit: boolean }[];
+    }
   /** Energy-level diagram: one line per level (degeneracy shown), optional marker. */
   | { kind: "levels"; title?: string; energies: number[]; marker?: { label: string; value: number } }
   /** Points on the unit circle (Floquet eigenphases). */

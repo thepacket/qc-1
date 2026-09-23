@@ -496,6 +496,70 @@ function Zx({ c }: { c: Extract<Chart, { kind: "zx" }> }) {
   );
 }
 
+// ─── Lattice (error-correcting code) ─────────────────────────────────
+/**
+ * Data qubits on a grid, checks as plaquettes over them (weight-2 checks as
+ * triangles pointing out of the lattice). Identity never rests on colour
+ * alone: plaquettes carry their type letter, errors their Pauli letter, the
+ * correction a ring and letter.
+ */
+function Lattice({ c }: { c: Extract<Chart, { kind: "lattice" }> }) {
+  const S = 10, pad = 7;
+  const W = pad * 2 + (c.cols - 1) * S, H = pad * 2 + (c.rows - 1) * S + (c.rows === 1 ? 6 : 0);
+  const P = (q: number): [number, number] => [pad + c.qubits[q].c * S, pad + (c.rows === 1 ? 6 : 0) + c.qubits[q].r * S];
+  const cx = W / 2, cy = H / 2;
+  const poly = (qs: number[]) => {
+    const pts = qs.map(P);
+    if (pts.length === 2) {
+      const [[x1, y1], [x2, y2]] = pts, mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+      let nx = -(y2 - y1), ny = x2 - x1;
+      const len = Math.hypot(nx, ny) || 1;
+      nx /= len; ny /= len;
+      if (c.rows === 1 ? ny > 0 : nx * (mx - cx) + ny * (my - cy) < 0) { nx = -nx; ny = -ny; }
+      pts.splice(1, 0, [mx + nx * S * 0.55, my + ny * S * 0.55]);
+    } else {
+      const gx = pts.reduce((s, p) => s + p[0], 0) / pts.length, gy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+      pts.sort((a, b) => Math.atan2(a[1] - gy, a[0] - gx) - Math.atan2(b[1] - gy, b[0] - gx));
+    }
+    return pts;
+  };
+  const r = S * 0.2;
+  return (
+    <Frame title={c.title}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="lattice" style={{ maxWidth: `${(c.cols + 1) * 56}px` }} role="img" aria-label={c.title ?? "code lattice"}>
+        {c.checks.map((ch, k) => {
+          const pts = poly(ch.qubits);
+          const [gx, gy] = [pts.reduce((s, p) => s + p[0], 0) / pts.length, pts.reduce((s, p) => s + p[1], 0) / pts.length];
+          return (
+            <g key={k} className={`lat-check ${ch.type}${ch.lit ? " lit" : ""}`}>
+              <polygon points={pts.map((p) => p.join(",")).join(" ")} />
+              <text x={gx} y={gy + 1} className="lat-type">{ch.type}</text>
+            </g>
+          );
+        })}
+        {c.qubits.map((q, k) => {
+          const [x, y] = P(k);
+          return (
+            <g key={k} className="lat-qubit">
+              {q.fix && <circle cx={x} cy={y} r={r * 1.65} className="lat-fix" />}
+              <circle cx={x} cy={y} r={r} className={q.error ? "lat-err" : "lat-data"} />
+              <text x={x} y={y + (q.error ? 1.2 : 0.9)} className={q.error ? "lat-letter" : "lat-index"}>{q.error ?? q.label}</text>
+              {q.fix && <text x={x + r * 1.7} y={y - r * 1.4} className="lat-fixletter">{q.fix}</text>}
+            </g>
+          );
+        })}
+      </svg>
+      <div className="heat-legend">
+        <span className="heat-key"><i className="lat-key lit" />lit check</span>
+        <span className="heat-key"><i className="lat-key err" />error (its Pauli)</span>
+        <span className="heat-key"><i className="lat-key fix" />correction (ring)</span>
+        <span className="heat-key"><i className="lat-key X" />X check</span>
+        <span className="heat-key"><i className="lat-key Z" />Z check</span>
+      </div>
+    </Frame>
+  );
+}
+
 export function ChartView({ chart }: { chart: Chart }) {
   switch (chart.kind) {
     case "heatmap": return <Heatmap c={chart} />;
@@ -507,6 +571,7 @@ export function ChartView({ chart }: { chart: Chart }) {
     case "scatter": return <Scatter c={chart} />;
     case "hist": return <Hist c={chart} />;
     case "stars": return <Stars c={chart} />;
+    case "lattice": return <Lattice c={chart} />;
     case "paths": return <Paths c={chart} />;
     case "levels": return <Levels c={chart} />;
     case "phases": return <Phases c={chart} />;
