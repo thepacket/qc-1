@@ -6,6 +6,7 @@ import { CATALOG } from "../calc/catalog";
 import { exportQasm3 } from "../qasm/fromTape";
 import type { Vec3 } from "../calc/analysis";
 import { complex, ket, num, pct } from "./format";
+import { project } from "./charts/sphere";
 
 type ViewProps<M extends ViewData["mode"]> = { calc: Calculator; data: Extract<ViewData, { mode: M }> };
 
@@ -162,17 +163,6 @@ export function CatalogView({ calc }: { calc: Calculator }) {
       </div>
     </div>
   );
-}
-
-// Oblique projection for the Bloch sphere: x toward the viewer (lower left),
-// y right, z up.
-const AZ = (25 * Math.PI) / 180;
-const EL = (15 * Math.PI) / 180;
-function project(x: number, y: number, z: number): [number, number, number] {
-  const sx = y * Math.cos(AZ) - x * Math.sin(AZ);
-  const depth = x * Math.cos(AZ) + y * Math.sin(AZ);
-  const sy = z * Math.cos(EL) - depth * Math.sin(EL);
-  return [sx, sy, depth * Math.cos(EL) + z * Math.sin(EL)];
 }
 
 function Sphere({ v, r, labels, className }: { v: Vec3; r: number; labels?: boolean; className?: string }) {

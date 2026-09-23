@@ -21,3 +21,26 @@ export function maxDiff(state: Float64Array, v: CVec): number {
   }
   return m;
 }
+
+/**
+ * Recursive numeric comparison against a fixture value. `tols` gives a
+ * per-field tolerance by key name (e.g. concurrence); everything else uses
+ * `tol`, scaled by max(1, |expected|). Returns mismatching paths.
+ */
+export function deepClose(a: unknown, b: unknown, tol: number, tols: Record<string, number> = {}, path = "$"): string[] {
+  if (b === null || a === null || b === undefined) return a === b || (a == null && b == null) ? [] : [`${path}: ${String(a)} vs ${String(b)}`];
+  if (Array.isArray(b)) {
+    if (!Array.isArray(a) || a.length !== b.length) return [`${path}: length ${Array.isArray(a) ? a.length : "?"} vs ${b.length}`];
+    return b.flatMap((y, i) => deepClose(a[i], y, tol, tols, `${path}[${i}]`));
+  }
+  if (typeof b === "object") {
+    return Object.keys(b as object).flatMap((k) =>
+      deepClose((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k], tols[k] ?? tol, tols, `${path}.${k}`),
+    );
+  }
+  if (typeof b === "number") {
+    const x = Number(a);
+    return Math.abs(x - b) <= tol * Math.max(1, Math.abs(b)) ? [] : [`${path}: ${x} vs ${b}`];
+  }
+  return a === b ? [] : [`${path}: ${String(a)} vs ${String(b)}`];
+}

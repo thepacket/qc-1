@@ -41,6 +41,15 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
     from the most recent CTRL marks. State preps are "reset, then prepare". RCCX and
     RC3X are gate-sequence macros (`MACROS` in steps.ts), because Quantiom's matrices
     for them are plain Toffolis.
+- `src/analysis/` is the LAB (6th tab) framework:
+  - `catalog.ts`: metadata the UI imports (title, category, inputs, caps, live/run).
+  - `run.ts`: id → compute function. Only the analysis worker loads it (and InlineEngine in tests).
+  - `worker.ts`: the **second worker**. The core worker hands it a register snapshot over a MessageChannel, so analyses never block keys.
+  - The Calculator keeps the latest request and drops superseded replies. Work that's still running after 150 ms is abandoned by restarting the worker. A live analysis slower than 400 ms stops auto-refreshing ("stale · RUN").
+  - `Result.rev` marks when the register changed.
+  - Charts are in `src/ui/charts/` (heatmap seq/div/complex, bars, lines, table, disks, Q-sphere; colours in `colors.ts`); the screens are in `src/ui/lab/LabView.tsx`.
+  - AC in LAB goes back a level and never clears the register.
+- `src/sim/` also holds validated Quantiom analysis modules (density, entanglement, eig, pauliMatrix, pauliSpectrum, expectation, concurrence, negativity, pageCurve, renyiSpectrum, qsphere). `qsphere.ts` inlines its Amplitude type.
 - `src/qasm/fromTape.ts` turns the tape into OpenQASM 3. It uses stdgates names where
   they exist and `ctrl @`/`negctrl @` otherwise, adds exact `gate` definitions for
   non-stdgates (sy, sxdg, iswap, rxx, ryy, rzz), and folds `sqrt(...)` params to numbers.

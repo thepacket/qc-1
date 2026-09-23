@@ -4,6 +4,7 @@ import { formatEntry } from "../calc/steps";
 import { KEYBOARD, KEYPAD, type KeyDef } from "./keys";
 import { BlochView, CatalogView, KetView, Pending, ProbView, ShotsView, TapeView } from "./views";
 import { createEngine } from "../calc/engine";
+import { LabView } from "./lab/LabView";
 
 export const STORAGE_KEY = "qc1:session:v1";
 const UI_KEY = "qc1:ui:v1";
@@ -34,6 +35,7 @@ const MODES: { id: Mode; label: string }[] = [
   { id: "bloch", label: "BLOCH" },
   { id: "shots", label: "SHOTS" },
   { id: "tape", label: "TAPE" },
+  { id: "lab", label: "LAB" },
 ];
 
 function buzz() {
@@ -114,6 +116,7 @@ export function App() {
   const data = calc.view?.mode === calc.mode ? calc.view : null;
   const view = (() => {
     if (calc.catalog.open) return <CatalogView calc={calc} />;
+    if (calc.mode === "lab") return <LabView calc={calc} />;
     if (calc.mode === "tape") return <TapeView calc={calc} />;
     if (!data) return <Pending />;
     switch (data.mode) {

@@ -13,6 +13,7 @@ Upstream file paths are relative to that project's `client/src/`.
 | 3 | `sim/matrices.ts` `M_DCX`, `M_ECR` | Qubit roles reversed relative to Qiskit's gates of the same name (Qiskit's little-endian printed matrices copied into a big-endian codebase) | Qiskit `DCXGate`, `ECRGate` | QASM definitions follow the simulator's matrices; noted in `src/qasm/fromTape.ts` |
 | 4 | `qasm/emit.ts` | Emits names outside `stdgates.inc` (sy, iswap, rzz, fsim, ms, cu3, …) with no `gate` definition, so Qiskit rejects the file; base gates carrying controls come out as e.g. `x q[0], q[1];` | `qiskit.qasm3.loads` | `src/qasm/fromTape.ts` adds exact definitions and names controlled forms; a generic `ctrl @` block in `src/qasm/emit.ts` |
 | 5 | `qasm/emitQiskit.ts` | Drops `if` conditions silently; no mapping for fsim, sqrtswap and related gates; only Greek-named symbols become `Parameter`s | reading the code | Not ported: QC-1 writes its own Qiskit export (plan phase 11) |
+| 6 | `sim/pageCurve.ts` `pageEntropyBits` | Page's average entropy sums from d_A+1 instead of d_B+1: wrong for every unequal cut, exceeding the maximum (1.58 bits for a 1\|2 split; true 0.735) | Haar Monte-Carlo average of random states | Fixed in `src/sim/pageCurve.ts` (`QC-1 fix` block); fixture `page` |
 
 ## Quirks in the reference tools (not upstream bugs)
 

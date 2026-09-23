@@ -8,7 +8,7 @@ import type { Entry } from "./steps";
  * Web Worker in the app (worker.ts) and inline in tests.
  */
 
-export type Mode = "ket" | "prob" | "bloch" | "shots" | "tape";
+export type Mode = "ket" | "prob" | "bloch" | "shots" | "tape" | "lab";
 
 export type ViewReq = { mode: Mode; shots: number; shotSeed: number };
 
@@ -18,6 +18,7 @@ export type ViewData = { n: number } & (
   | { mode: "bloch"; vectors: Vec3[] }
   | { mode: "shots"; rows: { i: number; count: number }[]; distinct: number; shots: number }
   | { mode: "tape" }
+  | { mode: "lab" }
 );
 
 export type Cmd =
@@ -31,6 +32,8 @@ export type Cmd =
   | { t: "view"; req: ViewReq };
 
 export type Result = {
+  /** Bumped on every change to the register; analyses use it to go stale. */
+  rev: number;
   n: number;
   tape: Entry[];
   redo: number;
@@ -46,6 +49,7 @@ let repeatId = 0;
 
 export class Core {
   reg = new Register(2);
+  rev = 0;
 
   handle(cmd: Cmd): Result {
     let done: Entry | null | undefined;
@@ -80,7 +84,13 @@ export class Core {
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }
-    return { n: this.reg.n, tape: this.reg.tape, redo: this.reg.redoStack.length, done, error };
+    if (cmd.t !== "view" && !error) this.rev++;
+    return { rev: this.rev, n: this.reg.n, tape: this.reg.tape, redo: this.reg.redoStack.length, done, error };
+  }
+
+  /** A private copy of the register for the analysis worker. */
+  snapshot(): { rev: number; n: number; tape: Entry[]; state: Float64Array } {
+    return { rev: this.rev, n: this.reg.n, tape: this.reg.tape, state: this.reg.state.slice() };
   }
 
   /** Reject steps that address qubits outside the register (a resize may have raced ahead). */
@@ -115,6 +125,8 @@ export class Core {
       }
       case "tape":
         return { n, mode: "tape" };
+      case "lab":
+        return { n, mode: "lab" };
     }
   }
 }

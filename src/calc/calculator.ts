@@ -1,6 +1,8 @@
 import { MAX_QUBITS } from "./register";
 import { evalParam, formatEntry, NONUNITARY, type Entry, type Step } from "./steps";
 import { CATALOG } from "./catalog";
+import { ANALYSIS_BY_ID, CATEGORIES, analysesIn } from "../analysis/catalog";
+import type { AnalysisReply, AnalysisResult, Opts } from "../analysis/types";
 import { splitArgs, TOKENS, toDisplay, type Token } from "./entry";
 import type { Cmd, Mode, Result, ViewData } from "./core";
 import type { Engine } from "./engine";
@@ -56,7 +58,25 @@ export const SHIFTED: Partial<Record<KeyId, string>> = {
 export type Mark = { q: number; anti: boolean };
 export type Message = { text: string; kind: "info" | "error" };
 
-export type Saved = { v: 1; n: number; sel: number; mode: Mode; shots: number; tape: Entry[] };
+export type LabLevel = "cats" | "list" | "view";
+export type LabState = { level: LabLevel; cat: number; index: number; id: string | null; opts: Record<string, Opts> };
+
+export type Saved = { v: 1; n: number; sel: number; mode: Mode; shots: number; tape: Entry[]; lab?: LabState };
+
+/** The analysis currently shown in LAB, and where its computation stands. */
+export type AnalysisView = {
+  id: string;
+  status: "busy" | "done";
+  result: AnalysisResult | null;
+  /** Register revision the result was computed from. */
+  rev: number;
+  ms: number;
+};
+
+/** Restart the analysis worker if it has been busy this long with outdated work. */
+const STALE_MS = 150;
+/** A "live" analysis slower than this stops auto-refreshing (shows stale · RUN). */
+const LIVE_BUDGET_MS = 400;
 
 let stepId = 0;
 const newId = () => `k${Date.now().toString(36)}${(stepId++).toString(36)}`;
@@ -93,6 +113,14 @@ export class Calculator {
   message: Message | null = null;
   /** CATALOG list open on the LCD, and its highlighted row. */
   catalog = { open: false, index: 0 };
+  /** LAB browser position and per-analysis options. */
+  lab: LabState = { level: "cats", cat: 0, index: 0, id: null, opts: {} };
+  analysis: AnalysisView | null = null;
+  /** Register revision (from the core); analyses compare against it. */
+  rev = 0;
+  private aSeq = 0;
+  private aInflight: { seq: number; at: number } | null = null;
+  private aPending = false;
   version = 0;
 
   /** One slot per in-flight command (replies arrive in send order). */
@@ -104,6 +132,7 @@ export class Calculator {
   constructor(readonly engine: Engine, saved?: Saved | null) {
     engine.onResult = (r) => this.onResult(r);
     engine.onView = (v) => this.onView(v);
+    engine.onAnalysis = (r) => this.onAnalysis(r);
     const ok = saved && saved.v === 1 && Array.isArray(saved.tape);
     // Mirror the saved session up front so the first save can't clobber it.
     this.n = ok ? saved.n : 2;
@@ -112,6 +141,7 @@ export class Calculator {
       this.sel = Math.max(0, Math.min(saved.sel, saved.n - 1));
       this.mode = saved.mode;
       this.shots = saved.shots;
+      if (saved.lab && typeof saved.lab === "object") this.lab = { ...this.lab, ...saved.lab, opts: saved.lab.opts ?? {} };
     }
     this.send({ t: "view", req: this.viewReq() });
     if (ok) this.send({ t: "load", n: saved.n, tape: saved.tape });
@@ -132,7 +162,7 @@ export class Calculator {
   }
 
   save(): Saved {
-    return { v: 1, n: this.n, sel: this.sel, mode: this.mode, shots: this.shots, tape: this.tape };
+    return { v: 1, n: this.n, sel: this.sel, mode: this.mode, shots: this.shots, tape: this.tape, lab: this.lab };
   }
 
   get entryText(): string {
@@ -161,6 +191,8 @@ export class Calculator {
 
   private onResult(r: Result) {
     const report = this.reporters.shift();
+    const changed = r.rev !== this.rev;
+    this.rev = r.rev;
     this.n = r.n;
     this.tape = r.tape;
     this.redoDepth = r.redo;
@@ -168,6 +200,7 @@ export class Calculator {
     this.marks = this.marks.filter((m) => m.q < r.n);
     if (r.error) this.error(r.error);
     else report?.(r);
+    if (changed) this.refreshLiveAnalysis();
     this.changed();
   }
 
@@ -199,7 +232,139 @@ export class Calculator {
     if (m === "shots" && this.mode === "shots") this.shotSeed++;
     this.mode = m;
     this.send({ t: "view", req: this.viewReq() });
+    if (m === "lab" && this.lab.level === "view") this.requestAnalysis();
     this.changed();
+  }
+
+  // ─── LAB ────────────────────────────────────────────────────────────
+
+  /** Open an analysis screen (from a tap or = in the list). */
+  openAnalysis(id: string) {
+    const meta = ANALYSIS_BY_ID[id];
+    if (!meta) return;
+    const cat = CATEGORIES.findIndex((c) => c.id === meta.category);
+    this.lab = { ...this.lab, level: "view", id, cat, index: analysesIn(meta.category).findIndex((a) => a.id === id) };
+    this.analysis = null;
+    this.requestAnalysis();
+    this.changed();
+  }
+
+  labOpts(id: string): Opts {
+    return this.lab.opts[id] ?? {};
+  }
+
+  setLabOpts(id: string, patch: Opts) {
+    this.lab = { ...this.lab, opts: { ...this.lab.opts, [id]: { ...this.labOpts(id), ...patch } } };
+    if (this.lab.id === id) this.requestAnalysis();
+    this.changed();
+  }
+
+  labBack() {
+    const lvl = this.lab.level;
+    this.lab = lvl === "view" ? { ...this.lab, level: "list" } : { ...this.lab, level: "cats", index: this.lab.cat };
+    if (lvl === "view") {
+      this.analysis = null;
+      this.engine.cancelAnalysis();
+      this.aInflight = null;
+      this.aPending = false;
+    }
+    this.changed();
+  }
+
+  labPick(level: "cats" | "list", index: number) {
+    if (level === "cats") this.lab = { ...this.lab, level: "list", cat: index, index: 0 };
+    else {
+      const a = analysesIn(CATEGORIES[this.lab.cat].id)[index];
+      if (a) return this.openAnalysis(a.id);
+    }
+    this.changed();
+  }
+
+  /** Run (or re-run) the open analysis. Latest request wins. */
+  requestAnalysis() {
+    const id = this.lab.id;
+    if (!id || this.lab.level !== "view") return;
+    const now = Date.now();
+    if (this.aInflight) {
+      // Outdated work still running: abandon it if it has taken a while,
+      // otherwise wait for it and send the newest request afterwards.
+      if (now - this.aInflight.at > STALE_MS) {
+        this.engine.cancelAnalysis();
+        this.aInflight = null;
+      } else {
+        this.aPending = true;
+        return;
+      }
+    }
+    const seq = ++this.aSeq;
+    this.aInflight = { seq, at: now };
+    this.aPending = false;
+    this.analysis = { id, status: "busy", result: this.analysis?.id === id ? this.analysis.result : null, rev: this.analysis?.rev ?? -1, ms: 0 };
+    this.engine.analyze({ seq, id, opts: this.labOpts(id) });
+  }
+
+  cancelAnalysis() {
+    this.engine.cancelAnalysis();
+    this.aInflight = null;
+    this.aPending = false;
+    if (this.analysis) this.analysis = { ...this.analysis, status: "done" };
+    this.changed();
+  }
+
+  private refreshLiveAnalysis() {
+    const id = this.lab.id;
+    if (this.mode !== "lab" || this.lab.level !== "view" || !id) return;
+    if (ANALYSIS_BY_ID[id]?.mode !== "live") return;
+    // Too slow to recompute on every key press at this size: wait for RUN.
+    if (this.analysis?.id === id && this.analysis.ms > LIVE_BUDGET_MS) return;
+    this.requestAnalysis();
+  }
+
+  private onAnalysis(r: AnalysisReply) {
+    if (this.aInflight?.seq === r.seq) this.aInflight = null;
+    // Ignore replies for another analysis or one superseded by a newer reply.
+    if (r.id === this.lab.id && r.seq >= (this.lastShownSeq ?? 0)) {
+      this.lastShownSeq = r.seq;
+      this.analysis = { id: r.id, status: this.aPending ? "busy" : "done", result: r.result, rev: r.rev, ms: r.ms };
+    }
+    if (this.aPending) this.requestAnalysis();
+    this.changed();
+  }
+
+  private lastShownSeq = 0;
+
+  /** Keys that behave differently while browsing LAB. Returns true if handled. */
+  private labKey(id: string): boolean {
+    const { level } = this.lab;
+    if (level === "view") {
+      // AC never clears the register from LAB: it clears the entry, then goes back.
+      if (id === "ac" && this.entry.length === 0 && this.marks.length === 0 && !this.all) {
+        this.labBack();
+        return true;
+      }
+      return false;
+    }
+    const len = level === "cats" ? CATEGORIES.length : analysesIn(CATEGORIES[this.lab.cat].id).length;
+    // Categories with nothing in them yet are skipped.
+    const usable = (i: number) => level !== "cats" || analysesIn(CATEGORIES[i].id).length > 0;
+    const step = (d: number) => {
+      let i = this.lab.index;
+      for (let k = 0; k < len; k++) {
+        i = (i + d + len) % len;
+        if (usable(i)) break;
+      }
+      this.lab = { ...this.lab, index: i };
+    };
+    switch (id) {
+      case "left": step(-1); return true;
+      case "right": step(1); return true;
+      case "eq": this.labPick(level, this.lab.index); return true;
+      case "ac":
+        if (this.entry.length > 0 || this.marks.length > 0 || this.all) return false;
+        if (level === "list") this.labBack();
+        return true;
+    }
+    return false;
   }
 
   select(q: number) {
@@ -212,6 +377,7 @@ export class Calculator {
     const id = this.shift ? (SHIFTED[key] ?? key) : key;
     if (key !== "2nd") this.shift = false;
     try {
+      if (this.mode === "lab" && !this.catalog.open && this.labKey(id)) return this.changed();
       this.dispatch(id);
     } catch (e) {
       this.error(e instanceof Error ? e.message : String(e));
