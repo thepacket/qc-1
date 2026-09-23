@@ -7,6 +7,7 @@ import index from "../examples/index.json";
 export type ExampleCategory = { label: string; items: { file: string; label: string }[] };
 
 export const EXAMPLE_CATEGORIES = index as ExampleCategory[];
+export const EXAMPLE_COUNT = EXAMPLE_CATEGORIES.reduce((k, c) => k + c.items.length, 0);
 
 const FILES = import.meta.glob("../examples/*.qasm", { query: "?raw", import: "default" }) as Record<string, () => Promise<string>>;
 

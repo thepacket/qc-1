@@ -7,7 +7,7 @@ import { exportQasm3 } from "../qasm/fromTape";
 import { shareHash } from "../qasm/share";
 import { makeQr, qrPath, QR_MAX } from "../qasm/qr";
 import { qiskitPython } from "../qasm/toQiskit";
-import { EXAMPLE_CATEGORIES, describeProgram, loadExample } from "../examples";
+import { EXAMPLE_CATEGORIES, EXAMPLE_COUNT, describeProgram, loadExample } from "../examples";
 import type { Vec3 } from "../calc/analysis";
 import { complex, ket, num, pct } from "./format";
 import { project } from "./charts/sphere";
@@ -226,7 +226,7 @@ function TapeMenu({ calc, go }: { calc: Calculator; go: (p: TapePane) => void })
     }
   };
   const rows: [string, string, () => void][] = [
-    ["Examples…", "93 programs in 10 topics", () => go("examples")],
+    ["Examples…", `${EXAMPLE_COUNT} programs in ${EXAMPLE_CATEGORIES.length} topics`, () => go("examples")],
     ["Import QASM…", "paste OpenQASM 2/3 or open a file", () => go("import")],
     ["Copy QASM", "OpenQASM 3 of the tape (Qiskit loads it)", () => { void copyText(calc, qasm()); go("list"); }],
     ["Share QASM file", "qc1-tape.qasm", () => { void shareQasm(calc, qasm()); go("list"); }],

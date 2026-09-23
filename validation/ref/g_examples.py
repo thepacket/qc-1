@@ -1,4 +1,4 @@
-"""Phase 7 references: the 93 example programs, read by Qiskit.
+"""Phase 7 references: the example programs (examples/*.qasm), read by Qiskit.
 
 Each ORIGINAL example file (not QC-1's re-export) is loaded with
 qiskit.qasm3.loads after the minimum normalisation Qiskit's importer needs,

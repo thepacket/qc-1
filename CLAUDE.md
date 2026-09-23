@@ -118,7 +118,7 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
     - Symbols keep any name (`t_` → `t`).
     - Integer ratios are read as real divisions.
   - Security: `sim/expr.ts` `isSafeExpr` gates `new Function` (bug #20). `share.ts` builds `#q=` base64url QASM plus `&v=` symbol values; App opens such links as an undoable replace.
-  - `examples/` holds the 93 upstream programs without the brand; `index.json` gives the 10 categories. `src/examples.ts` loads them lazily through `import.meta.glob`.
+  - `examples/` holds the 93 upstream programs without the brand, plus 8 QC-1 animations (`anim_*`, added later; their claims are checked in `test/examples-anim.test.ts`); `index.json` gives the 10 categories. `src/examples.ts` loads them lazily through `import.meta.glob`.
   - TAPE ≡ menu: Examples, Import QASM (paste or file), Copy QASM, Share QASM file, Share link.
   - Fixtures:
     - `classical`: independent interpreter, branch enumerator, and Aer counts at 5σ.
@@ -183,7 +183,7 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
 - **After the port: diagram, editing, QR, step-through.**
   - TAPE → CIRC (`src/ui/CircuitView.tsx`) draws the tape with the ASAP layout of `src/calc/diagram.ts`. A step spans its lowest to highest wire; an IF step waits for the measurement that wrote its bit. Above 32 qubits only the wires the tape touches are drawn. Tapping a gate scrubs to it.
   - Mid-tape editing: while scrubbed, push/repeat become the core command `insert` (at the scrub point; the scrub follows), and `Calculator.deleteStep` sends `delete`. Both are undoable `replace` ops. `StabilizerRegister.load` builds aside first, so a refused non-Clifford edit leaves the register untouched.
-  - Share links are `#z=`: the export deflate-raw compressed with CompressionStream, inflation capped at 1 MB. `#q=` links (plain) still open. All 93 examples fit a QR code (largest version 19).
+  - Share links are `#z=`: the export deflate-raw compressed with CompressionStream, inflation capped at 1 MB. `#q=` links (plain) still open. Every example fits a QR code (largest version 19).
   - `src/qasm/qr.ts` wraps qrcode-generator (level M, else L). `test/qr.test.ts` decodes the codes with jsQR (dev dependency). TAPE ≡ → QR code shows it full screen, dark on white.
   - Step-through: `importQasm` returns `lines` (the source line of each entry); `src/qasm/captions.ts` turns comments into one caption per entry. `Calculator.guide` holds them and applies while the tape's step ids match (`activeGuide`), so an edit hides it and UNDO restores it. App's GuideBar replaces the tape strip.
   - `prettyExpr` shows imported ASCII symbol names as glyphs (theta → θ).

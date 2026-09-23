@@ -418,6 +418,38 @@
    {
     "file": "anim_deep_swirl_8q.qasm",
     "label": "Deep swirl (8q, ~100 gates)"
+   },
+   {
+    "file": "anim_entanglement_dial.qasm",
+    "label": "Entanglement dial (2q)"
+   },
+   {
+    "file": "anim_bloch_lissajous.qasm",
+    "label": "Bloch Lissajous figures (3q)"
+   },
+   {
+    "file": "anim_detuned_rabi.qasm",
+    "label": "Detuned Rabi oscillations (3q)"
+   },
+   {
+    "file": "anim_teleport_moving.qasm",
+    "label": "Teleporting a moving state (3q)"
+   },
+   {
+    "file": "anim_phase_estimation.qasm",
+    "label": "Phase estimation, swept (4q)"
+   },
+   {
+    "file": "anim_quantum_walk.qasm",
+    "label": "Quantum walk on a ring (4q)"
+   },
+   {
+    "file": "anim_ghz_ramsey.qasm",
+    "label": "GHZ sensing vs one qubit (5q)"
+   },
+   {
+    "file": "anim_magnon.qasm",
+    "label": "Spin wave on a chain (5q)"
    }
   ]
  }
