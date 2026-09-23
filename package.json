@@ -10,7 +10,10 @@
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "icons": "node scripts/icons.mjs"
+    "icons": "node scripts/icons.mjs",
+    "validate:dump": "vitest run -c vitest.validation.config.ts",
+    "validate:ref": "validation/.venv/bin/python validation/ref/run_all.py",
+    "validate": "npm run validate:dump && npm run validate:ref"
   },
   "dependencies": {
     "react": "^18.3.1",

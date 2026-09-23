@@ -7,7 +7,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
-RUN npm test && npm run build
+RUN npm run build
 
 # ─── Stage 2: static host ───────────────────────────────────────────────
 # QC-1 runs entirely in the browser (simulator in a Web Worker), so the

@@ -17,6 +17,9 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
   the data-viz reference palette (`--series-1..3` in styles.css, on the `#1a1a19`
   surface); run the dataviz validator before adding series colors.
 
+- **No compute on the server.** fly.io (the live server and its builder) only serves and builds static files. All simulation and analysis runs in the browser. Python is dev-only (local and GitHub CI), never in the Docker context.
+- **Validate before porting.** Every ported Quantiom feature is checked against Qiskit or numpy first. See `validation/README.md`: seeded cases → `npm run validate` → committed `test/fixtures/*.json` → `test/validated/*.test.ts`. A mismatch is fixed, never recorded as a reference. Upstream bugs go in `docs/quantiom-bugs.md`; fixes in ported files go in `// QC-1 fix` blocks. The port's phase plan is in memory (qc1-port-plan).
+
 ## Layout
 - `src/sim/` is **ported from Quantiom**: `client/src/sim` plus `editor/{types,gates}.ts`.
   `src/qasm/emit.ts` is Quantiom's QASM 3 emitter, with one QC-1 block marked for
@@ -51,3 +54,5 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
 
 ## Commands
 - `npm run dev` / `npm test` / `npm run build` / `npm run icons` (needs rsvg-convert)
+- `npm run validate`: regenerate Qiskit/numpy reference fixtures (needs `validation/.venv`; see validation/README.md)
+- CI (`.github/workflows/ci.yml`): `test` on every push; `validate` regenerates fixtures and fails on drift

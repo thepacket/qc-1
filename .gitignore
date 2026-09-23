@@ -4,3 +4,5 @@ dev-dist
 coverage
 *.tsbuildinfo
 .DS_Store
+validation/.venv
+validation/out
