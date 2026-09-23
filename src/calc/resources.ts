@@ -83,7 +83,7 @@ function localUnitary(s: Step, scope: Scope): C[][] | null {
   const qs = [...s.controls, ...s.targets];
   const k = qs.length, d = 1 << k;
   const local = new Map(qs.map((q, j) => [q, j]));
-  const step: Step = { ...s, controls: s.controls.map((q) => local.get(q)!), targets: s.targets.map((q) => local.get(q)!) };
+  const step: Step = { ...s, condition: undefined, controls: s.controls.map((q) => local.get(q)!), targets: s.targets.map((q) => local.get(q)!) };
   const U: C[][] = Array.from({ length: d }, () => new Array<C>(d));
   try {
     for (let j = 0; j < d; j++) {
@@ -140,25 +140,37 @@ export function circuitResources(n: number, tape: Entry[], scope: Scope = {}): C
   };
   const level = new Array<number>(n).fill(0);
   const tLevel = new Array<number>(n).fill(0);
+  // Classical wires c[q] (measurements write them, IF reads them) join the depth, as in Qiskit.
+  const cLevel = new Array<number>(n).fill(0);
+  const cTLevel = new Array<number>(n).fill(0);
   const perQubit = new Array<number>(n).fill(0);
   const symbols = new Set<string>();
   const cache = new Map<string, boolean>();
   for (const s of tape.flat().flatMap(exported)) {
     const qs = [...s.controls, ...s.targets];
+    const measures = MEASURE_IDS.has(s.gateId) && s.gateId !== "reset";
+    const cs = [...(s.condition ? [s.condition.clbit] : []), ...(measures ? [s.targets[0]] : [])];
     r.gates++;
-    if (MEASURE_IDS.has(s.gateId) && s.gateId !== "reset") r.measurements++;
+    // A conditional step is one `if_else` instruction on its qubits: counted by size only.
+    if (s.condition) {
+      if (qs.length === 1) r.oneQubit++;
+      else if (qs.length === 2) r.twoQubit++;
+      else r.multiQubit++;
+    } else if (measures) r.measurements++;
     else if (s.gateId === "reset") r.resets++;
     else if (qs.length === 1) r.oneQubit++;
     else if (qs.length === 2) r.twoQubit++;
     else r.multiQubit++;
-    const d = Math.max(...qs.map((q) => level[q])) + 1;
-    const isT = (s.gateId === "t" || s.gateId === "tdg") && s.controls.length === 0;
-    const td = Math.max(...qs.map((q) => tLevel[q])) + (isT ? 1 : 0);
+    const d = Math.max(...qs.map((q) => level[q]), ...cs.map((c) => cLevel[c])) + 1;
+    const isT = (s.gateId === "t" || s.gateId === "tdg") && s.controls.length === 0 && !s.condition;
+    const td = Math.max(...qs.map((q) => tLevel[q]), ...cs.map((c) => cTLevel[c])) + (isT ? 1 : 0);
     for (const q of qs) { level[q] = d; tLevel[q] = td; perQubit[q]++; }
+    for (const c of cs) { cLevel[c] = d; cTLevel[c] = td; }
+    for (const v of stepSymbols(s)) symbols.add(v);
+    if (s.condition) continue;
     if (isT) r.tCount++;
     if (s.gateId === "x" && s.controls.length === 1 && (s.controlStates?.[0] ?? true)) r.cxCount++;
     if (s.params.length > 0) r.parameterized++;
-    for (const v of stepSymbols(s)) symbols.add(v);
     if (!NONUNITARY.has(s.gateId)) {
       const key = `${s.gateId}|${s.controls.length}|${s.controlStates ?? ""}|${s.params}|${stepSymbols(s).length ? JSON.stringify(scope) : ""}`;
       let c = cache.get(key);
@@ -166,8 +178,8 @@ export function circuitResources(n: number, tape: Entry[], scope: Scope = {}): C
       if (c) r.cliffordCount++;
     }
   }
-  r.depth = Math.max(0, ...level);
-  r.tDepth = Math.max(0, ...tLevel);
+  r.depth = Math.max(0, ...level, ...cLevel);
+  r.tDepth = Math.max(0, ...tLevel, ...cTLevel);
   r.longestQubit = Math.max(0, ...perQubit);
   r.symbols = [...symbols].sort();
   return r;

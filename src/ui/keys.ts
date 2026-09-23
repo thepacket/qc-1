@@ -20,7 +20,7 @@ export const KEYPAD: KeyDef[] = [
   { id: "h", label: "H", alt: "√Y", kind: "gate", aria: "Hadamard" },
   { id: "x", label: "X", alt: "MX", kind: "gate", aria: "Pauli X" },
   { id: "y", label: "Y", alt: "MY", kind: "gate", aria: "Pauli Y" },
-  { id: "z", label: "Z", kind: "gate", aria: "Pauli Z" },
+  { id: "z", label: "Z", alt: "IF", kind: "gate", aria: "Pauli Z" },
   { id: "sx", label: "√X", alt: "√X†", kind: "gate", aria: "Square root of X" },
 
   { id: "s", label: "S", alt: "S†", kind: "gate", aria: "S gate" },

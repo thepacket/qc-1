@@ -304,6 +304,8 @@ ANALYSES.push(
     summary: "How many gates act on each pair of qubits: the connectivity a device needs." },
   { id: "tanner", title: "Tanner graph", category: "structure", mode: "live", maxQubits: 20, inputs: [],
     summary: "Measurements (checks) against the qubits in each one's backward light cone." },
+  { id: "branches", title: "Measurement branches", category: "measurement", mode: "live", maxQubits: 12, inputs: [],
+    summary: "Every measurement history with its probability: the tree a program's mid-circuit measurements and IF gates produce." },
   { id: "tableau", title: "Stabilizer tableau", category: "structure", mode: "live", maxQubits: 20, inputs: [],
     summary: "For Clifford tapes: the n Pauli operators that fix the state (Bell → +XX, +ZZ)." },
 );

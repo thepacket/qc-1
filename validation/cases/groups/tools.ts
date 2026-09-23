@@ -121,8 +121,14 @@ export function structureCases(): ToolCase[] {
     }
     out.push({ id: `cliff${k}`, n, tape });
   }
-  // Record measurement outcomes as a run of the register would.
-  return out.map((c) => ({ ...c, tape: new Register(c.n, c.tape).tape }));
+  // Record measurement outcomes as a run of the register would (seeded: fixtures must be reproducible).
+  let seed = 11;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  return out.map((c) => {
+    const reg = new Register(c.n);
+    for (const e of c.tape) reg.push(e, rnd);
+    return { ...c, tape: reg.tape };
+  });
 }
 
 export function computeStructure(c: ToolCase) {

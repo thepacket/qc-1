@@ -10,7 +10,7 @@
  * in which case it is sampled with `rng`.
  */
 import type { Circuit } from "./types";
-import { applyStep, symbolsOf, type Step } from "../calc/steps";
+import { applyStep, stepSymbols, type Step } from "../calc/steps";
 import { bloch, type Vec3 } from "../calc/analysis";
 import { mulberry32 } from "./measure";
 
@@ -46,13 +46,14 @@ export function simulate(circuit: Circuit, paramValues: ParameterValues, _custom
   const rng = options?.rng ?? mulberry32(0x5eed);
   const scope: ParameterValues = { ...paramValues };
   const syms = new Set<string>();
-  for (const g of circuit.gates) for (const p of g.params) for (const v of symbolsOf(p)) {
+  for (const g of circuit.gates) for (const v of stepSymbols(g as Step)) {
     syms.add(v);
     if (!(v in scope)) scope[v] = 0;
   }
   // Stable order by column (array order within a column is application order).
   const gates = circuit.gates.map((g, i) => [g, i] as const).sort((a, b) => a[0].column - b[0].column || a[1] - b[1]);
-  for (const [g] of gates) applyStep(state, n, g as Step, rng, scope);
+  const cbits = new Uint8Array(n);
+  for (const [g] of gates) applyStep(state, n, g as Step, rng, scope, cbits);
   let probs: number[] | null = null, blochs: Vec3[] | null = null, amps: Amplitude[] | null = null;
   return {
     numQubits: n,

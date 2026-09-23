@@ -152,6 +152,7 @@ export function App() {
             {calc.shift && <b>2ND</b>}
             {calc.all && <b>ALL</b>}
             {calc.marks.length > 0 && <b>CTRL</b>}
+            {calc.pendingIf && <b>IF c{calc.pendingIf.clbit}={calc.pendingIf.value}</b>}
           </span>
           <span className="grow" />
           {calc.symbols.length > 0 && (

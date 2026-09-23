@@ -37,3 +37,5 @@ Upstream file paths are relative to that project's `client/src/`.
   `sqrt(2)` in parameters (valid OpenQASM 3). QC-1 folds those to numbers
   on export.
 - `qiskit-qasm3-import` 0.6.0 reads the stdgates `id` gate as `U(0, 0, 0)`.
+- `qiskit-qasm3-import` 0.6.0 accepts `if (c[k] == true)` but rejects `if (c[k] == 1)` ("bit == const int"); QC-1 exports booleans.
+- `qiskit-aer` 0.17.2 fails to load a one-bit condition compared with `false`, or one reading a bit no measurement has written yet ("unordered_map::at: key not found"). The Aer check in `validation/ref/g_classical.py` rewrites both exactly (else branch; unwritten bits are 0) before running.

@@ -94,6 +94,11 @@ export type Chart =
       logX?: boolean; logY?: boolean;
     }
   | { kind: "table"; title?: string; headers: string[]; rows: (string | number)[][] }
+  /** Measurement branch tree: nodes in DFS order (children follow their parent). */
+  | {
+      kind: "tree"; title?: string;
+      nodes: { id: number; parent: number | null; depth: number; outcome: 0 | 1 | null; p: number; label: string | null }[];
+    }
   | { kind: "disks"; title?: string; disks: { label: string; re: number; im: number }[] }
   | {
       kind: "qsphere"; title?: string;

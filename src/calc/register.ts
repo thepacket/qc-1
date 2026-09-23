@@ -1,4 +1,4 @@
-import { applyStep, stepSymbols, type Entry, type Scope } from "./steps";
+import { applyStep, classicalBits, stepSymbols, type Entry, type Scope } from "./steps";
 
 export const MAX_QUBITS = 20;
 
@@ -41,6 +41,8 @@ export function entrySymbols(e: Entry): string[] {
 export class Register {
   n: number;
   state: Float64Array;
+  /** Classical register after the tape: c[q] = last outcome measured on q. */
+  cbits: Uint8Array;
   tape: Entry[] = [];
   scope: Scope;
   ops: Op[] = [];
@@ -55,6 +57,7 @@ export class Register {
     this.n = n;
     this.scope = { ...scope };
     this.state = ground(n);
+    this.cbits = new Uint8Array(n);
     this.replay(tape);
     this.ops = this.tape.map((entry) => ({ k: "entry", entry }));
   }
@@ -85,7 +88,7 @@ export class Register {
 
   private apply(entry: Entry, rng: () => number): Entry {
     this.defineSymbols([entry]);
-    const done = entry.map((s) => applyStep(this.state, this.n, s, rng, this.scope));
+    const done = entry.map((s) => applyStep(this.state, this.n, s, rng, this.scope, this.cbits));
     done.forEach((s, i) => {
       const was = entry[i].outcome;
       if (was !== undefined && s.outcome !== was) {
@@ -129,6 +132,7 @@ export class Register {
       const snap = this.snapshots.get(from);
       this.state = snap ? snap.slice() : ground(this.n);
     }
+    this.cbits = classicalBits(this.n, this.tape, from);
     const rest = this.tape.splice(from);
     this.replay(rest.slice(0, len - from));
   }
@@ -150,7 +154,8 @@ export class Register {
       const snap = this.snapshots.get(from);
       state = snap ? snap.slice() : ground(this.n);
     }
-    for (let i = from; i < len; i++) for (const s of this.tape[i]) applyStep(state, this.n, s, Math.random, this.scope);
+    const cbits = classicalBits(this.n, this.tape, from);
+    for (let i = from; i < len; i++) for (const s of this.tape[i]) applyStep(state, this.n, s, Math.random, this.scope, cbits);
     return state;
   }
 
@@ -197,6 +202,7 @@ export class Register {
     this.n = c.n;
     this.scope = { ...c.scope };
     this.state = ground(this.n);
+    this.cbits = new Uint8Array(this.n);
     this.tape = [];
     this.snapshots.clear();
     this.prefix = null;
@@ -220,6 +226,7 @@ export class Register {
       this.prefix = { idx, state: this.state.slice() };
     } else {
       this.state = this.prefix.state.slice();
+      this.cbits = classicalBits(this.n, this.tape, idx);
       this.tape.splice(idx);
     }
     for (const k of [...this.snapshots.keys()]) if (k > idx) this.snapshots.delete(k);
@@ -249,6 +256,7 @@ export class Register {
     const tape = this.tape;
     this.n = n;
     this.state = ground(n);
+    this.cbits = new Uint8Array(n);
     this.tape = [];
     this.snapshots.clear();
     this.prefix = null;

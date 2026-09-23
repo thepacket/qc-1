@@ -24,6 +24,7 @@ import { synthesizeUnitary, type Cx } from "../sim/unitarySynth";
 import { interactionGraph } from "../sim/interaction";
 import { tannerGraph } from "../sim/tanner";
 import { Stabilizer } from "../sim/stabilizer";
+import { branchTree } from "../calc/branches";
 import { hermitianEig } from "../sim/eig";
 import { pauliSparse } from "../sim/pauliMatrix";
 import type { Complex } from "../sim/density";
@@ -293,7 +294,8 @@ export const TOOL_RUNS: Record<string, Run> = {
         exact.push(col);
         const psi = new Float64Array(2 * d);
         psi[2 * j] = 1;
-        for (const s of tape.flat()) applyStep(psi, n, s, Math.random, { ...ctx.scope, t });
+        const cbits = new Uint8Array(n);
+        for (const s of tape.flat()) applyStep(psi, n, s, Math.random, { ...ctx.scope, t }, cbits);
         trot.push(psi);
       }
       scalars.push({ label: `error at t = ${Math.round(t * 1000) / 1000}`, value: opDistance(trot, exact), unit: "max |ΔU|" });
@@ -357,7 +359,8 @@ export const TOOL_RUNS: Record<string, Run> = {
     for (let j = 0; j < d; j++) {
       const psi = new Float64Array(2 * d);
       psi[2 * j] = 1;
-      for (const s of ctx.tape.flat()) applyStep(psi, ctx.n, s, Math.random, ctx.scope);
+      const cbits = new Uint8Array(ctx.n);
+      for (const s of ctx.tape.flat()) applyStep(psi, ctx.n, s, Math.random, ctx.scope, cbits);
       for (let i = 0; i < d; i++) U[i][j] = { re: psi[2 * i], im: psi[2 * i + 1] };
     }
     const gates = synthesizeUnitary(U, ctx.n);
@@ -415,6 +418,21 @@ export const TOOL_RUNS: Record<string, Run> = {
         values: t.checks.map((c) => q.map((_, k) => (c.support.includes(k) ? 1 : 0))), codes: { 1: "in the check's cone", 0: "outside" },
       }],
       notes: ["Each measurement's backward light cone: the qubits that can influence its outcome (an upper bound on the check's support)."],
+    };
+  },
+
+  branches(ctx) {
+    const t = branchTree(ctx.n, ctx.tape, ctx.scope, 8);
+    if (t.events === 0) return { scalars: [{ label: "measurements", value: 0 }], notes: ["No measurements or resets: a single branch."] };
+    const leaves = [...t.leaves].sort((a, b) => b.p - a.p);
+    const bits = [...Array(ctx.n).keys()].map((q) => `c${q}`).join("");
+    return {
+      scalars: [{ label: "branches", value: t.leaves.length }, { label: "events on the longest path", value: t.events }],
+      charts: [
+        ...(t.leaves.length <= 16 ? [{ kind: "tree" as const, nodes: t.nodes, title: "every measurement history (edge width ∝ outcome probability)" }] : []),
+        { kind: "table", title: `outcome histories (${bits} = final classical bits)`, headers: ["outcomes", bits, "p"], rows: leaves.slice(0, 64).map((l) => [l.path, l.cbits, l.p]) },
+      ],
+      notes: ["All histories, not just the recorded one: each measurement splits the state; IF conditions follow each branch's bits."],
     };
   },
 

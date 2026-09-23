@@ -511,5 +511,49 @@ export function ChartView({ chart }: { chart: Chart }) {
     case "levels": return <Levels c={chart} />;
     case "phases": return <Phases c={chart} />;
     case "zx": return <Zx c={chart} />;
+    case "tree": return <Tree c={chart} />;
   }
+}
+
+// ─── Measurement branch tree ─────────────────────────────────────────
+function Tree({ c }: { c: Extract<Chart, { kind: "tree" }> }) {
+  const [pick, setPick] = useState<string | null>(null);
+  const kids = new Map<number, number[]>();
+  for (const n of c.nodes) if (n.parent !== null) kids.set(n.parent, [...(kids.get(n.parent) ?? []), n.id]);
+  const byId = new Map(c.nodes.map((n) => [n.id, n]));
+  // Leaves get consecutive rows; a parent sits between its children.
+  const y = new Map<number, number>();
+  let row = 0;
+  const place = (id: number): number => {
+    const ch = kids.get(id) ?? [];
+    const v = ch.length ? ch.map(place).reduce((a, b) => a + b, 0) / ch.length : row++;
+    y.set(id, v);
+    return v;
+  };
+  place(0);
+  const depth = Math.max(...c.nodes.map((n) => n.depth));
+  const W = 300, rowH = 22, colW = (W - 70) / Math.max(1, depth), H = Math.max(1, row) * rowH + 8;
+  const X = (d: number) => 8 + d * colW, Y = (id: number) => 12 + y.get(id)! * rowH;
+  return (
+    <Frame title={c.title}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="tree-svg" role="img" aria-label={c.title ?? "measurement branches"}>
+        {c.nodes.filter((n) => n.parent !== null).map((n) => {
+          const p = byId.get(n.parent!)!;
+          const cond = n.p / (p.p || 1);
+          return (
+            <g key={n.id} onClick={() => setPick(`${n.label} → ${n.outcome}: p = ${fmt(cond)} (path ${fmt(n.p)})`)}>
+              <path d={`M${X(p.depth)},${Y(p.id)} C${X(p.depth) + colW / 2},${Y(p.id)} ${X(p.depth) + colW / 2},${Y(n.id)} ${X(n.depth)},${Y(n.id)}`}
+                className="tree-edge" strokeWidth={1 + 3 * cond} />
+              <text x={X(n.depth) - 4} y={Y(n.id) - 4} className="tree-label" textAnchor="end">{n.label}={n.outcome}</text>
+            </g>
+          );
+        })}
+        {c.nodes.map((n) => <circle key={n.id} cx={X(n.depth)} cy={Y(n.id)} r={3} className={`tree-node${kids.has(n.id) ? "" : " leaf"}`} />)}
+        {c.nodes.filter((n) => !kids.has(n.id) && n.parent !== null).map((n) => (
+          <text key={`p${n.id}`} x={X(n.depth) + 6} y={Y(n.id) + 3} className="tree-p">{fmt(n.p)}</text>
+        ))}
+      </svg>
+      <Readout text={pick} hint="tap a branch for its probability" />
+    </Frame>
+  );
 }

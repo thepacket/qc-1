@@ -25,7 +25,8 @@ export type EquivResult = {
 };
 
 function run(n: number, tape: Entry[], state: Float64Array, scope: Scope) {
-  for (const e of tape) for (const s of e) applyStep(state, n, s, Math.random, scope);
+  const cbits = new Uint8Array(n);
+  for (const e of tape) for (const s of e) applyStep(state, n, s, Math.random, scope, cbits);
 }
 
 /** Move the amplitude of each basis index to the index with logical bit l placed at physical bit perm[l]. */

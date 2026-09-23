@@ -106,7 +106,8 @@ def resources(qc):
         "tDepth": qc.depth(filter_function=lambda i: i.operation.name in ("t", "tdg")),
         "cxCount": sum(1 for i in ops if i.operation.name == "cx"),
         "cliffordCount": sum(1 for i in unitary if is_clifford(i)),
-        "parameterized": sum(1 for i in ops if len(i.operation.params) > 0 and not is_id(i)),
+        # if_else carries its bodies as params: not an angle gate.
+        "parameterized": sum(1 for i in ops if len(i.operation.params) > 0 and not is_id(i) and i.operation.name != "if_else"),
         "longestQubit": max(per_q.values(), default=0),
     }
 
@@ -139,11 +140,19 @@ def backward_cones(qc):
     """Per measurement, in program order: the measured qubit plus the qubits of every
     non-measurement operation it causally depends on (DAG ancestors)."""
     dag = circuit_to_dag(qc)
+    nodes = [nd for nd in dag.topological_op_nodes() if nd.op.name == "measure"]
+    # Program order: the k-th measurement of a qubit in qc.data is its k-th DAG node.
+    by_qubit = {}
+    for nd in nodes:
+        by_qubit.setdefault(qc.find_bit(nd.qargs[0]).index, []).append(nd)
+    seen = {}
     out = []
-    for node in dag.topological_op_nodes():
-        if node.op.name != "measure":
+    for inst in qc.data:
+        if inst.operation.name != "measure":
             continue
-        q = qc.find_bit(node.qargs[0]).index
+        q = qc.find_bit(inst.qubits[0]).index
+        node = by_qubit[q][seen.get(q, 0)]
+        seen[q] = seen.get(q, 0) + 1
         sup = {q}
         for a in dag.ancestors(node):
             if hasattr(a, "op") and a.op.name != "measure":

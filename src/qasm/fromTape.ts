@@ -191,15 +191,21 @@ function uarbDefinitions(tape: Entry[]): Map<string, { name: string; def: string
 /** Symbols of a custom gate, in parameter order (p0, p1, … bind alphabetically in Qiskit). */
 const customParams = (def: CustomGate) => [...new Set(def.tape.flat().flatMap(stepSymbols))].sort();
 
+/**
+ * The tape as an emitter Circuit. Measuring qubit q writes c[q] (the IF key
+ * reads the same bits); a conditional step becomes `if (c[k] == v) …`.
+ */
 export function tapeToCircuit(n: number, tape: Entry[], uarb = uarbDefinitions(tape)): Circuit {
   const gates: PlacedGate[] = [];
-  let clbit = 0;
+  let classical = false;
   tape.forEach((entry, column) => {
     for (const s of entry) {
+      const cond = s.condition ? { condition: { ...s.condition } } : {};
+      if (s.condition) classical = true;
       if (s.gateId === "initialize") {
         // reset; U(θ, φ, 0) — exactly what the simulator does.
         const { theta, phi } = initAngles(s.params[0]);
-        const base = { column, controls: [], targets: s.targets, clbits: [] };
+        const base = { column, controls: [], targets: s.targets, clbits: [], ...cond };
         gates.push({ ...base, id: `${s.id}a`, gateId: "reset", params: [] });
         gates.push({ ...base, id: `${s.id}b`, gateId: "u", params: [String(theta), String(phi), "0"] });
         continue;
@@ -209,7 +215,7 @@ export function tapeToCircuit(n: number, tape: Entry[], uarb = uarbDefinitions(t
         gates.push({
           id: s.id, gateId: `def:${custom.name}`, column, controls: s.controls, targets: s.targets, clbits: [],
           params: customParams(custom).map(qasmSymbol),
-          ...(s.controlStates ? { controlStates: s.controlStates } : {}),
+          ...(s.controlStates ? { controlStates: s.controlStates } : {}), ...cond,
         });
         continue;
       }
@@ -217,25 +223,27 @@ export function tapeToCircuit(n: number, tape: Entry[], uarb = uarbDefinitions(t
       if (arb) {
         gates.push({
           id: s.id, gateId: `def:${arb.name}`, column, controls: s.controls, targets: s.targets, clbits: [], params: [],
-          ...(s.controlStates ? { controlStates: s.controlStates } : {}),
+          ...(s.controlStates ? { controlStates: s.controlStates } : {}), ...cond,
         });
         continue;
       }
+      const measures = MEASURE_IDS.has(s.gateId) && s.gateId !== "reset";
+      if (measures) classical = true;
       const g: PlacedGate = {
         id: s.id,
         gateId: NAMED[s.gateId]?.[s.controls.length] ?? s.gateId,
         column,
         controls: s.controls,
         targets: s.targets,
-        clbits: s.gateId === "reset" ? [] : MEASURE_IDS.has(s.gateId) ? [clbit++] : [],
+        clbits: measures ? [s.targets[0]] : [],
         params: s.params.map(qasmParam),
-        ...(s.controlStates ? { controlStates: s.controlStates } : {}),
+        ...(s.controlStates ? { controlStates: s.controlStates } : {}), ...cond,
       };
-      if (s.outcome !== undefined && MEASURE_IDS.has(s.gateId) && s.gateId !== "reset") g.annotation = `QC-1 measured ${s.outcome}`;
+      if (s.outcome !== undefined && measures) g.annotation = `QC-1 measured ${s.outcome}`;
       gates.push(g);
     }
   });
-  return { numQubits: n, numClbits: clbit, gates };
+  return { numQubits: n, numClbits: classical ? n : 0, gates };
 }
 
 /** Custom gates a tape uses, dependencies first. */

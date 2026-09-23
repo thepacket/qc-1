@@ -163,3 +163,37 @@ describe("custom gates (DEFINE)", () => {
     expect(c.symbols).toEqual(["t"]);
   });
 });
+
+describe("IF (2ND+Z): one-shot classical condition", () => {
+  test("teleportation corrections: X if c1, Z if c0 — q2 ends in the input state", () => {
+    for (let trial = 0; trial < 6; trial++) {
+      const c = calc();
+      keys(c, "3", "2nd", "q");
+      // Input on q0: RY(0.8)
+      keys(c, "0", ".", "8", "ry");
+      keys(c, "right", "h", "ctrl", "right", "x"); // Bell pair q1,q2 (sel ends on q2)
+      keys(c, "left", "left", "ctrl", "right", "x"); // CX q0→q1
+      keys(c, "left", "h", "meas", "right", "meas"); // measure q0, q1
+      keys(c, "right", "1", "2nd", "z");
+      expect(c.pendingIf).toEqual({ clbit: 1, value: 1 });
+      keys(c, "x");
+      expect(c.pendingIf).toBeNull();
+      keys(c, "0", "2nd", "z", "z");
+      const last = c.tape[c.tape.length - 1][0];
+      expect(last.condition).toEqual({ clbit: 0, value: 1 });
+      // q2's reduced state is RY(0.8)|0⟩ whatever was measured.
+      const st = (c.engine as InlineEngine).core.reg.state;
+      let p1 = 0;
+      for (let i = 0; i < 8; i++) if (i & 1) p1 += st[2 * i] ** 2 + st[2 * i + 1] ** 2;
+      expect(p1).toBeCloseTo(Math.sin(0.4) ** 2, 10);
+    }
+  });
+
+  test("the QASM export writes c[q] and if (c[k] == true)", () => {
+    const c = calc();
+    keys(c, "h", "meas", "right", "0", "2nd", "z", "x");
+    const q = exportQasm3(c.n, c.tape);
+    expect(q).toContain("c[0] = measure q[0];");
+    expect(q).toContain("if (c[0] == true) x q[1];");
+  });
+});

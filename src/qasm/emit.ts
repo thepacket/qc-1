@@ -338,7 +338,8 @@ export function emitQasm3(circuit: Circuit): string {
     const lines = emitGate(g);
     if (g.condition) {
       // Wrap each emitted statement in `if (c[k] == v) { … }`.
-      const cond = `if (c[${g.condition.clbit}] == ${g.condition.value}) `;
+      // QC-1: a bit compares with a bool (Qiskit's importer rejects `bit == int`).
+      const cond = `if (c[${g.condition.clbit}] == ${g.condition.value ? "true" : "false"}) `;
       for (const line of lines) out.push(`${cond}${line}`);
     } else {
       for (const line of lines) out.push(line);

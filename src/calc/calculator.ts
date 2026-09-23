@@ -51,7 +51,7 @@ const GATE_KEYS: Record<string, GateKey> = {
 /** What a key does with 2ND held. Keys absent here ignore 2ND. */
 export const SHIFTED: Partial<Record<KeyId, string>> = {
   left: "n-", right: "n+", q: "n", undo: "redo", ctrl: "actrl", all: "cat",
-  swap: "iswap", meas: "reset", h: "sy", x: "measx", y: "measy",
+  swap: "iswap", meas: "reset", h: "sy", x: "measx", y: "measy", z: "if",
   sx: "sxdg", s: "sdg", t: "tdg", rx: "rxx", ry: "ryy", rz: "rzz",
   p: "u", div: "lparen", mul: "rparen", minus: "plus", pi: "sqrt",
   ".": "tsym", ",": "var", "7": "sin", "8": "cos", "9": "exp", eq: "sto", bs: "rcl",
@@ -126,6 +126,8 @@ export class Calculator {
   shift = false;
   all = false;
   marks: Mark[] = [];
+  /** IF (2ND+Z): the next gate runs only when c[clbit] == value. */
+  pendingIf: { clbit: number; value: number } | null = null;
   mode: Mode = "ket";
   shots = 1024;
   /** Bumped to force a fresh shot sample without a state change. */
@@ -713,6 +715,21 @@ export class Calculator {
       }
       case "all": this.all = !this.all; return;
       case "cat": this.catalog.open = true; return;
+      case "if": {
+        // Entry "k" or "k,v": the next gate runs only if c[k] == v (v = 1 by default).
+        if (this.pendingIf && this.entry.length === 0) {
+          this.pendingIf = null;
+          return this.info("IF off");
+        }
+        const args = splitArgs(this.entry).map((a) => Number(a));
+        const [k, v = 1] = args;
+        if (args.length === 0 || args.length > 2 || !Number.isInteger(k) || k < 0 || k >= n || (v !== 0 && v !== 1)) {
+          return this.error(`IF: enter k or k,v (bit c[k] of q${0}–q${n - 1}, v = 0/1)`);
+        }
+        this.entry = [];
+        this.pendingIf = { clbit: k, value: v };
+        return this.info(`next gate only if c[${k}] = ${v}`);
+      }
       case "undo":
         return this.send({ t: "undo" }, (r) => this.info(r.op ? `undo ${opLabel(r.op)}` : "nothing to undo"));
       case "redo":
@@ -744,10 +761,11 @@ export class Calculator {
           this.closeParams();
           return;
         }
-        if (this.entry.length > 0 || this.marks.length > 0 || this.all) {
+        if (this.entry.length > 0 || this.marks.length > 0 || this.all || this.pendingIf) {
           this.entry = [];
           this.marks = [];
           this.all = false;
+          this.pendingIf = null;
           return;
         }
         return this.send({ t: "clear" }, (r) => this.info(`|${"0".repeat(r.n)}⟩ (UNDO restores)`));
@@ -790,9 +808,11 @@ export class Calculator {
     const controls = this.marks.map((m) => m.q);
     const controlStates = this.marks.some((m) => m.anti) ? this.marks.map((m) => !m.anti) : undefined;
     const col = this.tape.length;
+    const cond = this.pendingIf;
     const mk = (targets: number[], ctrls: number[], states?: boolean[]): Step => ({
       id: newId(), gateId: k.gate, column: col, targets, controls: ctrls, clbits: [], params,
       ...(states ? { controlStates: states } : {}),
+      ...(cond ? { condition: { ...cond } } : {}),
     });
 
     let entry: Entry;
@@ -816,6 +836,7 @@ export class Calculator {
     if (params !== k.params) this.entry = [];
     this.marks = [];
     this.all = false;
+    this.pendingIf = null;
     this.send({ t: "push", entry }, (r) => r.done && this.info(formatEntry(r.done)));
   }
 }

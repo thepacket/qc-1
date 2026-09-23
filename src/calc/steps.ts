@@ -117,20 +117,37 @@ export function exprOk(src: string): boolean {
 const forced = (o: 0 | 1) => () => (o === 1 ? -1 : 2);
 
 /**
+ * Classical bits after the first `len` entries: measuring qubit q writes c[q]
+ * (its recorded outcome); a conditional step runs only when its bit matches.
+ */
+export function classicalBits(n: number, tape: Entry[], len = tape.length): Uint8Array {
+  const c = new Uint8Array(n);
+  for (const e of tape.slice(0, len)) for (const s of e) {
+    if (s.condition && c[s.condition.clbit] !== s.condition.value) continue;
+    if (MEASURE_IDS.has(s.gateId) && s.gateId !== "reset" && s.outcome !== undefined) c[s.targets[0]] = s.outcome;
+  }
+  return c;
+}
+
+/**
  * Apply one step to the state in place. Measurements sample with `rng` the
  * first time and record the outcome; later replays force that outcome.
+ * `cbits` is the classical register (c[q] ← measurement of q): conditional
+ * steps (`if (c[k] == v)`) read it, measurements write it. Without it every
+ * bit reads 0, as in a fresh OpenQASM program.
  */
-export function applyStep(state: Float64Array, n: number, s: Step, rng: () => number, scope: Scope = {}): Step {
+export function applyStep(state: Float64Array, n: number, s: Step, rng: () => number, scope: Scope = {}, cbits?: Uint8Array): Step {
+  if (s.condition && (cbits?.[s.condition.clbit] ?? 0) !== s.condition.value) return s;
   const prep = s.gateId === "initialize" ? [initMatrix(s.params[0])] : PREP[s.gateId];
   if (prep) {
-    const done = applyStep(state, n, { ...s, gateId: "reset" }, rng, scope);
+    const done = applyStep(state, n, { ...s, gateId: "reset", condition: undefined }, rng, scope);
     for (const U of prep) applyKQubit(state, n, s.targets, U);
     return done.outcome === s.outcome ? s : { ...s, outcome: done.outcome };
   }
 
   const custom = customOf(s.gateId);
   if (custom) {
-    for (const d of expandCustom(s, custom)) applyStep(state, n, d, rng, scope);
+    for (const d of expandCustom(s, custom)) applyStep(state, n, { ...d, condition: undefined }, rng, scope, cbits);
     return s;
   }
   if (s.gateId.startsWith(CUSTOM_PREFIX)) throw new Error(`gate ${s.gateId.slice(CUSTOM_PREFIX.length)} isn't defined`);
@@ -145,6 +162,7 @@ export function applyStep(state: Float64Array, n: number, s: Step, rng: () => nu
         controlStates: s.controlStates && [...s.controlStates, ...cs.map(() => true)],
         targets: ts.map((q) => s.targets[q]),
         params: [],
+        condition: undefined,
       }, rng, scope);
     }
     return s;
@@ -175,6 +193,7 @@ export function applyStep(state: Float64Array, n: number, s: Step, rng: () => nu
       }
     }
     if (s.gateId === "reset" && o === 1) applyKQubit(state, n, [q], M_X);
+    if (s.gateId !== "reset" && cbits) cbits[q] = o;
     return o === s.outcome ? s : { ...s, outcome: o as 0 | 1 };
   }
 
@@ -273,7 +292,8 @@ export function formatStep(s: Step): string {
   const ctrl = s.controls.length ? s.controls.map((q) => `q${q}`).join(",") + "→" : "";
   const tgt = s.targets.map((q) => `q${q}`).join(",");
   const out = s.outcome !== undefined && MEASURE_IDS.has(s.gateId) && s.gateId !== "reset" ? `=${s.outcome}` : "";
-  return `${cs}${base}${args} ${ctrl}${tgt}${out}`;
+  const cond = s.condition ? `IF c${s.condition.clbit}=${s.condition.value}: ` : "";
+  return `${cond}${cs}${base}${args} ${ctrl}${tgt}${out}`;
 }
 
 export function formatEntry(e: Entry): string {
