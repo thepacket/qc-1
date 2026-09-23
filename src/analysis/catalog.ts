@@ -411,6 +411,9 @@ ANALYSES.push(
       obs,
     ],
     summary: "Any of these quantities along the tape (after each step), over one period of t, or over another symbol." },
+  { id: "plotprogram", title: "Plot program (JavaScript)", category: "verify", mode: "run", maxQubits: 14, inputs: [
+    { kind: "code", key: "code", label: "program" },
+  ], summary: "Draw anything from the state with a few lines of JavaScript: the program gets data (amplitudes, probabilities, per-qubit ρ, symbols) and returns shapes. It runs sandboxed: its own worker, no network or storage, a time limit." },
   { id: "selftest", title: "Self-test", category: "verify", mode: "run", maxQubits: 1024, inputs: [],
     summary: "Replay the committed Qiskit/Aer references on this device: gates, random tapes, symbols, classical control, noise, stabilizer mode." },
 );

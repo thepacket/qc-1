@@ -24,6 +24,8 @@ export type InputSpec =
   | { kind: "pauli"; key: string; label: string }
   /** A target state typed on the phone keyboard (|011⟩ or amplitudes), with presets. */
   | { kind: "state"; key: string; label: string }
+  /** Program text (several lines), with example presets. */
+  | { kind: "code"; key: string; label: string }
   /** Free text on the phone keyboard (empty = the analysis's own default). */
   | { kind: "text"; key: string; label: string; placeholder: string }
   /** One of the tape's symbols; `optional` adds "none". */
@@ -78,6 +80,8 @@ export type Chart =
       curve?: { name: string; y: number[] };
     }
   | { kind: "stars"; title?: string; stars: { theta: number; phi: number }[] }
+  /** A plot program's sanitised drawing (analysis/plotProgram.ts). */
+  | { kind: "scene"; title?: string; scene: import("./plotProgram").PlotScene }
   /**
    * An error-correcting code's lattice: data qubits at grid points, checks as
    * plaquettes over their qubits (lit = the syndrome), errors and the

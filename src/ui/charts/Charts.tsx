@@ -564,6 +564,27 @@ function Lattice({ c }: { c: Extract<Chart, { kind: "lattice" }> }) {
   );
 }
 
+// ─── Scene (a plot program's sanitised drawing) ──────────────────────
+function Scene({ c }: { c: Extract<Chart, { kind: "scene" }> }) {
+  const { width: W, height: H, elements } = c.scene;
+  return (
+    <Frame title={c.title}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="scene-svg" role="img" aria-label={c.title ?? "plot program"}>
+        {elements.map((e, k) => {
+          switch (e.type) {
+            case "line": return <line key={k} x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2} stroke={e.stroke} strokeWidth={e.strokeWidth} />;
+            case "rect": return <rect key={k} x={e.x} y={e.y} width={e.width} height={e.height} fill={e.fill} stroke={e.stroke} opacity={e.opacity} />;
+            case "circle": return <circle key={k} cx={e.cx} cy={e.cy} r={e.r} fill={e.fill} stroke={e.stroke} opacity={e.opacity} />;
+            case "path": return <path key={k} d={e.d} stroke={e.stroke} fill={e.fill} strokeWidth={e.strokeWidth} />;
+            case "polyline": return <polyline key={k} points={e.points.map((p) => p.join(",")).join(" ")} stroke={e.stroke} fill={e.fill} strokeWidth={e.strokeWidth} />;
+            case "text": return <text key={k} x={e.x} y={e.y} fill={e.fill} textAnchor={e.anchor} fontSize={e.size} fontFamily="var(--mono)">{e.text}</text>;
+          }
+        })}
+      </svg>
+    </Frame>
+  );
+}
+
 export function ChartView({ chart }: { chart: Chart }) {
   switch (chart.kind) {
     case "heatmap": return <Heatmap c={chart} />;
@@ -576,6 +597,7 @@ export function ChartView({ chart }: { chart: Chart }) {
     case "hist": return <Hist c={chart} />;
     case "stars": return <Stars c={chart} />;
     case "lattice": return <Lattice c={chart} />;
+    case "scene": return <Scene c={chart} />;
     case "paths": return <Paths c={chart} />;
     case "levels": return <Levels c={chart} />;
     case "phases": return <Phases c={chart} />;

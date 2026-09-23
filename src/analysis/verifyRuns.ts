@@ -16,6 +16,7 @@ import { allPauliExpectations } from "../sim/pauliSpectrum";
 import { parsePauliSum } from "../sim/trotter";
 import { pauliSumExpectation } from "../sim/expectation";
 import { setCustomGates, type CustomGate } from "../calc/custom";
+import { buildInput, PLOT_PRESETS, runPlotProgram } from "./plotProgram";
 
 type Run = (ctx: AnalysisContext, opts: Opts) => AnalysisResult | Promise<AnalysisResult>;
 const num = (id: string, key: string, opts: Opts, n: number) => inputValue(ANALYSIS_BY_ID[id].inputs.find((s) => s.key === key)!, opts, n);
@@ -34,6 +35,16 @@ function columns(n: number, tape: Entry[], scope: Scope): Float64Array[] {
 }
 
 export const VERIFY_RUNS: Record<string, Run> = {
+  async plotprogram(ctx, opts) {
+    const code = typeof opts.code === "string" && opts.code.trim() ? opts.code : PLOT_PRESETS[0].code;
+    const r = await runPlotProgram(code, buildInput(ctx));
+    if ("error" in r) return { error: r.error };
+    return {
+      charts: [{ kind: "scene", title: r.scene.title, scene: r.scene }],
+      notes: ["Sandboxed: the program ran in its own worker without network or storage, and its drawing was checked shape by shape."],
+    };
+  },
+
   compare(ctx, opts) {
     const other = opts.other as Slot | undefined;
     const slot = num("compare", "slot", opts, ctx.n);

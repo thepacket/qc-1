@@ -21,7 +21,7 @@ install to your home screen, and it works offline.
   measurements.
 - **Views**: KET, PROB, BLOCH, SHOTS, TAPE (step list or circuit diagram, a
   step scrubber, and editing at any step) and **LAB**:
-  118 analyses and tools in 14 categories. They cover state, measurement,
+  119 analyses and tools in 14 categories. They cover state, measurement,
   phase space and magic, metrology, entanglement, dynamics, operators and
   spectra, circuit structure, and circuit tools (simplify, transpile, route,
   compile, inverse, Trotter, state prep, synthesis). They also cover noise,

@@ -784,3 +784,5 @@ button {
   padding: 5px 12px; border-radius: 14px; background: #2b2e34; color: #fff; font: 700 12px var(--mono);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
 }
+.code-field textarea { font-size: 11px; line-height: 1.35; white-space: pre; overflow-x: auto; }
+.scene-svg { width: 100%; height: auto; display: block; }

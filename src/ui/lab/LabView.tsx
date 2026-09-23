@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { Calculator } from "../../calc/calculator";
 import { ANALYSIS_BY_ID, CATEGORIES, analysesIn, cutDefault, inputValue, pauliValue, symbolValue } from "../../analysis/catalog";
 import { pauliPresets } from "../../analysis/pauliPresets";
+import { PLOT_PRESETS } from "../../analysis/plotProgram";
 import { symbolGlyph } from "../../calc/entry";
 import { useState } from "react";
 import type { AnalysisMeta, InputSpec } from "../../analysis/types";
@@ -154,6 +155,7 @@ function Input({ calc, meta, spec }: { calc: Calculator; meta: AnalysisMeta; spe
   }
   if (spec.kind === "pauli") return <PauliField calc={calc} meta={meta} spec={spec} />;
   if (spec.kind === "text") return <TextField calc={calc} meta={meta} spec={spec} />;
+  if (spec.kind === "code") return <CodeField calc={calc} meta={meta} spec={spec} />;
   if (spec.kind === "state") return <StateField calc={calc} meta={meta} spec={spec} />;
   if (spec.kind === "symbol") {
     const cur = symbolValue(spec, calc.labOpts(meta.id), calc.symbols);
@@ -247,6 +249,29 @@ function statePresets(n: number): { label: string; text: string }[] {
     ...(n >= 2 ? [{ label: "W", text: amps((i) => ((i & (i - 1)) === 0 && i > 0 ? 1 : 0)) }] : []),
     { label: "uniform", text: amps(() => 1) },
   ];
+}
+
+/** A program (several lines), committed with RUN or on leaving the field; presets fill it. */
+function CodeField({ calc, meta, spec }: { calc: Calculator; meta: AnalysisMeta; spec: Extract<InputSpec, { kind: "code" }> }) {
+  const v = calc.labOpts(meta.id)[spec.key];
+  const committed = typeof v === "string" && v.trim() ? v : PLOT_PRESETS[0].code;
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft !== null && draft !== committed) calc.setLabOpts(meta.id, { [spec.key]: draft });
+    setDraft(null);
+  };
+  return (
+    <div className="typed code-field">
+      <textarea value={draft ?? committed} rows={7} spellCheck={false} autoCapitalize="off" autoCorrect="off" aria-label={spec.label}
+        onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={(e) => e.stopPropagation()} />
+      <div className="cut-picker">
+        <span className="dim">examples</span>
+        {PLOT_PRESETS.map((p) => (
+          <button key={p.label} className={`qb${p.code === committed ? " sel" : ""}`} onClick={() => { setDraft(null); calc.setLabOpts(meta.id, { [spec.key]: p.code }); }}>{p.label}</button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /** A wide integer range: − value + (the value is also typed on the phone keyboard). */

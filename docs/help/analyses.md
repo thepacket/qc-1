@@ -158,4 +158,5 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 
 - **Compare with memory** (live, n ≤ 20; inputs: M) — The tape against a stored tape (STO): same operator?, process and average gate fidelity, state fidelity, resources.
 - **Custom plot** (RUN, n ≤ 14; inputs: plot, over, observable) — Any of these quantities along the tape (after each step), over one period of t, or over another symbol.
+- **Plot program (JavaScript)** (RUN, n ≤ 14; inputs: program) — Draw anything from the state with a few lines of JavaScript: the program gets data (amplitudes, probabilities, per-qubit ρ, symbols) and returns shapes. It runs sandboxed: its own worker, no network or storage, a time limit.
 - **Self-test** (RUN, any n (also above 20 qubits)) — Replay the committed Qiskit/Aer references on this device: gates, random tapes, symbols, classical control, noise, stabilizer mode.

@@ -23,7 +23,8 @@ describe("LAB framework", () => {
   });
 
   test("every analysis runs on an entangled, symbolic state of a size it accepts, without error", async () => {
-    for (const a of ANALYSES) {
+    // The plot program needs a browser worker for its sandbox (test/plotProgram.test.ts covers the rest).
+    for (const a of ANALYSES.filter((x) => x.id !== "plotprogram")) {
       const n = Math.min(a.maxQubits, Math.max(a.minQubits ?? 1, 4));
       const c = calc();
       // A generically entangled state: H layer, CZ ring, RX(0.7) + T layers,
