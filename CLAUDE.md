@@ -187,6 +187,7 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
   - `src/qasm/qr.ts` wraps qrcode-generator (level M, else L). `test/qr.test.ts` decodes the codes with jsQR (dev dependency). TAPE ≡ → QR code shows it full screen, dark on white.
   - Step-through: `importQasm` returns `lines` (the source line of each entry); `src/qasm/captions.ts` turns comments into one caption per entry. `Calculator.guide` holds them and applies while the tape's step ids match (`activeGuide`), so an edit hides it and UNDO restores it. App's GuideBar replaces the tape strip.
   - `prettyExpr` shows imported ASCII symbol names as glyphs (theta → θ).
+- **Algorithm blocks** (`src/calc/blocks.ts`, CATALOG → BLOCKS): QFT, QFT†, Grover diffuser (exactly 2|s⟩⟨s| − I), QAOA MaxCut ring layer. A block acts on the CTRL-marked qubits plus the selected one, ascending (the first is the most significant), else on every qubit. QFT/QFT†/DIFF are custom gates QFTk/IQFTk/DIFFk defined on first use (one tape step, exported as a `gate`); QAOA is two plain entries taking γ,β from the entry. Fixture `blocks`: exact operators vs Qiskit QFTGate/QAOAAnsatz and the diffuser matrix.
 - `src/qasm/fromTape.ts` turns the tape into OpenQASM 3. It uses stdgates names where
   they exist and `ctrl @`/`negctrl @` otherwise, adds exact `gate` definitions for
   non-stdgates (sy, sxdg, iswap, rxx, ryy, rzz), and folds `sqrt(...)` params to numbers.

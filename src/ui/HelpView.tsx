@@ -20,7 +20,7 @@ export function HelpView({ calc }: { calc: Calculator }) {
         <div className="help-grid">
           {shifted.map((k) => <span key={k.id}><b>{k.alt}</b> <span className="dim">on {k.label}</span></span>)}
         </div>
-        <p><b>t</b> and <b>VAR</b> (repeat to cycle θ φ λ α β γ δ τ ω) put symbols into angles; tap the symbol badge for sliders and t playback. <b>STO</b>/<b>RCL</b> with a digit 1–9 store and recall whole tapes. <b>IF</b> with k (or k,v) makes the next gate run only when bit c[k] = v; measuring qubit q writes c[q]. <b>CAT</b> lists every other gate, custom gates and DEFINE.</p>
+        <p><b>t</b> and <b>VAR</b> (repeat to cycle θ φ λ α β γ δ τ ω) put symbols into angles; tap the symbol badge for sliders and t playback. <b>STO</b>/<b>RCL</b> with a digit 1–9 store and recall whole tapes. <b>IF</b> with k (or k,v) makes the next gate run only when bit c[k] = v; measuring qubit q writes c[q]. <b>CAT</b> lists every other gate, the algorithm blocks (QFT, QFT†, Grover diffuser, a QAOA layer: on the CTRL-marked qubits and the selected one, or on the whole register), custom gates and DEFINE.</p>
         <h3>Views</h3>
         <p><b>KET</b> amplitudes · <b>PROB</b> probabilities · <b>BLOCH</b> one sphere per qubit · <b>SHOTS</b> sampled counts (tap again to re-roll) · <b>TAPE</b> the recorded steps (LIST, or CIRC as a circuit diagram), a scrubber to look at the state after any step, and ≡ for examples, OpenQASM import/export, Qiskit (Python) export, share links and QR codes · <b>LAB</b> analyses and tools.</p>
         <h3>Editing the tape</h3>

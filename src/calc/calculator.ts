@@ -3,6 +3,7 @@ import { STAB_MAX } from "../stab/register";
 import { evalParam, exprOk, formatEntry, NONUNITARY, type Entry, type Scope, type Step } from "./steps";
 import { CATALOG, type CatalogItem } from "./catalog";
 import { CUSTOM_PREFIX, defineGate, setCustomGates, type CustomGate } from "./custom";
+import { blockGate, qaoaLayer, type BlockKind } from "./blocks";
 import { importQasm } from "../qasm/import";
 import { stepCaptions } from "../qasm/captions";
 import { DEFAULT_NOISE, isIdeal, sanitiseNoise, type NoiseModel } from "../noise/model";
@@ -763,8 +764,48 @@ export class Calculator {
   private applyCatalog(index: number) {
     const item = this.catalogItems[index];
     if (item.gate === "define") this.define();
+    else if (item.gate.startsWith("block:")) this.block(item.gate.slice(6) as BlockKind, item.params);
     else this.gate({ gate: item.gate, arity: item.arity, params: item.params });
     this.catalog.open = false;
+  }
+
+  /**
+   * An algorithm block (calc/blocks.ts) on the CTRL-marked qubits plus the
+   * selected one, ascending (the first is the most significant), or on every
+   * qubit when nothing is marked. QFT, QFT† and the diffuser are custom gates
+   * (QFT3…), defined on first use; QAOA is two entries taking the entry γ,β.
+   */
+  private block(kind: BlockKind, defaults: string[]) {
+    if (this.marks.some((m) => m.anti)) throw new Error("blocks take CTRL marks, not ○CTRL");
+    const qs = this.marks.length ? [...new Set([...this.marks.map((m) => m.q), this.sel])].sort((a, b) => a - b) : [...Array(this.n).keys()];
+    if (this.pendingIf) throw new Error("IF applies to a single gate");
+    if (kind === "qaoa") {
+      if (qs.length < 2) throw new Error("QAOA needs 2+ qubits");
+      const args = this.entry.length ? splitArgs(this.entry) : [];
+      if (args.length > 2) throw new Error("γ,β");
+      for (const a of args) if (!exprOk(a)) throw new Error("syntax error");
+      const [gamma, beta] = [args[0] ?? defaults[0], args[1] ?? defaults[1]];
+      this.entry = [];
+      this.marks = [];
+      for (const e of qaoaLayer(qs, gamma, beta)) {
+        const entry = e.map((s) => ({ ...s, id: newId(), column: this.tape.length }));
+        this.send({ t: "push", entry }, (r) => r.done && this.info(`QAOA layer (γ=${gamma}, β=${beta})`));
+      }
+      return;
+    }
+    const def = blockGate(kind, qs.length);
+    const same = (a: CustomGate) => JSON.stringify(a.tape.map((e) => e.map(({ id: _, ...s }) => s))) === JSON.stringify(def.tape.map((e) => e.map(({ id: _, ...s }) => s)));
+    const taken = this.customGates.find((d) => d.name === def.name);
+    if (taken && !same(taken)) throw new Error(`${def.name} is another gate here (imported?)`);
+    if (!taken) {
+      this.customGates = [...this.customGates, def];
+      setCustomGates(this.customGates);
+      this.send({ t: "gates", defs: this.customGates });
+    }
+    this.marks = [];
+    this.all = false;
+    const entry: Entry = [{ id: newId(), gateId: CUSTOM_PREFIX + def.name, column: this.tape.length, targets: qs, controls: [], clbits: [], params: [] }];
+    this.send({ t: "push", entry }, (r) => r.done && this.info(formatEntry(r.done)));
   }
 
   /** DEFINE: the last k tape entries (entry k, else all) become gate G#. */

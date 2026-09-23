@@ -3,6 +3,7 @@ import { Calculator, type KeyId } from "../src/calc/calculator";
 import { InlineEngine } from "../src/calc/engine";
 import { CATALOG } from "../src/calc/catalog";
 import { exportQasm3 } from "../src/qasm/fromTape";
+import { formatStep } from "../src/calc/steps";
 
 const calc = () => new Calculator(new InlineEngine());
 const keys = (c: Calculator, ...ks: KeyId[]) => ks.forEach((k) => c.press(k));
@@ -195,5 +196,38 @@ describe("IF (2ND+Z): one-shot classical condition", () => {
     const q = exportQasm3(c.n, c.tape);
     expect(q).toContain("c[0] = measure q[0];");
     expect(q).toContain("if (c[0] == true) x q[1];");
+  });
+});
+
+describe("CATALOG blocks", () => {
+  const open = (c: Calculator, label: string) => {
+    c.press("2nd"); c.press("all"); // CATALOG
+    const i = c.catalogItems.findIndex((it) => it.label === label);
+    c.pickCatalog(i);
+    c.pickCatalog(i);
+  };
+
+  test("QFT with nothing marked covers the register as one step; QFT† undoes it", () => {
+    const c = new Calculator(new InlineEngine());
+    c.press("3"); c.press("2nd"); c.press("q"); // n = 3
+    c.press("x");
+    open(c, "QFT");
+    expect(c.tape.at(-1)!.map(formatStep)).toEqual(["QFT3 q0,q1,q2"]);
+    open(c, "QFT†");
+    const v = c.view!;
+    if (v.mode !== "ket") throw new Error(v.mode);
+    expect(v.rows.filter((r) => r.re ** 2 + r.im ** 2 > 1e-12).map((r) => r.i)).toEqual([4]); // back to |100⟩
+  });
+
+  test("CTRL marks pick the block's qubits (ascending); QAOA takes γ,β from the entry as two steps", () => {
+    const c = new Calculator(new InlineEngine());
+    c.press("4"); c.press("2nd"); c.press("q");
+    c.press("ctrl"); c.press("right"); c.press("right"); c.press("ctrl"); c.press("right"); // marks q0, q2; selected q3
+    open(c, "DIFFUSER");
+    expect(c.tape.at(-1)![0].targets).toEqual([0, 2, 3]);
+    c.press("pi"); c.press("div"); c.press("8"); c.press(","); c.press("pi"); c.press("div"); c.press("4");
+    open(c, "QAOA");
+    expect(c.tape.slice(-2).map((e) => e.map((s) => s.gateId))).toEqual([["rzz", "rzz", "rzz", "rzz"], ["rx", "rx", "rx", "rx"]]);
+    expect(c.tape.at(-2)![0].params[0]).toBe("2*(π/8)");
   });
 });

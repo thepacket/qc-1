@@ -4,7 +4,8 @@ import { GATES_BY_ID } from "../sim/gates";
  * CATALOG (2ND + ALL): the gates without a key of their own. Names, argument
  * names and defaults come from the ported gate catalog (sim/gates.ts);
  * `arity` is how many qubits the gate acts on — the target is the selected
- * qubit and the other arity−1 come from the most recent CTRL marks.
+ * qubit and the other arity−1 come from the most recent CTRL marks. Blocks
+ * (arity 0) take all the marked qubits and the selected one, or every qubit.
  */
 export type CatalogItem = {
   gate: string;
@@ -54,6 +55,11 @@ export const CATALOG: CatalogItem[] = [
       note: note ?? def.description ?? def.name,
     };
   }),
+  // Algorithm blocks (calc/blocks.ts): on the CTRL-marked qubits and the selected one, or on every qubit.
+  { gate: "block:qft", group: "BLOCKS", arity: 0, label: "QFT", params: [], argNames: [], note: "quantum Fourier transform; CTRL-mark its qubits (else all), first = most significant" },
+  { gate: "block:iqft", group: "BLOCKS", arity: 0, label: "QFT†", params: [], argNames: [], note: "inverse QFT (the read-out of phase estimation)" },
+  { gate: "block:diff", group: "BLOCKS", arity: 0, label: "DIFFUSER", params: [], argNames: [], note: "Grover diffusion 2|s⟩⟨s| − I on the marked qubits (else all)" },
+  { gate: "block:qaoa", group: "BLOCKS", arity: 0, label: "QAOA", params: ["π/4", "π/8"], argNames: ["γ", "β"], note: "one MaxCut layer on a ring: RZZ(2γ) per edge, RX(2β) per qubit; enter γ,β" },
   {
     gate: "initialize", group: "STATE PREP", arity: 1, label: "|ψ⟩",
     params: ["1", "0", "0", "0"], argNames: ["α", "β"],
