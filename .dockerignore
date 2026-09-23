@@ -11,3 +11,4 @@ fly.toml
 .dockerignore
 validation
 test
+!test/fixtures
