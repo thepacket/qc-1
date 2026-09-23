@@ -78,11 +78,17 @@ function applyChannelDensity(rho: Float64Array, n: number, c: Channel): Float64A
   return out;
 }
 
-export function noisyDensity(n: number, tape: Entry[], scope: Scope, m: NoiseModel): Density {
+export function noisyDensity(n: number, tape: Entry[], scope: Scope, m: NoiseModel, initial?: Float64Array): Density {
   if (!densityOk(n, tape)) throw new Error(`density matrix: unitary tapes up to ${DENSITY_MAX} qubits`);
   const d = 1 << n;
   let rho: Float64Array = new Float64Array(2 * d * d);
-  rho[0] = 1;
+  if (initial) {
+    // |ψ⟩⟨ψ| of a given starting state
+    for (let i = 0; i < d; i++) for (let j = 0; j < d; j++) {
+      rho[2 * (i * d + j)] = initial[2 * i] * initial[2 * j] + initial[2 * i + 1] * initial[2 * j + 1];
+      rho[2 * (i * d + j) + 1] = initial[2 * i + 1] * initial[2 * j] - initial[2 * i] * initial[2 * j + 1];
+    }
+  } else rho[0] = 1;
   for (const s of steps(tape)) {
     rho = conjugate(rho, d, (v) => applyStep(v, n, s, Math.random, scope));
     for (const c of channelsAfter(m, s)) rho = applyChannelDensity(rho, n, c);

@@ -40,6 +40,13 @@ export function gateCases(): Case[] {
       out.push({ id: `${g}${nc ? `+c${nc}` : ""}`, n, tape });
     }
   }
+  // u1, u2, u3 (stdgates names), plain and controlled.
+  for (const [g, p] of [["u1", ["0.37"]], ["u2", ["0.37", "1.1"]], ["u3", ["0.37", "1.1", "-0.8"]]] as [string, string[]][]) {
+    for (const nc of [0, 1, 2]) {
+      const n = 3;
+      out.push({ id: `${g}${nc ? `+c${nc}` : ""}`, n, tape: [...productLayer(r, n), [step(g, [nc], [...Array(nc).keys()], p, nc === 2 ? [true, false] : undefined)]] });
+    }
+  }
   // Integer ratios: OpenQASM 3 divides integers as integers, so the export must write floats.
   for (const [name, expr] of [["half", "1/2"], ["twothirdspi", "2/3*π"], ["nested", "(1/2)*(3/4)*π"], ["int", "2"]]) {
     out.push({ id: `rz-${name}`, n: 1, tape: [[step("h", [0])], [step("rz", [0], [], [expr])]] });

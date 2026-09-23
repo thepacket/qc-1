@@ -144,7 +144,9 @@ def main():
                       "aer": {k[::-1]: v / shots for k, v in sorted(counts.items())}, "shots": shots})
     print(f"  noise: density matrices within {worst:.1e}; {len(out_c)} classical programs agree with Aer")
     write_fixture("noise", "qiskit_aer.noise errors as Kraus maps on DensityMatrix (exact); AerSimulator with NoiseModel (5σ)",
-                  [{"kind": "unitary", **x} for x in out_u] + [{"kind": "classical", **x} for x in out_c], {"abs": 1e-10})
+                  [{"kind": "unitary", **x} for x in out_u] + [{"kind": "classical", **x} for x in out_c],
+                  # Aer shot frequencies are statistical (platform/thread scheduling): drift allows 0.02.
+                  {"abs": 1e-10, "aer": 0.02})
 
 
 if __name__ == "__main__":

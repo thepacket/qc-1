@@ -338,6 +338,47 @@ ANALYSES.push(
     summary: "⟨H⟩ ideal, noisy, and mitigated by zero-noise extrapolation or probabilistic error cancellation." },
 );
 
+// Phase 9: characterization & benchmarking (validated: fixture bench). Protocols run on the noise model.
+ANALYSES.push(
+  { id: "rb", title: "Randomized benchmarking", category: "bench", mode: "run", maxQubits: 20, inputs: [
+      { kind: "choice", key: "interleave", label: "interleave", fallback: 0, options: [{ label: "none", value: 0 }, { label: "X", value: 1 }, { label: "H", value: 2 }, { label: "S", value: 3 }, { label: "√X", value: 4 }] },
+      { kind: "choice", key: "sequences", label: "sequences", fallback: 12, options: [{ label: "6", value: 6 }, { label: "12", value: 12 }, { label: "30", value: 30 }] },
+    ],
+    summary: "Error per Clifford from the survival decay of random Clifford sequences; interleaved RB isolates one gate's error." },
+  { id: "unitarity", title: "Unitarity", category: "bench", mode: "run", maxQubits: 20, inputs: [],
+    summary: "How coherent the noise is: the decay of the Bloch length under random Cliffords." },
+  { id: "qv", title: "Quantum volume", category: "bench", mode: "run", maxQubits: 20, inputs: [
+      { kind: "choice", key: "width", label: "up to", fallback: 4, options: [{ label: "3", value: 3 }, { label: "4", value: 4 }, { label: "5", value: 5 }] },
+      { kind: "choice", key: "circuits", label: "circuits", fallback: 20, options: [{ label: "10", value: 10 }, { label: "20", value: 20 }, { label: "50", value: 50 }] },
+    ],
+    summary: "Heavy-output probability of random square circuits of SU(4) blocks; QV = 2^width of the largest passing size." },
+  { id: "xeb", title: "Cross-entropy benchmarking", category: "bench", mode: "run", maxQubits: 20, inputs: [
+      { kind: "choice", key: "qubits", label: "qubits", fallback: 3, options: [{ label: "2", value: 2 }, { label: "3", value: 3 }, { label: "4", value: 4 }] },
+    ],
+    summary: "Linear XEB fidelity of random circuits against their depth, and the fidelity per cycle." },
+  { id: "mirror", title: "Mirror circuits", category: "bench", mode: "run", maxQubits: 20, inputs: [],
+    summary: "Success probability of random Clifford circuits followed by their inverse, by width and depth." },
+  { id: "t1t2", title: "T1 / T2 experiments", category: "bench", mode: "run", maxQubits: 20, inputs: [],
+    summary: "Relaxation, Ramsey and echo decays over idle gates, with fitted T1, T2*, T2." },
+  { id: "qec", title: "Repetition code", category: "bench", mode: "run", maxQubits: 20, inputs: [
+      { kind: "choice", key: "shots", label: "shots", fallback: 2000, options: [{ label: "500", value: 500 }, { label: "2k", value: 2000 }, { label: "10k", value: 10000 }] },
+    ],
+    summary: "Logical error rate of the bit-flip code for d = 3, 5, 7 against the physical flip rate: exact and decoded." },
+  { id: "shadows", title: "Classical shadows", category: "bench", mode: "run", maxQubits: 12, inputs: [
+      obs,
+      { kind: "choice", key: "snapshots", label: "snapshots", fallback: 2000, options: [{ label: "500", value: 500 }, { label: "2k", value: 2000 }, { label: "10k", value: 10000 }] },
+    ],
+    summary: "Estimate ⟨H⟩ from random-Pauli measurement snapshots of the current state, against the exact value." },
+  { id: "tomography", title: "Process tomography", category: "bench", mode: "run", maxQubits: 2, inputs: [
+      { kind: "choice", key: "channel", label: "", fallback: 0, options: [{ label: "ideal", value: 0 }, { label: "noisy", value: 1 }] },
+    ],
+    summary: "The tape's Pauli transfer matrix reconstructed from prepared inputs and Pauli readouts; process and gate fidelity." },
+  { id: "randclifford", title: "Random Clifford circuit", category: "tools", mode: "run", maxQubits: 20, inputs: [
+      { kind: "int", key: "depth", label: "depth", min: 1, max: 8, fallback: 3 },
+    ],
+    summary: "A random Clifford circuit (single-qubit Cliffords and CX layers) to replace the tape with." },
+);
+
 export const ANALYSIS_BY_ID: Record<string, AnalysisMeta> = Object.fromEntries(ANALYSES.map((a) => [a.id, a]));
 
 /** Default bipartition: the first half of the register. */

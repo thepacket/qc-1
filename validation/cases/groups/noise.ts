@@ -84,7 +84,11 @@ export function computeClassical(c: NoiseCase) {
     const key = [...bits].join("");
     counts[key] = (counts[key] ?? 0) + 1;
   }, { trajectories: T, seed: 99 });
-  // Recorded outcomes for the export (the trajectories ignore them).
-  const tape = new Register(c.n, c.tape).tape;
+  // Recorded outcomes for the export (the trajectories ignore them); seeded, so fixtures reproduce.
+  let seed = 5;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const reg = new Register(c.n);
+  for (const e of c.tape) reg.push(e, rnd);
+  const tape = reg.tape;
   return { model: m, counts, trajectories: T, tape };
 }

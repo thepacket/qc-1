@@ -145,6 +145,18 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
     - `noise`: exact ρ against Kraus maps built from Aer errors; trajectories within 5σ; measured programs against AerSimulator.
     - `noise-analyses`: Qiskit quantum_info and numpy; the calibration import against Aer's thermal relaxation.
   - Bugs #21 (PEC), #22 (ZNE exponential), #23 (IBM import).
+- **Benchmarking (Phase 9).**
+  - `src/noise/bench.ts` implements these protocols on the noise model, with circuits built as tapes so they export:
+    - RB: 24 Cliffords from H and S, a free-B fit A·pᵐ+B, and interleaved RB;
+    - unitarity;
+    - QV: Haar SU(4) as native gates via KAK, heavy output with a 2σ pass;
+    - XEB (linear), mirror circuits, T1/T2/echo on idle gates;
+    - the repetition code (exact and decoded);
+    - classical shadows (median of means);
+    - process tomography (ideal preparations, n ≤ 2).
+  - `src/analysis/benchRuns.ts` is the LAB "Characterization & benchmarking" category, plus a random Clifford tool.
+  - Fixture `bench`: circuits re-run from their exports through Aer errors; scipy `curve_fit`; closed forms for T1/T2; binomial tail.
+  - Bug #24: upper-case U1/U2/U3 in the export.
 - `src/qasm/fromTape.ts` turns the tape into OpenQASM 3. It uses stdgates names where
   they exist and `ctrl @`/`negctrl @` otherwise, adds exact `gate` definitions for
   non-stdgates (sy, sxdg, iswap, rxx, ryy, rzz), and folds `sqrt(...)` params to numbers.
