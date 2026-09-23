@@ -1,6 +1,7 @@
 import type { Calculator } from "../calc/calculator";
 import { symbolGlyph } from "../calc/entry";
 import { fmt } from "./charts/colors";
+import { recordSweep, videoType } from "./recorder";
 
 const TAU = 2 * Math.PI;
 const SPEEDS = [0.1, 0.25, 0.5, 1];
@@ -37,6 +38,16 @@ export function ParamView({ calc }: { calc: Calculator }) {
                 {isT && (
                   <button className="lab-status" onClick={() => calc.togglePlayback("t")}>
                     {playback?.name === "t" ? "❚❚ pause" : "▶ play"}
+                  </button>
+                )}
+                {isT && videoType() && (
+                  <button className="lab-status" disabled={!!calc.recording} aria-label="Record one period of t as a video"
+                    onClick={() => {
+                      // Record the view behind PARAM: close it first.
+                      calc.closeParams();
+                      recordSweep(calc).catch((e) => calc.notify(e instanceof Error ? e.message : String(e), "error"));
+                    }}>
+                    ● REC
                   </button>
                 )}
               </div>

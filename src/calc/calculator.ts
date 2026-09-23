@@ -306,6 +306,20 @@ export class Calculator {
     this.changed();
   }
 
+  /** A t-sweep being recorded to video (ui/recorder.ts): frames done of total. */
+  recording: { frame: number; frames: number } | null = null;
+  private viewWaiters: (() => void)[] = [];
+
+  /** Resolves when the next view from the core arrives (recorder frame pacing). */
+  nextView(): Promise<void> {
+    return new Promise((resolve) => this.viewWaiters.push(resolve));
+  }
+
+  setRecording(r: { frame: number; frames: number } | null) {
+    this.recording = r;
+    this.changed();
+  }
+
   private onView(v: ViewData) {
     if (this.playback) this.scheduleFrame();
     // More views follow while commands are still in flight.
@@ -320,6 +334,9 @@ export class Calculator {
     this.view = v;
     if (this.reportOpen && v.mode === "ket" && v.at === undefined) this.reportKet = v;
     this.changed();
+    const waiting = this.viewWaiters;
+    this.viewWaiters = [];
+    for (const w of waiting) w();
   }
 
   /** Scrub the views to the state after `k` tape entries (null or ≥ length = live). */

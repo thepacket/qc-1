@@ -257,6 +257,9 @@ export function App() {
       </section>
 
       {calc.reportOpen && <ReportView calc={calc} />}
+      {calc.recording && (
+        <div className="rec-pill" role="status">● REC {calc.recording.frame + 1}/{calc.recording.frames}</div>
+      )}
 
       <div
         className="handle"

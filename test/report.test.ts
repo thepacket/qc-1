@@ -28,3 +28,21 @@ describe("session report", () => {
     expect(c.pins).toHaveLength(0);
   });
 });
+
+describe("video recording hooks", () => {
+  test("nextView resolves with the view computed after a symbol change", async () => {
+    const c = new Calculator(new InlineEngine());
+    c.loadQasm(`OPENQASM 3.0; include "stdgates.inc"; input float t; qubit[1] q; ry(t) q[0];`, "sweep");
+    c.setMode("prob");
+    const seen: number[] = [];
+    for (const t of [0, Math.PI / 2, Math.PI]) {
+      const next = c.nextView();
+      c.setSymbol("t", t);
+      await next;
+      const v = c.view!;
+      if (v.mode !== "prob") throw new Error(v.mode);
+      seen.push(v.rows.find((r) => r.i === 1)?.p ?? 0);
+    }
+    expect(seen.map((p) => +p.toFixed(6))).toEqual([0, 0.5, 1]);
+  });
+});

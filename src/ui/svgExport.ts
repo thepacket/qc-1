@@ -115,7 +115,12 @@ export function elementToSvg(root: HTMLElement, full?: SVGSVGElement[]): string 
 
 /** Save an SVG document: the share sheet where there is one (phones), else a download. */
 export async function saveSvg(svg: string, name: string): Promise<void> {
-  const file = new File([svg], name, { type: "image/svg+xml" });
+  return saveFile(new File([svg], name, { type: "image/svg+xml" }));
+}
+
+/** Save a file: the share sheet where there is one (phones), else a download. */
+export async function saveFile(file: File): Promise<void> {
+  const name = file.name;
   try {
     if (navigator.canShare?.({ files: [file] })) {
       await navigator.share({ files: [file], title: name });
