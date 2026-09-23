@@ -6,3 +6,5 @@ coverage
 .DS_Store
 validation/.venv
 validation/out
+__pycache__/
+*.pyc
