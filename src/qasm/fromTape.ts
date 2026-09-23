@@ -206,7 +206,7 @@ export function tapeToCircuit(n: number, tape: Entry[], uarb = uarbDefinitions(t
         // reset; U(θ, φ, 0) — exactly what the simulator does.
         const { theta, phi } = initAngles(s.params[0]);
         const base = { column, controls: [], targets: s.targets, clbits: [], ...cond };
-        gates.push({ ...base, id: `${s.id}a`, gateId: "reset", params: [] });
+        gates.push({ ...base, id: `${s.id}a`, gateId: "reset", params: [], ...(s.outcome !== undefined ? { annotation: `QC-1 measured ${s.outcome}` } : {}) });
         gates.push({ ...base, id: `${s.id}b`, gateId: "u", params: [String(theta), String(phi), "0"] });
         continue;
       }
@@ -239,7 +239,8 @@ export function tapeToCircuit(n: number, tape: Entry[], uarb = uarbDefinitions(t
         params: s.params.map(qasmParam),
         ...(s.controlStates ? { controlStates: s.controlStates } : {}), ...cond,
       };
-      if (s.outcome !== undefined && measures) g.annotation = `QC-1 measured ${s.outcome}`;
+      // Measurements, resets and preps (which start with a reset) record their outcome.
+      if (s.outcome !== undefined) g.annotation = `QC-1 measured ${s.outcome}`;
       gates.push(g);
     }
   });

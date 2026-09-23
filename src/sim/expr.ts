@@ -44,6 +44,9 @@ function preprocess(src: string): { js: string; freeVars: string[] } {
     .replace(/\bPI\b/g, "(Math.PI)")
     .replace(/\bpi\b/g, "(Math.PI)")
     .replace(/\bE\b/g, "(Math.E)")
+    // QC-1: a bare `e` is reserved (never a free variable) but was left
+    // undefined, so it evaluated to 0; it is Euler's number.
+    .replace(/\be\b/g, "(Math.E)")
     .replace(/\bsin\b/g, "Math.sin")
     .replace(/\bcos\b/g, "Math.cos")
     .replace(/\btan\b/g, "Math.tan")
@@ -73,10 +76,35 @@ function preprocess(src: string): { js: string; freeVars: string[] } {
   return { js, freeVars };
 }
 
+// QC-1 fix (security): upstream compiles any text with `new Function`
+// ("trust-the-author"). In QC-1 expressions also arrive from imported files
+// and share links. Free identifiers become the compiled function's
+// parameters (they shadow globals), so what must not get through is
+// property access (`.`, `[]`), strings, blocks, assignment and the few
+// names that reach outside: Math (kept global), this, new, import.
+const DENY = new Set(["Math", "this", "new", "import", "eval", "Function", "globalThis", "self", "window", "constructor", "prototype", "__proto__"]);
+const NUMBER_RE = /(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/g;
+
+/** True when `src` is plain arithmetic: numbers, operators, parentheses, names and function calls. */
+export function isSafeExpr(src: string): boolean {
+  let s = src;
+  for (const [glyph, ascii] of GREEK_TO_ASCII) s = s.split(glyph).join(` ${ascii} `);
+  s = s.replace(NUMBER_RE, " ");
+  let bad = false;
+  s = s.replace(IDENT_RE, (m) => {
+    if (DENY.has(m)) bad = true;
+    return " ";
+  });
+  // Comparisons and ?: are harmless; a bare `=` is not (sin=1 would overwrite Math.sin).
+  s = s.replace(/<=|>=|===?|!==?|<|>|\?|:/g, " ");
+  return !bad && /^[\s+\-*/%(),]*$/.test(s);
+}
+
 export function compileExpr(src: string): {
   freeVars: string[];
   eval: (scope: Record<string, number>) => number;
 } {
+  if (!isSafeExpr(src)) return { freeVars: [], eval: () => NaN };
   const { js, freeVars } = preprocess(src);
   let fn: (...args: number[]) => number;
   try {

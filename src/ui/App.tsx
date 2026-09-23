@@ -7,6 +7,7 @@ import { createEngine } from "../calc/engine";
 import { LabView } from "./lab/LabView";
 import { ParamView } from "./ParamView";
 import { symbolGlyph } from "../calc/entry";
+import { readShareHash } from "../qasm/share";
 
 export const STORAGE_KEY = "qc1:session:v1";
 const UI_KEY = "qc1:ui:v1";
@@ -61,6 +62,19 @@ export function App() {
       /* storage blocked */
     }
   }, [expanded]);
+
+  // A share link (#q=…) opens as an undoable replace of the saved session.
+  useEffect(() => {
+    const shared = readShareHash(location.hash);
+    if (!shared) return;
+    history.replaceState(null, "", location.pathname + location.search);
+    try {
+      calc.loadQasm(shared.qasm, "shared link", shared.scope);
+      calc.setMode("tape");
+    } catch (e) {
+      calc.notify(`link: ${e instanceof Error ? e.message : String(e)}`, "error");
+    }
+  }, [calc]);
 
   // The handle under the display: drag down to expand, up to restore, tap to toggle.
   const onHandleDown = (e: PointerEvent) => {

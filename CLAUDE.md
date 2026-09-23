@@ -104,6 +104,26 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
     - #18: integer division in exported angles; the export now makes numerators floats.
     - #19: Suzuki order-4 coefficient.
   - Validation plumbing: drift ignores tape step ids and compares QASM with long floats rounded to 12 significant digits (libm last-bit differences between macOS and Linux).
+- **Classical control, import, examples, share (Phase 7).**
+  - Classical bits and IF:
+    - Measuring q writes c[q] (`Register.cbits`; `classicalBits` rebuilds them for any prefix).
+    - IF (2ND+Z, entry `k` or `k,v`) sets `Step.condition` on the next gate.
+    - `applyStep(…, cbits)` skips a step whose condition is false.
+  - Export writes `bit[n] c`, `c[q] = measure q[q]` and `if (c[k] == true/false)`: Qiskit's importer rejects `bit == int`. Every measurement, reset and prep records its outcome in a `// note: QC-1 measured k` comment.
+  - `src/calc/branches.ts`: every measurement history, with conditions evaluated per branch; it backs the LAB "Measurement branches" analysis (a `tree` chart).
+  - `src/qasm/import.ts` is QC-1's own importer, not upstream's parser:
+    - It handles OpenQASM 2/3 registers, `gate` definitions, ctrl/negctrl/inv/pow modifiers, `if`/`else`, `input float`, and implicit symbols.
+    - A definition becomes a custom gate, or a native gate when numerically equal.
+    - `gphase` becomes e^{iα}·I as `u_arb`; outcome notes are read back.
+    - Symbols keep any name (`t_` → `t`).
+    - Integer ratios are read as real divisions.
+  - Security: `sim/expr.ts` `isSafeExpr` gates `new Function` (bug #20). `share.ts` builds `#q=` base64url QASM plus `&v=` symbol values; App opens such links as an undoable replace.
+  - `examples/` holds the 93 upstream programs without the brand; `index.json` gives the 10 categories. `src/examples.ts` loads them lazily through `import.meta.glob`.
+  - TAPE ≡ menu: Examples, Import QASM (paste or file), Copy QASM, Share QASM file, Share link.
+  - Fixtures:
+    - `classical`: independent interpreter, branch enumerator, and Aer counts at 5σ.
+    - `examples`: Qiskit reads each original, with normalisations documented in `g_examples.py`.
+    - Export → import round trips cover every fixture group (`test/import.test.ts`).
 - `src/qasm/fromTape.ts` turns the tape into OpenQASM 3. It uses stdgates names where
   they exist and `ctrl @`/`negctrl @` otherwise, adds exact `gate` definitions for
   non-stdgates (sy, sxdg, iswap, rxx, ryy, rzz), and folds `sqrt(...)` params to numbers.

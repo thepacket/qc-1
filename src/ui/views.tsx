@@ -3,6 +3,8 @@ import type { Calculator } from "../calc/calculator";
 import { KET_ROWS, type ViewData } from "../calc/core";
 import { formatEntry } from "../calc/steps";
 import { exportQasm3 } from "../qasm/fromTape";
+import { shareHash } from "../qasm/share";
+import { EXAMPLE_CATEGORIES, describeProgram, loadExample } from "../examples";
 import type { Vec3 } from "../calc/analysis";
 import { complex, ket, num, pct } from "./format";
 import { project } from "./charts/sphere";
@@ -94,29 +96,36 @@ async function shareQasm(calc: Calculator, text: string) {
   calc.notify(`saved ${name}`);
 }
 
+type TapePane = "list" | "qasm" | "menu" | "examples" | "import";
+
 export function TapeView({ calc }: { calc: Calculator }) {
-  const [asQasm, setAsQasm] = useState(false);
+  const [pane, setPane] = useState<TapePane>("list");
   const end = useRef<HTMLDivElement>(null);
   const tape = calc.tape;
-  const text = useMemo(() => (asQasm ? exportQasm3(calc.n, tape) : ""), [asQasm, calc.n, tape]);
+  const text = useMemo(() => (pane === "qasm" ? exportQasm3(calc.n, tape) : ""), [pane, calc.n, tape]);
   const at = calc.scrub ?? tape.length;
   const cur = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (asQasm) return;
+    if (pane !== "list") return;
     (calc.scrub === null ? end : cur).current?.scrollIntoView({ block: calc.scrub === null ? "end" : "nearest" });
-  }, [tape, asQasm, calc.scrub]);
+  }, [tape, pane, calc.scrub]);
+  const tab = (p: TapePane, label: string) => (
+    <button className={pane === p ? "on" : ""} onClick={() => setPane(pane === p && p === "menu" ? "list" : p)}>{label}</button>
+  );
   return (
     <div className="view">
       <div className="view-head tape-head">
         <span>{tape.length} steps</span>
         <span className="lcd-btns">
-          <button className={asQasm ? "" : "on"} onClick={() => setAsQasm(false)}>LIST</button>
-          <button className={asQasm ? "on" : ""} onClick={() => setAsQasm(true)}>QASM</button>
-          <button onClick={() => copyText(calc, exportQasm3(calc.n, tape))}>COPY</button>
-          <button onClick={() => shareQasm(calc, exportQasm3(calc.n, tape))}>SHARE</button>
+          {tab("list", "LIST")}
+          {tab("qasm", "QASM")}
+          {tab("menu", "≡")}
         </span>
       </div>
-      {!asQasm && tape.length > 0 && (
+      {pane === "menu" && <TapeMenu calc={calc} go={setPane} />}
+      {pane === "examples" && <ExamplesPane calc={calc} done={() => setPane("list")} />}
+      {pane === "import" && <ImportPane calc={calc} done={() => setPane("list")} />}
+      {pane === "list" && tape.length > 0 && (
         <div className="scrubber">
           <button onClick={() => calc.setScrub(at - 1)} disabled={at === 0} aria-label="Step back">◀</button>
           <input type="range" min={0} max={tape.length} value={at} aria-label="Show the state after step"
@@ -125,11 +134,10 @@ export function TapeView({ calc }: { calc: Calculator }) {
           <span className="dim">{calc.scrub === null ? "live" : `after ${at}`}</span>
         </div>
       )}
-      {asQasm ? (
-        <pre className="rows qasm">{text}</pre>
-      ) : (
+      {pane === "qasm" && <pre className="rows qasm">{text}</pre>}
+      {pane === "list" && (
         <div className="rows">
-          {tape.length === 0 && <div className="dim">empty — every key press is recorded here</div>}
+          {tape.length === 0 && <div className="dim">empty — every key press is recorded here (≡ for examples and import)</div>}
           {tape.map((e, i) => (
             <div className={`row tape-row${i >= at ? " ahead" : ""}${i === at - 1 && calc.scrub !== null ? " at" : ""}`} key={i}
               ref={i === Math.max(0, at - 1) ? cur : undefined} onClick={() => calc.setScrub(i + 1)}>
@@ -140,6 +148,116 @@ export function TapeView({ calc }: { calc: Calculator }) {
           <div ref={end} />
         </div>
       )}
+    </div>
+  );
+}
+
+function TapeMenu({ calc, go }: { calc: Calculator; go: (p: TapePane) => void }) {
+  const qasm = () => exportQasm3(calc.n, calc.tape);
+  const link = () => `${location.origin}${location.pathname}${shareHash(calc.n, calc.tape, calc.scope)}`;
+  const shareLink = async () => {
+    const url = link();
+    try {
+      if (navigator.share) {
+        await navigator.share({ url, title: "QC-1 tape" });
+        return;
+      }
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      calc.notify("link copied");
+    } catch {
+      calc.notify("copy blocked", "error");
+    }
+  };
+  const rows: [string, string, () => void][] = [
+    ["Examples…", "93 programs in 10 topics", () => go("examples")],
+    ["Import QASM…", "paste OpenQASM 2/3 or open a file", () => go("import")],
+    ["Copy QASM", "OpenQASM 3 of the tape (Qiskit loads it)", () => { void copyText(calc, qasm()); go("list"); }],
+    ["Share QASM file", "qc1-tape.qasm", () => { void shareQasm(calc, qasm()); go("list"); }],
+    ["Share link", "the tape and symbol values in a URL", () => { void shareLink(); go("list"); }],
+  ];
+  return (
+    <div className="rows">
+      {rows.map(([label, note, act]) => (
+        <button key={label} className="lab-item" onClick={act}>
+          <span className="t">{label}</span>
+          <span className="s">{note}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ExamplesPane({ calc, done }: { calc: Calculator; done: () => void }) {
+  const [lit, setLit] = useState<{ file: string; text: string } | null>(null);
+  const pick = async (file: string) => {
+    if (lit?.file === file) {
+      try {
+        const notes = calc.loadQasm(lit.text, file.replace(/\.qasm$/, ""));
+        if (notes.length) calc.notify(notes[0]);
+        done();
+      } catch (e) {
+        calc.notify(e instanceof Error ? e.message : String(e), "error");
+      }
+      return;
+    }
+    setLit({ file, text: await loadExample(file) });
+  };
+  return (
+    <div className="rows">
+      {EXAMPLE_CATEGORIES.map((c) => (
+        <div key={c.label}>
+          <div className="cat-group">{c.label}</div>
+          {c.items.map((it) => (
+            <div key={it.file}>
+              <button className={`cat-row${lit?.file === it.file ? " on" : ""}`} onClick={() => void pick(it.file)}>
+                <span>{it.label}</span>
+              </button>
+              {lit?.file === it.file && (
+                <p className="dim note example-desc" ref={(el) => el?.scrollIntoView({ block: "nearest" })}>
+                  {describeProgram(lit.text) || lit.file}
+                  {"\n"}<b>tap the name again to load (UNDO restores)</b>
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ImportPane({ calc, done }: { calc: Calculator; done: () => void }) {
+  const [text, setText] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const file = useRef<HTMLInputElement>(null);
+  const load = (src: string, label: string) => {
+    try {
+      const notes = calc.loadQasm(src, label);
+      if (notes.length) calc.notify(notes[0]);
+      done();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
+  return (
+    <div className="rows import-pane">
+      <textarea value={text} onChange={(e) => { setText(e.target.value); setErr(null); }} spellCheck={false}
+        autoCapitalize="none" autoCorrect="off" placeholder={"OPENQASM 3.0;\ninclude \"stdgates.inc\";\nqubit[2] q;\nh q[0];\ncx q[0], q[1];"}
+        aria-label="OpenQASM program" onKeyDown={(e) => e.stopPropagation()} />
+      {err && <div className="lab-error">E: {err}</div>}
+      <div className="lcd-btns">
+        <button onClick={() => load(text, "import")} disabled={!text.trim()}>IMPORT</button>
+        <button onClick={() => file.current?.click()}>FILE…</button>
+        <button onClick={done}>CANCEL</button>
+      </div>
+      <input ref={file} type="file" accept=".qasm,.txt,text/plain" hidden onChange={async (e) => {
+        const f = e.target.files?.[0];
+        if (f) load(await f.text(), f.name.replace(/\.[^.]+$/, ""));
+      }} />
     </div>
   );
 }

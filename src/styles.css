@@ -616,3 +616,9 @@ button {
 .tree-node.leaf { fill: var(--series-1); stroke: none; }
 .tree-label { font-size: 8px; fill: var(--ink-muted); font-family: var(--mono); }
 .tree-p { font-size: 9px; fill: var(--ink); font-family: var(--mono); }
+
+/* ── TAPE menu, examples, import ───────────────────────────── */
+.example-desc { white-space: pre-wrap; font-size: 10px; max-height: 40%; overflow: auto; }
+.import-pane { display: flex; flex-direction: column; gap: 6px; }
+.import-pane textarea { width: 100%; min-height: 9em; flex: 1; font: 11px var(--mono); background: transparent; color: var(--ink);
+  border: 1px solid var(--grid); border-radius: 4px; padding: 6px; resize: none; }

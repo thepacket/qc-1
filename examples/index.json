@@ -1,0 +1,424 @@
+[
+ {
+  "label": "Intro",
+  "items": [
+   {
+    "file": "quantum_coin_flip.qasm",
+    "label": "Quantum coin flip (1q)"
+   },
+   {
+    "file": "hadamard_transform_3q.qasm",
+    "label": "Walsh–Hadamard transform (3q)"
+   },
+   {
+    "file": "magic_state.qasm",
+    "label": "Magic state |H⟩ = T|+⟩ (1q)"
+   }
+  ]
+ },
+ {
+  "label": "Entanglement",
+  "items": [
+   {
+    "file": "bell.qasm",
+    "label": "Bell state (2q)"
+   },
+   {
+    "file": "ghz.qasm",
+    "label": "GHZ state (3q)"
+   },
+   {
+    "file": "ghz_8q.qasm",
+    "label": "GHZ state (8q)"
+   },
+   {
+    "file": "ghz_12q.qasm",
+    "label": "GHZ state (12q, 4096 amps)"
+   },
+   {
+    "file": "ghz_16q.qasm",
+    "label": "GHZ state (16q, 65k amps)"
+   },
+   {
+    "file": "w_state.qasm",
+    "label": "W state (3q)"
+   },
+   {
+    "file": "w_state_4q.qasm",
+    "label": "W state (4q)"
+   },
+   {
+    "file": "cluster_state_4q.qasm",
+    "label": "Linear cluster (4q)"
+   },
+   {
+    "file": "schrodinger_cat_phase.qasm",
+    "label": "Phased Schrödinger cat (3q)"
+   }
+  ]
+ },
+ {
+  "label": "Protocols",
+  "items": [
+   {
+    "file": "teleportation.qasm",
+    "label": "Quantum teleportation (3q)"
+   },
+   {
+    "file": "teleport_dynamic.qasm",
+    "label": "Teleportation with classical feedback (3q)"
+   },
+   {
+    "file": "repeat_until_success.qasm",
+    "label": "Repeat-until-success template (2q)"
+   },
+   {
+    "file": "entanglement_swap.qasm",
+    "label": "Entanglement swapping (4q)"
+   },
+   {
+    "file": "superdense_coding.qasm",
+    "label": "Superdense coding (2q)"
+   },
+   {
+    "file": "phase_kickback.qasm",
+    "label": "Phase kickback (2q)"
+   },
+   {
+    "file": "chsh_test.qasm",
+    "label": "CHSH inequality test (2q)"
+   },
+   {
+    "file": "mermin_ghz_test.qasm",
+    "label": "Mermin GHZ inequality (3q)"
+   },
+   {
+    "file": "bb84_round.qasm",
+    "label": "BB84 round (1q)"
+   },
+   {
+    "file": "gate_teleportation.qasm",
+    "label": "Gate teleportation: T via magic state (2q)"
+   },
+   {
+    "file": "bell_measurement.qasm",
+    "label": "Bell measurement (2q)"
+   },
+   {
+    "file": "stabilizer_measurement.qasm",
+    "label": "Stabilizer Z⊗Z measurement (3q)"
+   },
+   {
+    "file": "no_cloning_witness.qasm",
+    "label": "No-cloning witness (2q)"
+   }
+  ]
+ },
+ {
+  "label": "Algorithms",
+  "items": [
+   {
+    "file": "deutsch_1bit.qasm",
+    "label": "Deutsch, 1-bit (2q)"
+   },
+   {
+    "file": "deutsch_jozsa.qasm",
+    "label": "Deutsch–Jozsa (4q)"
+   },
+   {
+    "file": "dj_6q.qasm",
+    "label": "Deutsch–Jozsa (6q)"
+   },
+   {
+    "file": "bernstein_vazirani.qasm",
+    "label": "Bernstein–Vazirani (4q)"
+   },
+   {
+    "file": "bv_6q.qasm",
+    "label": "Bernstein–Vazirani (6q)"
+   },
+   {
+    "file": "bv_8q.qasm",
+    "label": "Bernstein–Vazirani (8q)"
+   },
+   {
+    "file": "simon_2bit.qasm",
+    "label": "Simon, s = 11 (4q)"
+   },
+   {
+    "file": "grover_2q.qasm",
+    "label": "Grover, 1 iter (2q)"
+   },
+   {
+    "file": "grover_3q.qasm",
+    "label": "Grover, 2 iters (3q)"
+   },
+   {
+    "file": "grover_4q.qasm",
+    "label": "Grover, 3 iters (4q)"
+   },
+   {
+    "file": "grover_5q.qasm",
+    "label": "Grover, 4 iters (5q)"
+   },
+   {
+    "file": "amplitude_amplification_3q.qasm",
+    "label": "Amplitude amplification (3q, 2 marked)"
+   },
+   {
+    "file": "qft_3q.qasm",
+    "label": "QFT (3q)"
+   },
+   {
+    "file": "qft_5q.qasm",
+    "label": "QFT (5q)"
+   },
+   {
+    "file": "qft_8q.qasm",
+    "label": "QFT (8q)"
+   },
+   {
+    "file": "inverse_qft_3q.qasm",
+    "label": "Inverse QFT (3q)"
+   },
+   {
+    "file": "quantum_phase_estimation.qasm",
+    "label": "Quantum phase estimation (4q)"
+   },
+   {
+    "file": "iterative_qpe.qasm",
+    "label": "Iterative QPE, 1-ancilla (2q)"
+   },
+   {
+    "file": "amplitude_estimation_2q.qasm",
+    "label": "Amplitude estimation seed (2q)"
+   },
+   {
+    "file": "quantum_fourier_addition_4q.qasm",
+    "label": "Draper Fourier addition, 2+2 bit (4q)"
+   },
+   {
+    "file": "swap_test.qasm",
+    "label": "SWAP test for state overlap (3q)"
+   },
+   {
+    "file": "hadamard_test.qasm",
+    "label": "Hadamard test for Re⟨ψ|U|ψ⟩ (2q)"
+   },
+   {
+    "file": "qsp_primer_1q.qasm",
+    "label": "Quantum signal processing primer (1q)"
+   },
+   {
+    "file": "shor_period_finding_15.qasm",
+    "label": "Shor period-finding, N=15 a=4 (7q)"
+   },
+   {
+    "file": "hadamard_8q.qasm",
+    "label": "Hadamard transform (8q)"
+   },
+   {
+    "file": "hadamard_12q.qasm",
+    "label": "Hadamard transform (12q)"
+   },
+   {
+    "file": "hadamard_16q.qasm",
+    "label": "Hadamard transform (16q)"
+   },
+   {
+    "file": "draper_adder.qasm",
+    "label": "Draper adder, +1 (2q)"
+   },
+   {
+    "file": "quantum_walk_step.qasm",
+    "label": "Quantum walk step (3q)"
+   },
+   {
+    "file": "quantum_walk_8steps_3q.qasm",
+    "label": "Quantum walk, 8 steps (3q)"
+   },
+   {
+    "file": "quantum_random_walk_cycle.qasm",
+    "label": "Quantum walk on 4-cycle (3q)"
+   }
+  ]
+ },
+ {
+  "label": "Arithmetic & ECC",
+  "items": [
+   {
+    "file": "half_adder.qasm",
+    "label": "Half adder (4q)"
+   },
+   {
+    "file": "cuccaro_adder_2bit.qasm",
+    "label": "Cuccaro ripple-carry, 2-bit (6q)"
+   },
+   {
+    "file": "cuccaro_adder_3bit.qasm",
+    "label": "Cuccaro ripple-carry, 3-bit (8q)"
+   },
+   {
+    "file": "bit_flip_code.qasm",
+    "label": "Bit-flip code (3q)"
+   },
+   {
+    "file": "phase_flip_code.qasm",
+    "label": "Phase-flip code (3q)"
+   },
+   {
+    "file": "steane_encode_logical_zero.qasm",
+    "label": "Steane [[7,1,3]] encoder (7q)"
+   },
+   {
+    "file": "five_qubit_code_encoder.qasm",
+    "label": "5-qubit perfect code encoder (5q)"
+   },
+   {
+    "file": "shor_9q_encoder.qasm",
+    "label": "Shor [[9,1,3]] encoder (9q)"
+   },
+   {
+    "file": "surface_code_plaquette.qasm",
+    "label": "Surface code plaquette (6q, XXXX+ZZZZ)"
+   },
+   {
+    "file": "surface_code_logical_ops.qasm",
+    "label": "Surface code logical ops, [[4,2,2]] (6q)"
+   }
+  ]
+ },
+ {
+  "label": "Hamiltonian dynamics",
+  "items": [
+   {
+    "file": "trotter_ising_6q.qasm",
+    "label": "Ising Trotter, 6-spin chain"
+   },
+   {
+    "file": "trotter_xy_4q.qasm",
+    "label": "XY model Trotter (4q)"
+   },
+   {
+    "file": "trotter_heisenberg_2q.qasm",
+    "label": "Heisenberg XXX Trotter (2q)"
+   },
+   {
+    "file": "heisenberg_xyz_trotter_4q.qasm",
+    "label": "Heisenberg XYZ Trotter step (4q)"
+   },
+   {
+    "file": "lih_jw_trotter_4q.qasm",
+    "label": "LiH (Jordan–Wigner, 4q Trotter step)"
+   },
+   {
+    "file": "kicked_ising_floquet_4q.qasm",
+    "label": "Kicked-Ising Floquet, 4 periods (4q)"
+   }
+  ]
+ },
+ {
+  "label": "Decompositions",
+  "items": [
+   {
+    "file": "toffoli_decomposition.qasm",
+    "label": "Toffoli → 1- and 2-qubit gates (3q)"
+   }
+  ]
+ },
+ {
+  "label": "Variational",
+  "items": [
+   {
+    "file": "qaoa_maxcut_triangle.qasm",
+    "label": "QAOA MaxCut triangle (3q)"
+   },
+   {
+    "file": "qaoa_kite_4q.qasm",
+    "label": "QAOA MaxCut kite (4q)"
+   },
+   {
+    "file": "qaoa_square_p2.qasm",
+    "label": "QAOA MaxCut square, depth 2 (4q)"
+   },
+   {
+    "file": "qaoa_3sat_3var.qasm",
+    "label": "QAOA MAX-3-SAT, 3 clauses (3q)"
+   },
+   {
+    "file": "variational_ansatz.qasm",
+    "label": "Hardware-efficient ansatz, 2 layers (4q)"
+   },
+   {
+    "file": "vqe_hwe_6layer_4q.qasm",
+    "label": "Hardware-efficient ansatz, 6 layers (4q)"
+   },
+   {
+    "file": "ansatz_real_amplitudes_4q.qasm",
+    "label": "Real Amplitudes ansatz, 2 layers (4q)"
+   },
+   {
+    "file": "ansatz_uccsd_lite_4q.qasm",
+    "label": "UCCSD-lite single excitation (4q)"
+   },
+   {
+    "file": "vqe_h2_minimal.qasm",
+    "label": "VQE: H₂ minimal ansatz (2q)"
+   }
+  ]
+ },
+ {
+  "label": "States & sensing",
+  "items": [
+   {
+    "file": "dicke_state_3q.qasm",
+    "label": "Dicke state |D₃¹⟩ (3q)"
+   },
+   {
+    "file": "quantum_thermometer.qasm",
+    "label": "Quantum Ramsey thermometer (1q)"
+   },
+   {
+    "file": "ghz_metrology_3q.qasm",
+    "label": "GHZ Ramsey metrology, Heisenberg scaling (3q)"
+   }
+  ]
+ },
+ {
+  "label": "Animation",
+  "items": [
+   {
+    "file": "animated_rabi_larmor.qasm",
+    "label": "Rabi + Larmor (2q)"
+   },
+   {
+    "file": "anim_qft_state.qasm",
+    "label": "QFT of evolving state (3q)"
+   },
+   {
+    "file": "qft_animated_5q.qasm",
+    "label": "QFT of evolving state (5q)"
+   },
+   {
+    "file": "anim_phase_fountain.qasm",
+    "label": "Phase fountain (4q)"
+   },
+   {
+    "file": "anim_ising_trotter.qasm",
+    "label": "Ising Trotter (4q, ~25 gates)"
+   },
+   {
+    "file": "anim_cascade_5q.qasm",
+    "label": "Multi-frequency cascade (5q)"
+   },
+   {
+    "file": "anim_swirl_6q.qasm",
+    "label": "Dense swirl (6q, ~35 gates)"
+   },
+   {
+    "file": "anim_deep_swirl_8q.qasm",
+    "label": "Deep swirl (8q, ~100 gates)"
+   }
+  ]
+ }
+]

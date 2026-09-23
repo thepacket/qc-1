@@ -2,6 +2,7 @@ import { MAX_QUBITS } from "./register";
 import { evalParam, exprOk, formatEntry, NONUNITARY, type Entry, type Scope, type Step } from "./steps";
 import { CATALOG, type CatalogItem } from "./catalog";
 import { CUSTOM_PREFIX, defineGate, setCustomGates, type CustomGate } from "./custom";
+import { importQasm } from "../qasm/import";
 import { ANALYSIS_BY_ID, CATEGORIES, analysesIn } from "../analysis/catalog";
 import type { AnalysisReply, AnalysisResult, Opts, Proposal } from "../analysis/types";
 import { splitArgs, TOKENS, toDisplay, VARS, varToken, symbolGlyph, type Token } from "./entry";
@@ -486,6 +487,25 @@ export class Calculator {
   }
 
   /** Set several symbols at once (e.g. the optimizer's result). */
+  /**
+   * Load an OpenQASM program (import, example, share link) as one undoable
+   * replace. Its gate definitions join the custom gates; `scope` sets symbol
+   * values (others start at 0). Returns the importer's notes, or throws its
+   * error (with the line).
+   */
+  loadQasm(src: string, label: string, scope: Scope = {}): string[] {
+    const r = importQasm(src, this.customGates);
+    if (r.gates.length) {
+      this.customGates = [...this.customGates, ...r.gates];
+      setCustomGates(this.customGates);
+      this.send({ t: "gates", defs: this.customGates });
+    }
+    this.sel = Math.min(this.sel, r.n - 1);
+    this.send({ t: "replace", n: r.n, tape: r.tape, scope: { ...scope }, label }, () => this.info(`${label}: ${r.tape.length} steps, n=${r.n}`));
+    this.changed();
+    return r.notes;
+  }
+
   /** Replace the tape by a circuit tool's verified output (one undoable step). */
   applyProposal(p: Proposal) {
     if (!p.verified) return;
