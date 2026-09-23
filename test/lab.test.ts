@@ -169,3 +169,43 @@ describe("LAB framework", () => {
     expect(c.analysis!.rev).toBe(c.rev);
   });
 });
+
+describe("Phase 5b dynamics in LAB", () => {
+  const rabi = () => {
+    const c = calc();
+    keys(c, "2nd", ".", "rx"); // RX(t) on q0: ⟨Z⟩(t) = cos t
+    c.setMode("lab");
+    return c;
+  };
+
+  test("t-sweep of RX(t) traces cos t; its spectrum peaks at one oscillation per period", () => {
+    const c = rabi();
+    c.openAnalysis("tsweep");
+    const l = chart(c, "lines");
+    l.x.forEach((x, i) => expect(l.series[0].y[i]).toBeCloseTo(Math.cos(x * Math.PI), 9));
+    c.openAnalysis("tsweepfft");
+    const v = chart(c, "bars").values;
+    expect(v.indexOf(Math.max(...v))).toBe(1);
+  });
+
+  test("Loschmidt echo of RX(t) is cos²(t/2)", () => {
+    const c = rabi();
+    c.openAnalysis("loschmidt");
+    const l = chart(c, "lines");
+    l.x.forEach((x, i) => expect(l.series[0].y[i]).toBeCloseTo(Math.cos((x * Math.PI) / 2) ** 2, 9));
+  });
+
+  test("t-sweeps refuse a tape without t", () => {
+    const c = bell();
+    c.openAnalysis("tsweep");
+    expect(c.analysis!.result!.error).toMatch(/symbol t/);
+  });
+
+  test("light cone: q2 idle is outside a Bell pair's backward cone of q0", () => {
+    const c = calc();
+    keys(c, "3", "2nd", "q", "h", "ctrl", "right", "x", "down", "down", "x");
+    c.setMode("lab");
+    c.openAnalysis("lightcone");
+    expect(scalar(c, "backward cone of q0")).toBe("2 of 3 gates");
+  });
+});

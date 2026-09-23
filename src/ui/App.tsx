@@ -161,7 +161,13 @@ export function App() {
               {calc.symbols.map((s) => `${symbolGlyph(s)}=${(calc.scope[s] ?? 0).toFixed(2)}`).join(" ")}
             </button>
           )}
-          <span>{calc.tape.length} steps</span>
+          {calc.scrub !== null ? (
+            <button className="scrub-badge" onClick={() => calc.setScrub(null)} aria-label="Stop scrubbing">
+              @{calc.scrub}/{calc.tape.length} ✕
+            </button>
+          ) : (
+            <span>{calc.tape.length} steps</span>
+          )}
           <button
             className="expand-btn"
             aria-label={expanded ? "Show keypad" : "Expand display"}

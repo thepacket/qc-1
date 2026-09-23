@@ -179,7 +179,13 @@ button {
 .amp { text-align: right; font-variant-numeric: tabular-nums; }
 .ket { overflow: hidden; text-overflow: ellipsis; }
 .dim { color: var(--ink-dim); font-variant-numeric: tabular-nums; }
-.tape-row { grid-template-columns: auto 1fr; }
+.tape-row { grid-template-columns: auto 1fr; cursor: pointer; }
+.tape-row.ahead { opacity: 0.35; }
+.tape-row.at { background: rgba(57, 135, 229, 0.16); box-shadow: inset 3px 0 0 var(--series-1); }
+.scrubber { display: flex; align-items: center; gap: 6px; padding: 2px 0 4px; }
+.scrubber input[type="range"] { flex: 1; accent-color: var(--series-1); }
+.scrubber button { min-width: 28px; }
+.scrub-badge { font-family: var(--mono); font-size: 10px; padding: 0 5px; border-radius: 3px; border: 1px solid var(--series-1); color: var(--ink); }
 
 .bar-row {
   display: grid;
@@ -524,10 +530,12 @@ button {
 .heat-body { display: flex; align-items: stretch; }
 .heat-rows { width: 2.6em; display: flex; flex-direction: column; font-size: 9px; color: var(--ink-muted); }
 .heat-rows span { display: flex; align-items: center; }
-.heat-svg { flex: 1; aspect-ratio: 1; height: auto; }
+.heat-svg { flex: 1; min-width: 0; height: auto; }
 .heat-text { fill: #fff; text-anchor: middle; dominant-baseline: central; font-family: var(--mono); pointer-events: none;
   paint-order: stroke; stroke: rgba(0, 0, 0, 0.55); stroke-width: 0.6; }
 .heat-legend { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--ink-muted); }
+.heat-key { display: inline-flex; align-items: center; gap: 4px; }
+.heat-key i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .heat-legend .grad { flex: 1; height: 8px; border-radius: 2px; }
 .hbars { display: flex; flex-direction: column; gap: 3px; }
 .hbar { display: grid; grid-template-columns: minmax(3em, auto) 1fr auto; gap: 8px; align-items: center; font-size: 12px; }

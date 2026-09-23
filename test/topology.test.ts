@@ -46,3 +46,18 @@ describe("ZX diagrams", () => {
     expect(zx.nodes.some((n) => n.kind === "Z" && n.phase === "π/4")).toBe(true);
   });
 });
+
+describe("light cone", async () => {
+  const { computeLightCone } = await import("../src/sim/lightcone");
+  // q0 —H—●———— ; q1 ——X—●—— ; q2 ————X— ; q3 —T——————
+  const tape: Entry[] = [st("h", [0]), st("x", [1], [], [0]), st("x", [2], [], [1]), st("t", [3])];
+  const circ = lowerTape(4, tape);
+  const ids = (s: Set<string>) => circ.gates.filter((g) => s.has(g.id)).map((g) => g.gateId + g.targets.join(""));
+  test("backward cone of q2 reaches back through q1 to q0", () => {
+    expect(ids(computeLightCone(circ, 2, "backward"))).toEqual(["h0", "x1", "x2"]);
+  });
+  test("forward cone of q0 spreads to q1 and q2, never q3", () => {
+    expect(ids(computeLightCone(circ, 0, "forward"))).toEqual(["h0", "x1", "x2"]);
+    expect(ids(computeLightCone(circ, 3, "forward"))).toEqual(["t3"]);
+  });
+});

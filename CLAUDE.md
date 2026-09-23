@@ -76,6 +76,12 @@ an LCD display on top and a 5×8 key grid below. Vite + React + TypeScript.
   - Per-eigenstate analyses (ETH, effective temperature, eigenstate entanglement) refuse degenerate H.
   - Fixtures: `spectrum-circuits`, `-hamiltonians` (degenerate H included), `-geometry`. Tests also cover the QWZ Chern phase diagram and ZX structure.
   - Bugs #13–#15: `hermitianEig` duplicated eigenvectors in degenerate levels; the work distribution needs level projectors; Floquet statistics must be circular.
+- **Dynamics (Phase 5b).**
+  - Coverage: the t-sweeps (⟨Z⟩(t) and its spectrum, Loschmidt echo, imbalance, entanglement velocity, negativity dynamics), the OTOC family (OTOC, light cone, butterfly velocity, Lyapunov, operator weight), autocorrelation, space-time ⟨Z⟩ and entropy, entanglement asymmetry, and the gate light cone (in "structure").
+  - A t-sweep runs over one period t ∈ [0, 2π] and refuses a tape without `t`.
+  - Fixture `dynamics`. Bug #16: the autocorrelation DFT must run over the P−1 periodic samples.
+  - TAPE step-scrubber: `ViewReq.upTo` makes the core view `Register.stateAt(k)` (a read-only replay with recorded outcomes). `Calculator.scrub` drives it, and ViewData carries `at`. The header shows `@k/N`, and any tape edit ends the scrub. LAB analyses still use the live state.
+  - Heatmaps keep the grid's aspect (clamped to 1:2…4:1). `codes` marks categorical cells: a key replaces the numbers and the colour bar.
 - `src/qasm/fromTape.ts` turns the tape into OpenQASM 3. It uses stdgates names where
   they exist and `ctrl @`/`negctrl @` otherwise, adds exact `gate` definitions for
   non-stdgates (sy, sxdg, iswap, rxx, ryy, rzz), and folds `sqrt(...)` params to numbers.

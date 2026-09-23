@@ -127,6 +127,8 @@ export class Calculator {
   shots = 1024;
   /** Bumped to force a fresh shot sample without a state change. */
   shotSeed = 0;
+  /** TAPE scrubber: views show the state after this many entries (null = the end). */
+  scrub: number | null = null;
   message: Message | null = null;
   /** CATALOG list open on the LCD, and its highlighted row. */
   catalog = { open: false, index: 0 };
@@ -193,11 +195,16 @@ export class Calculator {
   }
 
   private viewReq() {
-    return { mode: this.mode, shots: this.shots, shotSeed: this.shotSeed };
+    return { mode: this.mode, shots: this.shots, shotSeed: this.shotSeed, upTo: this.scrub };
   }
 
   /** Send a command; `report` runs with its reply unless the reply is an error. */
   private send(cmd: Cmd, report?: (r: Result) => void) {
+    // Editing the tape ends a scrub: views go back to the live state.
+    if (this.scrub !== null && cmd.t !== "view" && cmd.t !== "scope") {
+      this.scrub = null;
+      this.send({ t: "view", req: this.viewReq() });
+    }
     this.reporters.push(report ?? null);
     this.awaitingView = true;
     if (!this.busyTimer) {
@@ -257,6 +264,15 @@ export class Calculator {
       }
     }
     this.view = v;
+    this.changed();
+  }
+
+  /** Scrub the views to the state after `k` tape entries (null or ≥ length = live). */
+  setScrub(k: number | null) {
+    const next = k === null || k >= this.tape.length ? null : Math.max(0, Math.floor(k));
+    if (next === this.scrub) return;
+    this.scrub = next;
+    this.send({ t: "view", req: this.viewReq() });
     this.changed();
   }
 

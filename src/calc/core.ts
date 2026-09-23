@@ -11,9 +11,10 @@ import type { Op } from "./register";
 
 export type Mode = "ket" | "prob" | "bloch" | "shots" | "tape" | "lab";
 
-export type ViewReq = { mode: Mode; shots: number; shotSeed: number };
+/** `upTo`: show the state after that many tape entries (TAPE scrubber); null = the end. */
+export type ViewReq = { mode: Mode; shots: number; shotSeed: number; upTo?: number | null };
 
-export type ViewData = { n: number } & (
+export type ViewData = { n: number; /** Scrubbed to this many entries (else the end). */ at?: number } & (
   | { mode: "ket"; rows: { i: number; re: number; im: number }[]; nonzero: number }
   | { mode: "prob"; rows: { i: number; p: number }[]; complete: boolean }
   | { mode: "bloch"; vectors: Vec3[] }
@@ -154,7 +155,14 @@ export class Core {
 
   view(req: ViewReq): ViewData {
     this.flush();
-    const { n, state } = this.reg;
+    const len = this.reg.tape.length;
+    const at = req.upTo != null && req.upTo < len ? Math.max(0, req.upTo) : undefined;
+    const data = this.viewOf(req, at === undefined ? this.reg.state : this.reg.stateAt(at));
+    return at === undefined ? data : { ...data, at };
+  }
+
+  private viewOf(req: ViewReq, state: Float64Array): ViewData {
+    const { n } = this.reg;
     const p = (i: number) => state[2 * i] ** 2 + state[2 * i + 1] ** 2;
     switch (req.mode) {
       case "ket": {

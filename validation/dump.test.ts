@@ -12,6 +12,7 @@ import * as st2 from "./cases/groups/state2";
 import * as sym from "./cases/groups/symbolic";
 import * as met from "./cases/groups/metrology";
 import * as spc from "./cases/groups/spectrum";
+import * as dyn from "./cases/groups/dynamics";
 
 const OUT = new URL("./out/", import.meta.url);
 
@@ -73,5 +74,9 @@ test("dump validation cases", async () => {
       }),
       geom: spc.geomCases().map((g) => ({ ...g, qasm: exportQasm3(g.n, g.tape), qc1: spc.computeGeom(g) })),
     }),
+  );
+  writeFileSync(
+    new URL("dynamics.cases.json", OUT),
+    JSON.stringify({ group: "dynamics", points: dyn.P, cases: dyn.cases().map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: dyn.compute(c) })) }),
   );
 });

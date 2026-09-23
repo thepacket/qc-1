@@ -71,6 +71,20 @@ import { berryPhase } from "../sim/berryPhase";
 import { chernNumber } from "../sim/chernNumber";
 import { zxDiagram } from "../sim/zx";
 import { NONUNITARY } from "../calc/steps";
+import { tSweepZ, tSweepSpectrum } from "../sim/tsweep";
+import { loschmidtEcho } from "../sim/loschmidt";
+import { imbalanceSweep } from "../sim/imbalance";
+import { entanglementVelocity } from "../sim/entanglementVelocity";
+import { negativityDynamics } from "../sim/negativityDynamics";
+import { otoc } from "../sim/otoc";
+import { otocLightcone } from "../sim/otocLightcone";
+import { butterflyVelocity } from "../sim/butterflyVelocity";
+import { lyapunovExponent } from "../sim/lyapunov";
+import { operatorWeightGrowth } from "../sim/operatorWeight";
+import { temporalAutocorrelation } from "../sim/autocorrelation";
+import { spaceTimeZ, spaceTimeEntropy } from "../sim/spacetime";
+import { entanglementAsymmetrySweep } from "../sim/entanglementAsymmetry";
+import { computeLightCone } from "../sim/lightcone";
 import { symbolsOf } from "../calc/steps";
 import { symbolGlyph } from "../calc/entry";
 
@@ -910,6 +924,179 @@ Object.assign(RUNS, {
     return {
       scalars: [{ label: "fusable spider pairs", value: res.fusableHint }],
       charts: [{ kind: "zx", numQubits: res.numQubits, numCols: res.numCols, nodes: res.nodes, edges: res.edges }],
+    };
+  },
+} satisfies Record<string, Run>);
+
+/** t-sweep analyses need the symbol t in the tape. */
+function requireT(ctx: AnalysisContext) {
+  if (!symbolsOfTape(ctx).includes("t")) throw new Error("needs the symbol t in an angle (2ND . on the keypad)");
+}
+const POST_SELECTED = "Measurements are post-selected on their recorded outcomes.";
+const tAxis = (ts: number[]) => ts.map((t) => t / Math.PI);
+const stepLabels = (k: number) => Array.from({ length: k }, (_, i) => (k <= 16 || i % Math.ceil(k / 16) === 0 ? `${i + 1}` : ""));
+
+Object.assign(RUNS, {
+  tsweep(ctx) {
+    requireT(ctx);
+    const res = tSweepZ(lowerTape(ctx.n, ctx.tape), ctx.scope, [], 64)!;
+    return {
+      charts: [{ kind: "lines", x: tAxis(res.ts), xLabel: "t / π", yLabel: "⟨Z⟩", yMin: -1, yMax: 1,
+        series: res.z.slice(0, 3).map((y, q) => ({ name: `q${q}`, y })) }],
+      notes: [...(ctx.n > 3 ? ["Showing q0–q2 (three series max, for legibility)."] : []), POST_SELECTED],
+    };
+  },
+
+  tsweepfft(ctx, opts) {
+    requireT(ctx);
+    const q = num("tsweepfft", "q", opts, ctx.n);
+    const res = tSweepSpectrum(lowerTape(ctx.n, ctx.tape), ctx.scope, [], 64)!;
+    const m = res.mag[q].slice(0, 17);
+    return { charts: [{ kind: "bars", title: `|FT ⟨Z_q${q}⟩| (bin = oscillations per period)`, labels: m.map((_, i) => `${i}`), values: m }] };
+  },
+
+  loschmidt(ctx) {
+    requireT(ctx);
+    const res = loschmidtEcho(lowerTape(ctx.n, ctx.tape), ctx.scope, [], 96)!;
+    return {
+      charts: [
+        { kind: "lines", title: "return probability L(t)", x: tAxis(res.ts), xLabel: "t / π", yLabel: "L", yMin: 0, yMax: 1, series: [{ name: "L", y: res.L }] },
+        { kind: "lines", title: "rate function λ(t) = −ln L / n", x: tAxis(res.ts), xLabel: "t / π", yLabel: "λ", yMin: 0, series: [{ name: "λ", y: res.rate }] },
+      ],
+      notes: [POST_SELECTED],
+    };
+  },
+
+  imbalance(ctx) {
+    requireT(ctx);
+    const res = imbalanceSweep(lowerTape(ctx.n, ctx.tape), ctx.scope, [], 64)!;
+    return {
+      scalars: [{ label: "late-time |I| (plateau)", value: r3(res.plateau) }],
+      charts: [{ kind: "lines", x: tAxis(res.ts), xLabel: "t / π", yLabel: "I(t)", yMin: -1, yMax: 1, series: [{ name: "I", y: res.imbalance }] }],
+    };
+  },
+
+  entvelocity(ctx) {
+    requireT(ctx);
+    const res = entanglementVelocity(lowerTape(ctx.n, ctx.tape), ctx.scope, [], 64);
+    if (!res) return { error: "half cut too large (≤ 6 qubits a side)" };
+    return {
+      scalars: [{ label: "v_E = max dS/dt", value: r3(res.velocity), unit: "bits per unit t" }, { label: "at t", value: `${r3(res.velocityAt / Math.PI)}π` }],
+      charts: [{ kind: "lines", x: tAxis(res.ts), xLabel: "t / π", yLabel: "S (bits)", yMin: 0, series: [{ name: "S(half)", y: res.entropy }] }],
+    };
+  },
+
+  negdyn(ctx, opts) {
+    requireT(ctx);
+    const A = cutOf(opts, "cut", ctx.n, defaultCut(ctx.n)).slice(0, ctx.n - 1);
+    const res = negativityDynamics(lowerTape(ctx.n, ctx.tape), ctx.scope, [], A, 64);
+    if (!res) return { error: "cut too large (≤ 6 qubits a side)" };
+    return {
+      scalars: [{ label: "A", value: qs(A) }, { label: "max E_N", value: r3(res.maxLogNeg), unit: "ebits" }],
+      charts: [{ kind: "lines", x: tAxis(res.ts), xLabel: "t / π", yLabel: "E_N", yMin: 0, series: [{ name: "E_N", y: res.logNeg }] }],
+    };
+  },
+
+  otoc(ctx, opts) {
+    requireT(ctx);
+    const w = num("otoc", "w", opts, ctx.n), v = num("otoc", "v", opts, ctx.n);
+    const res = otoc(lowerTape(ctx.n, ctx.tape), ctx.scope, [], w, v, "Z", "Z", 48)!;
+    return { charts: [{ kind: "lines", x: tAxis(res.ts), xLabel: "t / π", yLabel: "C(t)", yMin: 0, series: [{ name: `W=Z${w}, V=Z${v}`, y: res.C }] }] };
+  },
+
+  otoccone(ctx, opts) {
+    requireT(ctx);
+    const w = num("otoccone", "w", opts, ctx.n);
+    const res = otocLightcone(lowerTape(ctx.n, ctx.tape), ctx.scope, [], w, "Z", "Z", 28)!;
+    return {
+      charts: [{ kind: "heatmap", scale: "seq", min: 0, max: Math.max(res.maxC, 1e-9), rows: qlabels(ctx.n),
+        cols: res.ts.map((t, i) => (i % 7 === 0 ? `${r3(t / Math.PI)}π` : "")), values: res.grid, title: `C(q, t) with W = Z on q${w}` }],
+    };
+  },
+
+  butterfly(ctx, opts) {
+    requireT(ctx);
+    const w = num("butterfly", "w", opts, ctx.n);
+    const res = butterflyVelocity(lowerTape(ctx.n, ctx.tape), ctx.scope, [], w, "Z", "Z", 0.5, 32)!;
+    const pts = res.series.filter((s) => s.arrival !== null);
+    return {
+      scalars: [{ label: "v_B", value: res.vB === null ? "— (front reaches < 2 sites)" : r3(res.vB), unit: res.vB === null ? undefined : "sites per unit t" }],
+      charts: pts.length ? [{ kind: "scatter", x: pts.map((s) => s.arrival as number), y: pts.map((s) => s.distance), xLabel: "arrival t* (C = ½)", yLabel: "distance",
+        fit: res.vB === null ? undefined : { a: res.intercept, b: res.vB, label: `v_B = ${r3(res.vB)}` } }] : [],
+    };
+  },
+
+  lyapunov(ctx, opts) {
+    requireT(ctx);
+    const w = num("lyapunov", "w", opts, ctx.n), v = num("lyapunov", "v", opts, ctx.n);
+    const res = lyapunovExponent(lowerTape(ctx.n, ctx.tape), ctx.scope, [], w, v, 48)!;
+    const pts = res.ts.map((t, k) => [t, res.lnC[k]] as const).filter(([, y]) => Number.isFinite(y));
+    return {
+      scalars: [{ label: "λ_L", value: Number.isFinite(res.lyapunov) ? r3(res.lyapunov) : "— (no clean growth window)" }],
+      charts: pts.length >= 2 ? [{ kind: "scatter", x: pts.map((p) => p[0]), y: pts.map((p) => p[1]), xLabel: "t", yLabel: "ln C",
+        fit: Number.isFinite(res.lyapunov) ? { a: res.intercept, b: res.lyapunov, label: `λ = ${r3(res.lyapunov)}` } : undefined }] : [],
+    };
+  },
+
+  opweight(ctx, opts) {
+    requireT(ctx);
+    const w = num("opweight", "w", opts, ctx.n);
+    const res = operatorWeightGrowth(lowerTape(ctx.n, ctx.tape), ctx.scope, [], w, "Z", 24)!;
+    const rows = Array.from({ length: ctx.n + 1 }, (_, k) => res.weights.map((row) => row[k]));
+    return {
+      charts: [{ kind: "heatmap", scale: "seq", min: 0, max: 1, rows: rows.map((_, k) => `w=${k}`),
+        cols: res.ts.map((t, i) => (i % 6 === 0 ? `${r3(t / Math.PI)}π` : "")), values: rows, title: "weight by support size, over t" }],
+    };
+  },
+
+  autocorr(ctx, opts) {
+    requireT(ctx);
+    const q = num("autocorr", "q", opts, ctx.n);
+    const res = temporalAutocorrelation(lowerTape(ctx.n, ctx.tape), ctx.scope, [], q, 49)!;
+    return {
+      charts: [
+        { kind: "lines", x: tAxis(res.ts), xLabel: "t / π", yLabel: "⟨Z(t)Z⟩", yMin: -1, yMax: 1, series: [{ name: `q${q}`, y: res.C }] },
+        { kind: "bars", title: "spectrum (oscillations per period)", labels: res.freqs.slice(0, 13).map(String), values: res.spectrum.slice(0, 13) },
+      ],
+    };
+  },
+
+  spacetime(ctx) {
+    if (!ctx.tape.length) return { error: "the tape is empty" };
+    const res = spaceTimeZ(lowerTape(ctx.n, ctx.tape), ctx.scope, [], { maxCols: 200 });
+    if (!res) return { error: "tape too long (≤ 200 steps)" };
+    return { charts: [{ kind: "heatmap", scale: "div", min: -1, max: 1, rows: qlabels(ctx.n), cols: stepLabels(res.numCols), values: res.z, title: "⟨Z⟩: rows qubits, cols steps" }] };
+  },
+
+  spacetimeS(ctx) {
+    if (!ctx.tape.length) return { error: "the tape is empty" };
+    const res = spaceTimeEntropy(lowerTape(ctx.n, ctx.tape), ctx.scope, [], { maxCols: 200 });
+    if (!res) return { error: "tape too long (≤ 200 steps)" };
+    return { charts: [{ kind: "heatmap", scale: "seq", min: 0, max: 1, rows: qlabels(ctx.n), cols: stepLabels(res.numCols), values: res.s, title: "S(qᵢ) bits: rows qubits, cols steps" }] };
+  },
+
+  asymmetry(ctx) {
+    if (!ctx.tape.length) return { error: "the tape is empty" };
+    const res = entanglementAsymmetrySweep(lowerTape(ctx.n, ctx.tape), ctx.scope, []);
+    if (!res) return { error: "tape too long (≤ 96 steps)" };
+    return {
+      scalars: [{ label: "subsystem", value: `q0…q${res.subsystemSize - 1}` }],
+      charts: [{ kind: "lines", x: res.asymmetry.map((_, i) => i + 1), xLabel: "step", yLabel: "ΔS (bits)", yMin: 0, series: [{ name: "ΔS_A", y: res.asymmetry }] }],
+    };
+  },
+
+  lightcone(ctx, opts) {
+    if (!ctx.tape.length) return { error: "the tape is empty" };
+    const q = num("lightcone", "q", opts, ctx.n);
+    const dir = num("lightcone", "dir", opts, ctx.n) === 1 ? "forward" : "backward";
+    const circ = lowerTape(ctx.n, ctx.tape);
+    const cone = computeLightCone(circ, q, dir);
+    // Qubit × step map: 1 = gate inside the cone, 0.35 = gate outside, 0 = idle.
+    const grid = Array.from({ length: ctx.n }, () => new Array<number>(ctx.tape.length).fill(0));
+    for (const g of circ.gates) for (const x of [...g.controls, ...g.targets]) grid[x][g.column] = cone.has(g.id) ? 1 : 0.35;
+    return {
+      scalars: [{ label: `${dir} cone of q${q}`, value: `${cone.size} of ${circ.gates.length} gates` }],
+      charts: [{ kind: "heatmap", scale: "seq", min: 0, max: 1, rows: qlabels(ctx.n), cols: stepLabels(ctx.tape.length), values: grid, codes: { 1: "in the cone", 0.35: "outside", 0: "idle" } }],
     };
   },
 } satisfies Record<string, Run>);

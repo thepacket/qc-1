@@ -133,6 +133,27 @@ export class Register {
     this.replay(rest.slice(0, len - from));
   }
 
+  /**
+   * The state after the first `len` entries, without touching the register
+   * (TAPE scrubber). Starts from the nearest snapshot or the prefix cache and
+   * replays with the recorded measurement outcomes.
+   */
+  stateAt(len: number): Float64Array {
+    if (len >= this.tape.length) return this.state;
+    let from = 0;
+    for (const k of this.snapshots.keys()) if (k <= len && k > from) from = k;
+    let state: Float64Array;
+    if (this.prefix && this.prefix.idx <= len && this.prefix.idx > from) {
+      from = this.prefix.idx;
+      state = this.prefix.state.slice();
+    } else {
+      const snap = this.snapshots.get(from);
+      state = snap ? snap.slice() : ground(this.n);
+    }
+    for (let i = from; i < len; i++) for (const s of this.tape[i]) applyStep(state, this.n, s, Math.random, this.scope);
+    return state;
+  }
+
   undo(): Op | null {
     this.notes = [];
     const op = this.ops.pop();

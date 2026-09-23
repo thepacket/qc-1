@@ -100,9 +100,12 @@ export function TapeView({ calc }: { calc: Calculator }) {
   const end = useRef<HTMLDivElement>(null);
   const tape = calc.tape;
   const text = useMemo(() => (asQasm ? exportQasm3(calc.n, tape) : ""), [asQasm, calc.n, tape]);
+  const at = calc.scrub ?? tape.length;
+  const cur = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!asQasm) end.current?.scrollIntoView({ block: "end" });
-  }, [tape, asQasm]);
+    if (asQasm) return;
+    (calc.scrub === null ? end : cur).current?.scrollIntoView({ block: calc.scrub === null ? "end" : "nearest" });
+  }, [tape, asQasm, calc.scrub]);
   return (
     <div className="view">
       <div className="view-head tape-head">
@@ -114,13 +117,23 @@ export function TapeView({ calc }: { calc: Calculator }) {
           <button onClick={() => shareQasm(calc, exportQasm3(calc.n, tape))}>SHARE</button>
         </span>
       </div>
+      {!asQasm && tape.length > 0 && (
+        <div className="scrubber">
+          <button onClick={() => calc.setScrub(at - 1)} disabled={at === 0} aria-label="Step back">◀</button>
+          <input type="range" min={0} max={tape.length} value={at} aria-label="Show the state after step"
+            onChange={(e) => calc.setScrub(Number(e.target.value))} />
+          <button onClick={() => calc.setScrub(at + 1)} disabled={at >= tape.length} aria-label="Step forward">▶</button>
+          <span className="dim">{calc.scrub === null ? "live" : `after ${at}`}</span>
+        </div>
+      )}
       {asQasm ? (
         <pre className="rows qasm">{text}</pre>
       ) : (
         <div className="rows">
           {tape.length === 0 && <div className="dim">empty — every key press is recorded here</div>}
           {tape.map((e, i) => (
-            <div className="row tape-row" key={i}>
+            <div className={`row tape-row${i >= at ? " ahead" : ""}${i === at - 1 && calc.scrub !== null ? " at" : ""}`} key={i}
+              ref={i === Math.max(0, at - 1) ? cur : undefined} onClick={() => calc.setScrub(i + 1)}>
               <span className="dim">{String(i + 1).padStart(3, "0")}</span>
               <span>{formatEntry(e)}</span>
             </div>

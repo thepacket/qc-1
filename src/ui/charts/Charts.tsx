@@ -21,11 +21,13 @@ function Frame({ title, children }: { title?: string; children: ReactNode }) {
 function Heatmap({ c }: { c: Extract<Chart, { kind: "heatmap" }> }) {
   const [pick, setPick] = useState<string | null>(null);
   const R = c.rows.length, C = c.cols.length;
-  const cell = 100 / Math.max(R, C);
+  // Keep the grid's own shape (clamped), so cells and their text never stretch.
+  const aspect = Math.min(4, Math.max(0.5, C / R));
+  const W = 100, H = 100 / aspect, cw = W / C, ch = H / R;
   const mags = c.values.map((row, i) => row.map((v, j) => (c.scale === "complex" ? Math.hypot(v, c.imag?.[i][j] ?? 0) : v)));
   const lo = c.min ?? (c.scale === "div" ? -Math.max(...mags.flat().map(Math.abs), 1e-12) : 0);
   const hi = c.max ?? Math.max(...mags.flat().map(Math.abs), 1e-12);
-  const showText = C <= 6;
+  const showText = C <= 6 && !c.codes;
   const color = (i: number, j: number) => {
     const v = c.values[i][j];
     if (c.scale === "seq") return seqColor((v - lo) / (hi - lo || 1));
@@ -33,7 +35,7 @@ function Heatmap({ c }: { c: Extract<Chart, { kind: "heatmap" }> }) {
     return phaseColor(Math.atan2(c.imag?.[i][j] ?? 0, v));
   };
   const label = (i: number, j: number) =>
-    c.scale === "complex" ? fmtC(c.values[i][j], c.imag?.[i][j] ?? 0) : fmt(c.values[i][j]);
+    c.codes ? (c.codes[c.values[i][j]] ?? "") : c.scale === "complex" ? fmtC(c.values[i][j], c.imag?.[i][j] ?? 0) : fmt(c.values[i][j]);
   return (
     <Frame title={c.title}>
       <div className="heat">
@@ -43,19 +45,19 @@ function Heatmap({ c }: { c: Extract<Chart, { kind: "heatmap" }> }) {
         </div>
         <div className="heat-body">
           <div className="heat-rows">
-            {c.rows.map((l, i) => <span key={`${l}${i}`} style={{ height: `${cell}%` }}>{R <= 16 || i % Math.ceil(R / 16) === 0 ? l : ""}</span>)}
+            {c.rows.map((l, i) => <span key={`${l}${i}`} style={{ height: `${100 / R}%` }}>{R <= 16 || i % Math.ceil(R / 16) === 0 ? l : ""}</span>)}
           </div>
-          <svg viewBox={`0 0 ${C * cell} ${R * cell}`} className="heat-svg" preserveAspectRatio="none" role="img" aria-label={c.title ?? "heatmap"}>
+          <svg viewBox={`0 0 ${W} ${H}`} className="heat-svg" style={{ aspectRatio: `${aspect}` }} role="img" aria-label={c.title ?? "heatmap"}>
             {c.values.map((row, i) =>
               row.map((_, j) => {
                 const m = mags[i][j] / (hi || 1);
                 const op = c.scale === "complex" ? (m < 1e-9 ? 0 : 0.15 + 0.85 * Math.min(1, m)) : 1;
                 return (
                   <g key={`${i}-${j}`} onClick={() => setPick(`${c.rows[i]}, ${c.cols[j]}: ${label(i, j)}${c.unit ? ` ${c.unit}` : ""}`)}>
-                    <rect x={j * cell + 0.4} y={i * cell + 0.4} width={cell - 0.8} height={cell - 0.8} rx={0.8}
+                    <rect x={j * cw + 0.4} y={i * ch + 0.4} width={cw - 0.8} height={ch - 0.8} rx={0.8}
                       fill={c.scale === "complex" && m < 1e-9 ? "#232322" : color(i, j)} fillOpacity={op} />
                     {showText && (
-                      <text x={(j + 0.5) * cell} y={(i + 0.5) * cell} className="heat-text" fontSize={cell * 0.2}>
+                      <text x={(j + 0.5) * cw} y={(i + 0.5) * ch} className="heat-text" fontSize={Math.min(cw * 0.2, ch * 0.4)}>
                         {c.scale === "complex" ? fmt(Math.hypot(c.values[i][j], c.imag?.[i][j] ?? 0), 2) : fmt(c.values[i][j], 2)}
                       </text>
                     )}
@@ -66,7 +68,11 @@ function Heatmap({ c }: { c: Extract<Chart, { kind: "heatmap" }> }) {
           </svg>
         </div>
         <div className="heat-legend">
-          {c.scale === "complex" ? (
+          {c.codes ? (
+            Object.entries(c.codes).map(([v, name]) => (
+              <span key={v} className="heat-key"><i style={{ background: seqColor((Number(v) - lo) / (hi - lo || 1)) }} />{name}</span>
+            ))
+          ) : c.scale === "complex" ? (
             <span>colour = phase · opacity = |value| (max {fmt(hi)})</span>
           ) : (
             <>

@@ -50,6 +50,8 @@ export type Chart =
       /** Imaginary parts (complex scale only). */
       imag?: number[][];
       scale: HeatScale; min?: number; max?: number; unit?: string;
+      /** Categorical codes, not quantities: no numbers in cells, no colour scale. */
+      codes?: Record<number, string>;
     }
   | {
       kind: "bars"; title?: string; labels: string[]; values: number[]; unit?: string;

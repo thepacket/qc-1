@@ -219,6 +219,51 @@ ANALYSES.push(
     summary: "The tape as a ZX-calculus diagram: green Z and red X spiders, Hadamard boxes." },
 );
 
+// Phase 5b: dynamics (validated: fixture dynamics). The t-sweeps need the symbol t in the tape.
+const qW = { kind: "qubit" as const, key: "w", label: "W on", fallback: "first" as const };
+const qV = { kind: "qubit" as const, key: "v", label: "V on", fallback: "last" as const };
+ANALYSES.push(
+  { id: "tsweep", title: "⟨Z⟩ over t", category: "dynamics", mode: "live", maxQubits: 14, inputs: [],
+    summary: "Every qubit's ⟨Z⟩ as t sweeps one period [0, 2π]: Rabi, Larmor, Trotterised dynamics as curves." },
+  { id: "tsweepfft", title: "⟨Z⟩ spectrum", category: "dynamics", mode: "live", maxQubits: 14,
+    inputs: [{ kind: "qubit", key: "q", label: "qubit", fallback: "first" }],
+    summary: "Fourier spectrum of ⟨Z⟩(t) over one period: a peak at bin m is m oscillations per period." },
+  { id: "loschmidt", title: "Loschmidt echo", category: "dynamics", mode: "live", maxQubits: 14, inputs: [],
+    summary: "Return probability |⟨ψ(0)|ψ(t)⟩|² and its rate function; cusps mark dynamical phase transitions." },
+  { id: "imbalance", title: "Imbalance", category: "dynamics", mode: "live", maxQubits: 14, inputs: [],
+    summary: "Staggered magnetisation (1/n)Σ(−1)ⁱ⟨Zᵢ⟩ over t: it decays when thermalising, stays in localised phases." },
+  { id: "entvelocity", title: "Entanglement velocity", category: "dynamics", mode: "live", maxQubits: 12, minQubits: 2, inputs: [],
+    summary: "Half-cut entropy S(t) and its steepest slope, the entanglement velocity." },
+  { id: "negdyn", title: "Negativity over t", category: "dynamics", mode: "live", maxQubits: 12, minQubits: 2, inputs: [{ ...cut, max: 6 }],
+    summary: "Log-negativity across the cut as t sweeps: growth, oscillation, sudden death and revival." },
+  { id: "otoc", title: "OTOC", category: "dynamics", mode: "run", maxQubits: 6, minQubits: 2, inputs: [qW, qV],
+    summary: "C(t) = 1 − Re⟨W(t)VW(t)V⟩ on |0…0⟩ with Z operators: it rises when the operator front reaches V." },
+  { id: "otoccone", title: "OTOC light cone", category: "dynamics", mode: "run", maxQubits: 5, minQubits: 2, inputs: [qW],
+    summary: "OTOC over every qubit and t: the operator light cone." },
+  { id: "butterfly", title: "Butterfly velocity", category: "dynamics", mode: "run", maxQubits: 5, minQubits: 2, inputs: [qW],
+    summary: "Arrival time of the OTOC front at each distance, and the fitted speed v_B." },
+  { id: "lyapunov", title: "Lyapunov exponent", category: "dynamics", mode: "run", maxQubits: 6, minQubits: 2, inputs: [qW, qV],
+    summary: "Early-time exponential growth rate of the OTOC, λ_L." },
+  { id: "opweight", title: "Operator weight", category: "dynamics", mode: "run", maxQubits: 4, inputs: [
+      { kind: "qubit", key: "w", label: "Z on", fallback: "first" },
+    ],
+    summary: "How Z on one qubit spreads under W(t) = U†WU: weight by Pauli support size, over t." },
+  { id: "autocorr", title: "Autocorrelation", category: "dynamics", mode: "run", maxQubits: 6,
+    inputs: [{ kind: "qubit", key: "q", label: "qubit", fallback: "first" }],
+    summary: "Infinite-temperature ⟨Z(t)Z(0)⟩ and its spectrum: how long a qubit remembers its polarisation." },
+  { id: "spacetime", title: "Space-time ⟨Z⟩", category: "dynamics", mode: "live", maxQubits: 14, inputs: [],
+    summary: "⟨Z⟩ of every qubit after every tape step." },
+  { id: "spacetimeS", title: "Space-time entropy", category: "dynamics", mode: "live", maxQubits: 12, inputs: [],
+    summary: "Each qubit's entanglement entropy after every tape step: the entanglement front." },
+  { id: "asymmetry", title: "Entanglement asymmetry", category: "dynamics", mode: "live", maxQubits: 12, minQubits: 2, inputs: [],
+    summary: "How much the first half breaks the excitation-number symmetry, after every step (quantum Mpemba)." },
+  { id: "lightcone", title: "Light cone", category: "structure", mode: "live", maxQubits: 20, inputs: [
+      { kind: "qubit", key: "q", label: "qubit", fallback: "first" },
+      { kind: "choice", key: "dir", label: "cone", fallback: 0, options: [{ label: "backward", value: 0 }, { label: "forward", value: 1 }] },
+    ],
+    summary: "The tape steps that can influence a qubit's final state (backward) or that its input can reach (forward)." },
+);
+
 export const ANALYSIS_BY_ID: Record<string, AnalysisMeta> = Object.fromEntries(ANALYSES.map((a) => [a.id, a]));
 
 /** Default bipartition: the first half of the register. */
