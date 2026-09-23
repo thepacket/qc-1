@@ -1,0 +1,11 @@
+.git
+.claude
+node_modules
+dist
+dev-dist
+coverage
+*.tsbuildinfo
+.DS_Store
+Dockerfile
+fly.toml
+.dockerignore
