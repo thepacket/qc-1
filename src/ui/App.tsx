@@ -151,6 +151,8 @@ export function App() {
 
   const n = calc.n;
   const last = calc.tape.slice(-6);
+  // LAB screens (not help, chat, catalog or PARAM over them) drop the tape strip.
+  const lab = calc.mode === "lab" && !calc.helpOpen && !calc.chatOpen && !calc.param.open && !calc.catalog.open;
 
   // A view summary is shown only once it matches the selected mode. Under
   // noise, PROB/BLOCH/SHOTS come from the analysis worker (ρ or trajectories).
@@ -247,16 +249,19 @@ export function App() {
 
         {view}
 
-        {calc.activeGuide ? <GuideBar calc={calc} /> : (
+        {calc.activeGuide ? <GuideBar calc={calc} /> : !lab && (
           <div className="tape-strip">
             {last.length === 0 ? <span className="dim">ready</span> : last.map((e, i) => <span key={i}>{formatEntry(e)}</span>)}
           </div>
         )}
-        <div className={`entry${calc.message?.kind === "error" && calc.entry.length === 0 ? " err" : ""}`}>
-          <bdi>
-            {calc.entry.length > 0 ? calc.entryText : calc.message ? (calc.message.kind === "error" ? `E: ${calc.message.text}` : calc.message.text) : " "}
-          </bdi>
-        </div>
+        {/* In LAB the entry line shows only when it has something (a typed number, a message). */}
+        {(!lab || calc.entry.length > 0 || calc.message) && (
+          <div className={`entry${calc.message?.kind === "error" && calc.entry.length === 0 ? " err" : ""}`}>
+            <bdi>
+              {calc.entry.length > 0 ? calc.entryText : calc.message ? (calc.message.kind === "error" ? `E: ${calc.message.text}` : calc.message.text) : " "}
+            </bdi>
+          </div>
+        )}
       </section>
 
       {calc.reportOpen && <ReportView calc={calc} />}
