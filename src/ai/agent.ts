@@ -1,11 +1,11 @@
 /**
  * The AI chat's agent: a system prompt, four tools, and the loop that runs
- * them. The model can read (the tape, the state, LAB analyses) but not write:
- * a tape it wants goes to the user as a proposal, applied only when they tap
+ * them. The model can read (the circuit, the state, LAB analyses) but not write:
+ * a circuit it wants goes to the user as a proposal, applied only when they tap
  * Apply (an undoable replace, like RCL). LAB circuit tools that return a
  * verified rewrite surface the same way.
  *
- * What the model sees: the register size, the tape as OpenQASM 3, symbol
+ * What the model sees: the register size, the circuit as OpenQASM 3, symbol
  * values, whether noise is on, the largest amplitudes (n ≤ 14), and the
  * results of the analyses it runs. The API key never enters a message.
  */
@@ -36,11 +36,13 @@ export type ChatItem =
 
 export const STATE_MAX = 14;
 
-export const SYSTEM_PROMPT = `You are the assistant inside QC-1, a pocket quantum calculator on a phone. Be brief: a phone screen, short paragraphs, no tables wider than the screen.
+export const SYSTEM_PROMPT = `You are the assistant inside QC-1, a quantum circuit simulator and analysis tool shaped like a pocket calculator, on a phone. The user builds a quantum circuit gate by gate; always call it "the circuit". Be brief: a phone screen, short paragraphs, no tables wider than the screen.
+
+Format: Markdown (headings, lists, **bold**, \`code\`). Math in LaTeX: inline $…$, display $$…$$; Dirac notation with \\ket{0}, \\bra{\\psi}, \\braket{\\phi}{\\psi}, \\expval{Z}.
 
 Conventions: qubits are q0…q(n−1); q0 is the MOST significant (leftmost) bit of a ket |q0 q1 …⟩ (Qiskit prints the opposite way). Angles in radians; RX(θ) = e^{−iθX/2} as in Qiskit. Up to 20 qubits run on a statevector; up to 1024 on a stabilizer tableau (Clifford gates only). Symbols (t, theta, …) are angles the user can slide; t can be played over one period.
 
-Tools: get_state reads the register and tape (OpenQASM 3). list_analyses names the LAB analyses and their options; run_analysis runs one on the current state and returns its numbers. propose_tape offers the user a new tape (OpenQASM 3, stdgates.inc; declare symbols with "input float theta;"); the user applies it with a tap, so explain in a sentence what it does. Never claim to have changed the calculator: you can only propose. Prefer running an analysis to guessing a number.`;
+Tools: get_state reads the register and the circuit (OpenQASM 3). list_analyses names the LAB analyses and their options; run_analysis runs one on the current state and returns its numbers. propose_circuit offers the user a new circuit (OpenQASM 3, stdgates.inc; declare symbols with "input float theta;"); the user applies it with a tap, so explain in a sentence what it does. Never claim to have changed the calculator: you can only propose. Prefer running an analysis to guessing a number.`;
 
 const t = (name: string, description: string, properties: Record<string, unknown>, required: string[] = []): ToolDef => ({
   type: "function",
@@ -53,7 +55,7 @@ export const TOOLS: ToolDef[] = [
   t("run_analysis", "Run a LAB analysis on the current state (n ≤ 14 here) and return its numbers and notes. Options by name, as list_analyses shows.", {
     id: { type: "string" }, options: { type: "object", description: "option name → value", additionalProperties: true },
   }, ["id"]),
-  t("propose_tape", "Offer the user a new circuit. It is checked by QC-1's importer and shown with an Apply button; nothing changes until they tap it.", {
+  t("propose_circuit", "Offer the user a new circuit. It is checked by QC-1's importer and shown with an Apply button; nothing changes until they tap it.", {
     title: { type: "string", description: "a short name, e.g. 'GHZ on 4 qubits'" },
     qasm: { type: "string", description: "OpenQASM 3 with include \"stdgates.inc\"" },
   }, ["title", "qasm"]),
@@ -127,7 +129,7 @@ export async function executeTool(name: string, rawArgs: string, env: AgentEnv):
         }
         return { result: JSON.stringify(summary), show: { kind: "tool", text: `ran ${meta.title}${res.error ? ` (error: ${res.error})` : ""}` } };
       }
-      case "propose_tape": {
+      case "propose_circuit": {
         const qasm = String(args.qasm ?? ""), title = String(args.title ?? "proposal").slice(0, 80);
         const r = importQasm(qasm, env.gates);
         return {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Calculator } from "../calc/calculator";
 import { runAgent, SYSTEM_PROMPT, type AgentEnv, type ChatItem } from "../ai/agent";
 import { listModels, type AgentMessage, type Model } from "../ai/openrouter";
+import { Markdown } from "./Markdown";
 
 /**
  * The AI chat (the "AI" button): the user's own OpenRouter key and model,
@@ -75,7 +76,7 @@ export function ChatView({ calc }: { calc: Calculator }) {
       </div>
       <div className="rows chat-log" aria-live="polite">
         {items.length === 0 && (
-          <p className="dim note">Ask about the state, or for a circuit: “is this entangled?”, “make a 4-qubit GHZ state”, “why does Grover need 2 iterations here?”. The model reads the circuit and runs LAB analyses; a circuit it suggests comes with Apply (UNDO takes it back).</p>
+          <p className="dim note">Ask about the state, or for a circuit: “is this entangled?”, “make a 4-qubit GHZ state”, “why does Grover need 2 iterations here?”. The model reads the circuit and runs LAB analyses (answers can include LaTeX); a circuit it suggests comes with Apply (UNDO takes it back).</p>
         )}
         {items.map((it, i) => <Item key={i} it={it} apply={() => apply(i)} />)}
         {busy && <div className="chat-tool busy">thinking…</div>}
@@ -93,15 +94,9 @@ export function ChatView({ calc }: { calc: Calculator }) {
   );
 }
 
-/** Text with ``` fences shown as code; everything as text, never as HTML. */
-function Rich({ text }: { text: string }) {
-  const parts = text.split(/```[a-zA-Z0-9]*\n?/);
-  return <>{parts.map((p, i) => (i % 2 ? <pre key={i} className="chat-code">{p.replace(/\n$/, "")}</pre> : <span key={i}>{p}</span>))}</>;
-}
-
 function Item({ it, apply }: { it: ChatItem; apply: () => void }) {
   if (it.kind === "user") return <div className="chat-msg user">{it.text}</div>;
-  if (it.kind === "assistant") return <div className="chat-msg ai"><Rich text={it.text} /></div>;
+  if (it.kind === "assistant") return <div className="chat-msg ai md"><Markdown source={it.text} /></div>;
   if (it.kind === "tool") return <div className="chat-tool">· {it.text}</div>;
   if (it.kind === "error") return <div className="lab-error">E: {it.text}</div>;
   const p = it.proposal;

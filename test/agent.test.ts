@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { executeTool, runAgent, SYSTEM_PROMPT, type AgentEnv, type ChatItem } from "../src/ai/agent";
+import { executeTool, runAgent, SYSTEM_PROMPT, TOOLS, type AgentEnv, type ChatItem } from "../src/ai/agent";
 import type { AgentMessage } from "../src/ai/openrouter";
 import { importQasm } from "../src/qasm/import";
 
@@ -17,7 +17,13 @@ function fakeFetch(replies: unknown[]) {
 }
 
 describe("agent tools", () => {
-  test("get_state: the tape as QASM and the largest amplitudes (q0 is the leftmost bit)", async () => {
+  test("the model is told about a circuit, never a tape, and asked for Markdown and LaTeX", () => {
+    expect(`${SYSTEM_PROMPT} ${JSON.stringify(TOOLS)}`).not.toMatch(/\btapes?\b/i);
+    expect(SYSTEM_PROMPT).toMatch(/LaTeX/);
+    expect(SYSTEM_PROMPT).toContain("\\ket{0}");
+  });
+
+  test("get_state: the circuit as QASM and the largest amplitudes (q0 is the leftmost bit)", async () => {
     const out = JSON.parse((await executeTool("get_state", "{}", bell)).result);
     expect(out.n).toBe(2);
     expect(out.qasm).toContain("cx q[0], q[1];");
@@ -32,10 +38,10 @@ describe("agent tools", () => {
     expect((await executeTool("run_analysis", `{oops`, bell)).result).toMatch(/not JSON/);
   });
 
-  test("propose_tape never changes anything: it returns a proposal to show, checked by the importer", async () => {
-    const good = await executeTool("propose_tape", JSON.stringify({ title: "GHZ", qasm: `OPENQASM 3.0; include "stdgates.inc"; qubit[3] q; h q[0]; cx q[0], q[1]; cx q[1], q[2];` }), bell);
+  test("propose_circuit never changes anything: it returns a proposal to show, checked by the importer", async () => {
+    const good = await executeTool("propose_circuit", JSON.stringify({ title: "GHZ", qasm: `OPENQASM 3.0; include "stdgates.inc"; qubit[3] q; h q[0]; cx q[0], q[1]; cx q[1], q[2];` }), bell);
     expect(good.show).toMatchObject({ kind: "proposal", proposal: { title: "GHZ", n: 3, steps: 3 } });
-    const bad = await executeTool("propose_tape", JSON.stringify({ title: "x", qasm: "qubit[2] q; frobnicate q[0];" }), bell);
+    const bad = await executeTool("propose_circuit", JSON.stringify({ title: "x", qasm: "qubit[2] q; frobnicate q[0];" }), bell);
     expect(bad.result).toMatch(/^error:/);
     expect(bad.show.kind).toBe("tool");
   });
