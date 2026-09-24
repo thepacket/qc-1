@@ -4,6 +4,8 @@ import { evalParam, exprOk, formatEntry, NONUNITARY, type Entry, type Scope, typ
 import { CATALOG, type CatalogItem } from "./catalog";
 import { CUSTOM_PREFIX, defineGate, setCustomGates, type CustomGate } from "./custom";
 import { blockGate, qaoaLayer, type BlockKind } from "./blocks";
+import { dropEntry, moveEarlier, moveLater, shiftEntry, toggleControl } from "./diagEdit";
+import type { Placed } from "./diagram";
 import { matrixGate, parseMatrix, parseState, stateGate } from "./typed";
 import { importQasm } from "../qasm/import";
 import { stepCaptions } from "../qasm/captions";
@@ -370,6 +372,8 @@ export class Calculator {
 
   setMode(m: Mode) {
     this.message = null;
+    this.diagSel = null;
+    this.ctrlPick = false;
     if (m === "shots" && this.entry.length > 0) {
       const v = this.takeInt();
       if (v === null) return this.changed();
@@ -544,6 +548,117 @@ export class Calculator {
         return true;
     }
     return false;
+  }
+
+  // ─── Editing in the diagram (CIRC → DIAG; pure edits in diagEdit.ts) ───
+
+  /** The tape entry selected in the diagram (its action bar is shown); gate keys then change it. */
+  diagSel: number | null = null;
+  /** "± ctrl": the next wire tapped adds or removes a control on the selection. */
+  ctrlPick = false;
+
+  selectStep(i: number | null) {
+    this.diagSel = i !== null && i >= 0 && i < this.tape.length ? i : null;
+    this.ctrlPick = false;
+    this.changed();
+  }
+
+  /** A tap on a wire: toggles a control in "± ctrl", else places the insertion point there (qubit q, before tape index `at`). */
+  tapWire(q: number, at: number) {
+    if (this.diagSel !== null && this.ctrlPick) return this.toggleSelectedControl(q);
+    this.diagSel = null;
+    this.ctrlPick = false;
+    if (q >= 0 && q < this.n) this.sel = q;
+    this.setScrub(at);
+    this.changed();
+  }
+
+  toggleCtrlPick() {
+    this.ctrlPick = this.diagSel !== null && !this.ctrlPick;
+    this.changed();
+  }
+
+  /** Replace the tape (one undoable step) and keep `sel` selected. */
+  private applyEdit(tape: Entry[], label: string, sel: number | null) {
+    this.send({ t: "replace", n: this.n, tape, scope: { ...this.scope }, label });
+    this.diagSel = sel;
+    this.ctrlPick = false;
+    this.changed();
+  }
+
+  private selectedEntry(): Entry | null {
+    return this.diagSel !== null ? this.tape[this.diagSel] ?? null : null;
+  }
+
+  moveSelected(dir: -1 | 1) {
+    const i = this.diagSel;
+    if (i === null) return;
+    const r = dir < 0 ? moveEarlier(this.tape, i) : moveLater(this.tape, i);
+    if (!r) return this.error(dir < 0 ? "already first on its wires" : "already last on its wires");
+    this.applyEdit(r.tape, dir < 0 ? "move earlier" : "move later", r.at);
+  }
+
+  shiftSelected(dq: number) {
+    const e = this.selectedEntry();
+    if (!e || this.diagSel === null) return;
+    const moved = shiftEntry(e, dq, this.n);
+    if (!moved) return this.error("no qubit there");
+    this.applyEdit(this.tape.map((x, k) => (k === this.diagSel ? moved : x)), dq < 0 ? "move up" : "move down", this.diagSel);
+  }
+
+  deleteSelected() {
+    const i = this.diagSel;
+    if (i === null) return;
+    this.applyEdit(this.tape.filter((_, k) => k !== i), `delete step ${i + 1}`, null);
+  }
+
+  /** Drag and drop: entry i to diagram column `col`, dq wires down. */
+  dropStep(i: number, items: Placed[], col: number, dq: number) {
+    const r = dropEntry(this.tape, items, i, col, dq, this.n);
+    if (!r) return this.error("no qubit there");
+    if (r.at === i && dq === 0) return this.selectStep(i);
+    this.applyEdit(r.tape, "move", r.at);
+  }
+
+  private toggleSelectedControl(q: number) {
+    const e = this.selectedEntry();
+    if (!e || this.diagSel === null) return;
+    const next = toggleControl(e, q, (g) => NONUNITARY.has(g));
+    if (!next) return this.error(e.some((s) => s.targets.includes(q)) ? `q${q} is a target` : "this gate can't be controlled");
+    this.applyEdit(this.tape.map((x, k) => (k === this.diagSel ? next : x)), "control", this.diagSel);
+  }
+
+  /** "angle": the typed arguments become the selected gate's parameters. */
+  setSelectedParams() {
+    const e = this.selectedEntry();
+    if (!e || this.diagSel === null) return;
+    const count = e[0].params.length;
+    if (!count) return this.error("this gate has no angle");
+    if (this.entry.length === 0) return this.error("type the angle first");
+    const args = splitArgs(this.entry);
+    if (args.length > count) return this.error(`${count} argument${count > 1 ? "s" : ""} max`);
+    if (args.some((a) => !exprOk(a))) return this.error("syntax error");
+    this.entry = [];
+    this.applyEdit(this.tape.map((x, k) => (k === this.diagSel ? x.map((s) => ({ ...s, params: s.params.map((p, j) => args[j] ?? p) })) : x)), "angle", this.diagSel);
+  }
+
+  /** A gate key while a gate is selected: that gate becomes this one (same qubits; the typed angle, else its own). */
+  private replaceSelectedGate(k: GateKey) {
+    const e = this.selectedEntry();
+    if (!e || this.diagSel === null) return;
+    for (const s of e) {
+      if (s.targets.length !== k.arity) return this.error(`${k.gate.toUpperCase()} acts on ${k.arity} qubit${k.arity > 1 ? "s" : ""}; this gate on ${s.targets.length}`);
+      if (NONUNITARY.has(k.gate) && s.controls.length) return this.error("can't control a non-unitary");
+    }
+    let params = k.params;
+    if (k.params.length && this.entry.length) {
+      const args = splitArgs(this.entry);
+      if (args.length > k.params.length || args.some((a) => !exprOk(a))) return this.error("syntax error");
+      params = k.params.map((d, j) => args[j] ?? d);
+      this.entry = [];
+    }
+    const next: Entry = e.map((s) => ({ ...s, gateId: k.gate, params: [...params], outcome: undefined }));
+    this.applyEdit(this.tape.map((x, kk) => (kk === this.diagSel ? next : x)), `change to ${k.gate.toUpperCase()}`, this.diagSel);
   }
 
   select(q: number) {
@@ -914,7 +1029,7 @@ export class Calculator {
       if (this.entry.length < 40) this.entry.push(TOKENS[id]);
       return;
     }
-    if (id in GATE_KEYS) return this.gate(GATE_KEYS[id]);
+    if (id in GATE_KEYS) return this.diagSel !== null ? this.replaceSelectedGate(GATE_KEYS[id]) : this.gate(GATE_KEYS[id]);
 
     switch (id) {
       case "2nd": this.shift = !this.shift; return;
@@ -989,6 +1104,8 @@ export class Calculator {
       }
       case "bs": this.entry.pop(); return;
       case "ac": {
+        // AC first lets go of a gate selected in the diagram.
+        if (this.diagSel !== null && this.entry.length === 0) return this.selectStep(null);
         if (this.param.open && this.entry.length === 0) {
           this.closeParams();
           return;

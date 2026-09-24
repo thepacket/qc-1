@@ -824,3 +824,20 @@ button {
 /* KET as a table: fixed columns on every row (the template is set per view), tabular digits, signs aligned. */
 .ket-row { column-gap: 6px; }
 .ket-row .amp { white-space: pre; font-variant-numeric: tabular-nums; }
+
+/* DIAG editing: the selection's action bar, tap targets, insertion marker, drag */
+.diag-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 2px 0 3px; font-family: var(--mono); font-size: 11px; }
+.diag-bar .diag-sel { flex: 1 1 100%; color: var(--series-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.diag-bar button { min-width: 30px; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--ink-dim); color: var(--ink); }
+.diag-bar button.on { background: var(--series-1); border-color: var(--series-1); }
+.diag-bar button.del { border-color: var(--critical); color: var(--critical); }
+.diag-hint { font-size: 10px; padding-bottom: 2px; }
+.circ .wire-hit { fill: transparent; cursor: crosshair; }
+.circ svg.ctrl-pick .wire-hit { fill: rgba(57, 135, 229, 0.08); }
+.circ .insert-mark line { stroke: var(--amber); stroke-width: 1.5; stroke-dasharray: 3 2; }
+.circ .insert-mark circle { fill: var(--amber); }
+.circ-labels .cursor { fill: var(--amber); font-weight: 700; }
+.circ .gate.sel .box, .circ .gate.sel .oplus, .circ .gate.sel .ctl { stroke: var(--amber); stroke-width: 2; }
+.circ .gate.sel .link { stroke: var(--amber); }
+.circ .gate.dragging { opacity: 0.75; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6)); }
+.circ .gate { -webkit-user-select: none; user-select: none; }
