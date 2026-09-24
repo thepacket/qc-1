@@ -109,6 +109,7 @@ export async function optimizeExpectation(
       }
       const k = symbols.length;
       const metric = computeFubiniStudy(circuit, customGates, params, symbols, epsilon);
+      if (!metric) return { steps: step + 1, finalValue: lastValue, finalParams: params, stopped: "unresolved" };
       // Solve (F + λI) · u = grad with a small Tikhonov regulariser λ = 1e-3.
       const lambda = 1e-3;
       const reg = metric.map((row, i) => row.map((v, j) => v + (i === j ? lambda : 0)));
@@ -214,16 +215,17 @@ function computeFubiniStudy(
   params: ParameterValues,
   symbols: string[],
   epsilon: number,
-): number[][] {
+): number[][] | null {
   const k = symbols.length;
   const baseResult = simulate(circuit, params, customGates);
   if (baseResult.isStabilizer) {
     return Array.from({ length: k }, () => new Array<number>(k).fill(0));
   }
-  // QC-1 fix #45: the QGT's metric, with its checked derivatives (was fixed-step ε).
+  // QC-1 fix #45: the QGT's metric, with its checked derivatives (was fixed-step ε);
+  // #54: null when a derivative is unresolved, so QNG stops instead of preconditioning with it.
   void epsilon;
   const q = quantumGeometricTensor(circuit, customGates, params, symbols);
-  if (q) return q.metric;
+  if (q) return q.unresolved.length ? null : q.metric;
   const dim = 1 << circuit.numQubits;
   const psi = baseResult.state;
   // ∂_i ψ as a Float64Array per symbol.

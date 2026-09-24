@@ -16,6 +16,7 @@ import { Register } from "../calc/register";
 import { applyStep, type Entry, type Step } from "../calc/steps";
 import { densityOk, noisyDensity, noisyStats } from "./sim";
 import type { NoiseModel } from "./model";
+import { channelsAfter } from "./channels";
 
 let sid = 0;
 export const step = (gateId: string, targets: number[], controls: number[] = [], params: string[] = []): Step => ({
@@ -110,14 +111,23 @@ export function fitDecay(xs: number[], ys: number[], fixedB?: number): { A: numb
   return { A: r.A, B: r.B, p, identifiable: true, level };
 }
 
+/** True when the model attaches no error channel to any step of these tapes (so nothing can decay). */
+export function noiselessOn(m: NoiseModel, tapes: Entry[][]): boolean {
+  return tapes.every((t) => t.every((e) => e.every((st) => channelsAfter(m, st).length === 0)));
+}
+
 /**
- * The decay rate of a fit, with the one justified reading of flat data: a
- * curve pinned at its ideal value (no noise reaches it) has p = 1, no decay.
- * Flat data anywhere else (e.g. fully decayed before the first length) is NaN.
+ * The decay rate of a fit, with the one justified reading of flat data: when
+ * the model puts no error channel on any gate that ran (`noiseless`, checked
+ * from the model, not from the data) and the curve sits at its ideal value,
+ * p = 1. A flat curve is not evidence of no noise: complete amplitude damping
+ * (ad = 1) resets every state to |0⟩, so RB survival and purity are flat at 1
+ * while the channel's unitarity is 0 (docs/quantiom-bugs.md #53). Any other
+ * flat curve is NaN (not identifiable).
  */
-export function decayOrIdeal(f: { p: number; level: number; identifiable: boolean }, ideal: number): number {
+export function decayOrIdeal(f: { p: number; level: number; identifiable: boolean }, ideal: number, noiseless: boolean): number {
   if (f.identifiable) return f.p;
-  return Math.abs(f.level - ideal) <= 1e-9 ? 1 : NaN;
+  return noiseless && Math.abs(f.level - ideal) <= 1e-9 ? 1 : NaN;
 }
 
 // ─── Randomized benchmarking ───────────────────────────────────────────
@@ -158,7 +168,7 @@ export function rb(m: NoiseModel, opts: { lengths?: number[]; sequences?: number
   const seqs = lengths.map((len) => Array.from({ length: K }, () => rbSequence(len, rng, 0, opts.interleave ?? null)));
   const survival = seqs.map((ss) => ss.reduce((a, t) => a + survival1(t, m), 0) / K);
   const f = fitDecay(lengths, survival);
-  const p = decayOrIdeal(f, 1);
+  const p = decayOrIdeal(f, 1, noiselessOn(m, seqs.flat()));
   return { lengths, survival, ...f, p, epc: (1 - p) / 2, sequences: seqs };
 }
 
@@ -185,7 +195,7 @@ export function unitarity(m: NoiseModel, opts: { lengths?: number[]; sequences?:
     return acc / K;
   });
   const f = fitDecay(lengths.map((l) => l - 1), purity);
-  return { lengths, purity, u: decayOrIdeal(f, 1), A: f.A, B: f.B, identifiable: f.identifiable, tapes };
+  return { lengths, purity, u: decayOrIdeal(f, 1, noiselessOn(m, tapes.flat())), A: f.A, B: f.B, identifiable: f.identifiable, tapes };
 }
 
 // ─── Quantum volume ────────────────────────────────────────────────────
@@ -305,7 +315,7 @@ export function xeb(m: NoiseModel, opts: { n?: number; depths?: number[]; circui
     return vals.reduce((a, b) => a + b, 0) / Math.max(1, vals.length);
   });
   const f = fitDecay(depths, fidelity, 0);
-  return { n, depths, fidelity, perCycle: decayOrIdeal(f, 1), circuits, perCircuit };
+  return { n, depths, fidelity, perCycle: decayOrIdeal(f, 1, noiselessOn(m, circuits.flat())), circuits, perCircuit };
 }
 
 // ─── Mirror circuits ───────────────────────────────────────────────────
@@ -348,14 +358,16 @@ export function mirror(m: NoiseModel, opts: { widths?: number[]; depths?: number
 export function t1t2(m: NoiseModel, opts: { delays?: number[] } = {}) {
   const delays = opts.delays ?? [0, 2, 4, 8, 16, 32, 64];
   const idle = (k: number) => Array.from({ length: k }, () => [step("i", [0])] as Entry);
-  const p = (tape: Entry[]) => noisyDensity(1, tape.length ? tape : [[step("i", [0])]], {}, m).rho;
+  const ran: Entry[][] = [];
+  const p = (tape: Entry[]) => { const t = tape.length ? tape : [[step("i", [0])]]; ran.push(t); return noisyDensity(1, t, {}, m).rho; };
   const t1 = delays.map((k) => p([[step("x", [0])], ...idle(k)])[6]); // P(1)
   const ramsey = delays.map((k) => p([[step("h", [0])], ...idle(k), [step("h", [0])]])[0]); // P(0)
   const echo = delays.map((k) => p([[step("h", [0])], ...idle(Math.floor(k / 2)), [step("x", [0])], ...idle(Math.ceil(k / 2)), [step("h", [0])]])[6]);
   const f1 = fitDecay(delays, t1), f2 = fitDecay(delays, ramsey), fe = fitDecay(delays, echo);
   const tau = (q: number) => (Number.isNaN(q) ? NaN : q >= 1 ? Infinity : -1 / Math.log(q));
   // Ideal values: P(1) after X is 1, P(0) after H·H is 1, P(1) after H·X·H is 0.
-  return { delays, t1, ramsey, echo, T1: tau(decayOrIdeal(f1, 1)), T2: tau(decayOrIdeal(f2, 1)), T2echo: tau(decayOrIdeal(fe, 0)), fits: { t1: f1, ramsey: f2, echo: fe } };
+  const quiet = noiselessOn(m, ran);
+  return { delays, t1, ramsey, echo, T1: tau(decayOrIdeal(f1, 1, quiet)), T2: tau(decayOrIdeal(f2, 1, quiet)), T2echo: tau(decayOrIdeal(fe, 0, quiet)), fits: { t1: f1, ramsey: f2, echo: fe } };
 }
 
 // ─── Repetition code ───────────────────────────────────────────────────

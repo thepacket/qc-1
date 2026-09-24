@@ -39,7 +39,9 @@ export const BENCH_RUNS: Record<string, Run> = {
       scalars.push({ label: `interleaved ${gate.toUpperCase()}: p`, value: shown(inter.p) }, { label: `error of ${gate.toUpperCase()} = (1 − p_int/p)/2`, value: shown((1 - inter.p / ref.p) / 2) });
       charts[0] = { ...charts[0], kind: "lines", series: [...(charts[0] as { series: { name: string; y: number[] }[] }).series, { name: `interleaved ${gate}`, y: inter.survival }] } as typeof charts[0];
     }
-    const flat = !ref.identifiable ? ["The survival curve is flat: the decay isn't identifiable from it. At survival 1 no noise reaches these gates (p = 1, r = 0)."] : [];
+    const flat = ref.identifiable ? [] : ref.p === 1
+      ? ["The survival curve is flat, and the noise model puts no error on these gates: p = 1, r = 0."]
+      : ["The survival curve is flat but the model has noise on these gates: the decay isn't identifiable (a flat curve can also come from a channel that resets the qubit)."];
     return { scalars, charts, notes: [NOISE_NOTE, "Single-qubit Cliffords (24, from H and S); P(m) = A·pᵐ + B fitted with B free. The interleaved gate runs as itself, with its own noise.", ...flat] };
   },
 
@@ -50,7 +52,9 @@ export const BENCH_RUNS: Record<string, Run> = {
       charts: [{ kind: "lines", x: u.lengths, xLabel: "Cliffords m", yLabel: "|Bloch|²", yMin: 0, yMax: 1, series: [{ name: "purity", y: u.purity }] }],
       notes: [NOISE_NOTE, "Mean squared Bloch length after m random Cliffords, fitted as A·uᵐ⁻¹ + B (Wallman et al. 2015).",
         "For one channel, u ≥ p² (Cauchy–Schwarz on the unital block), with equality for depolarizing noise: u close to p² means incoherent (stochastic) error, u well above p² means a coherent part. u = 1 is a unitary channel, including no error at all. Compare with p from RB only when both come from the same gate set and noise.",
-        ...(u.identifiable ? [] : ["The purity curve is flat: the decay isn't identifiable. At |Bloch|² = 1 no noise reaches the qubit (u = 1)."])],
+        ...(u.identifiable ? [] : u.u === 1
+          ? ["The purity curve is flat and the noise model puts no error on these gates: u = 1."]
+          : ["The purity curve is flat but the model has noise on these gates: u isn't identifiable (a reset channel keeps the purity at 1 while its unitarity is 0)."])],
     };
   },
 

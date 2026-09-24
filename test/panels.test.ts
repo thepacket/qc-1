@@ -11,7 +11,8 @@ import { sanitiseNoise } from "../src/noise/model";
 import { decayOrIdeal, fitDecay, rb, t1t2, unitarity, xeb } from "../src/noise/bench";
 import { majoranaStars } from "../src/sim/majoranaStars";
 import { computeLightCone } from "../src/sim/lightcone";
-import { barrenPlateauDiagnostic, optimizeExpectation } from "../src/sim/optimize";
+import { barrenPlateauDiagnostic, checkedGradient, optimizeExpectation } from "../src/sim/optimize";
+import { quantumGeometricTensor } from "../src/sim/qgt";
 import type { Entry, Step } from "../src/calc/steps";
 
 let sid = 0;
@@ -161,5 +162,47 @@ describe("causal structure", () => {
   test("control: without the condition, q0's measurement stays out of q1's cone", () => {
     const c = lowerTape(2, [[step("measure", [0], [], [], { outcome: 0 })], [step("x", [1])]]);
     expect(computeLightCone(c, 1, "backward").has(c.gates[0].id)).toBe(false);
+  });
+});
+
+// Boundary review: a flat curve isn't proof of no noise; a derivative isn't resolved just because it's consistent.
+
+describe("flat benchmark curves read 'no decay' only when the model has no noise on those gates", () => {
+  test("complete amplitude damping (ad = 1) keeps survival and purity at 1, but isn't reported as ideal", async () => {
+    const m = sanitiseNoise({ ...zero, ad: 1 });
+    const r = rb(m), u = unitarity(m), t = t1t2(m);
+    expect(r.survival.every((x) => Math.abs(x - 1) < 1e-12)).toBe(true);
+    expect(r.p).toBeNaN();
+    expect(u.u).toBeNaN();
+    expect(t.T1).not.toBe(Infinity); // P(1) after X is 0 at every delay: flat, not "no relaxation"
+    const res = await runAnalysis("unitarity", ctx(1, [], {}, m), {});
+    expect(res.notes?.join(" ")).toMatch(/isn't identifiable/);
+  });
+
+  test("per-qubit overrides: ad = 1 on the benchmarked qubit is noise; on another qubit it isn't", () => {
+    expect(rb(sanitiseNoise({ ...zero, perQubit: [{ p1: 0, ad: 1, pd: 0, readout: 0 }] })).p).toBeNaN();
+    expect(rb(sanitiseNoise({ ...zero, perQubit: [{ p1: 0, ad: 0, pd: 0, readout: 0 }, { p1: 0, ad: 1, pd: 0, readout: 0 }] })).p).toBe(1);
+  });
+});
+
+describe("derivatives at large parameter values: resolved means accurate", () => {
+  const ry = lowerTape(1, [[step("ry", [0], ["theta"])]]);
+  const Z = { kind: "sum" as const, terms: [{ coefficient: 1, paulis: "Z" }] };
+  test.each([Math.PI, 3, 1e3, 1e6, 1e8, 1e10, 1e12, 1e15])("RY(θ), ⟨Z⟩ at θ = %s: flagged, or within 1e-5 of −sin θ", (theta) => {
+    const r = checkedGradient(ry, [], { theta }, Z, "theta", 1e-4);
+    if (r.resolved) expect(Math.abs(r.g + Math.sin(theta))).toBeLessThan(1e-5);
+    if (theta >= 1e12) expect(r.resolved).toBe(false); // the review's cases: g = 0 "resolved" at 10¹²
+  });
+
+  test("controls stay resolved: the zero gradient at θ = π, and ordinary points", () => {
+    for (const theta of [Math.PI, 0.3, -2]) expect(checkedGradient(ry, [], { theta }, Z, "theta", 1e-4).resolved).toBe(true);
+  });
+
+  test("SGD from θ = 10¹² doesn't certify convergence; the QGT at 10¹⁵ is flagged", async () => {
+    const r = await optimizeExpectation(ry, [], {
+      symbols: ["theta"], observable: Z, initial: { theta: 1e12 }, steps: 5, learningRate: 0.1, epsilon: 1e-4, goal: "minimize", optimizer: "sgd",
+    });
+    expect(r.stopped).not.toBe("converged");
+    expect(quantumGeometricTensor(ry, [], { theta: 1e15 }, ["theta"])!.unresolved).toEqual(["theta"]);
   });
 });

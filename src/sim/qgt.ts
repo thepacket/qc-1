@@ -46,32 +46,44 @@ export type QgtResult = {
  * of ‖∂ψ‖; otherwise the best-agreeing R, flagged unresolved. Agreement is a
  * heuristic (see #41 for the aliasing it can't see on its own).
  */
-type Derivative = { d: Float64Array; err: number; converged: boolean; noise: number };
+type Derivative = { d: Float64Array; err: number; converged: boolean; noise: number; unc: number; fmax: number };
 function adaptiveDerivative(f: (x: number) => Float64Array, x0: number, h0 = 0.05): Derivative {
-  let fmax = 0; // the largest |f| seen: rounding in f(x ± h) is about ε·fmax, i.e. ε·fmax/h in D(h)
+  let fmax = 0; // the largest |f| seen
+  // QC-1 fix (docs/quantiom-bugs.md #54): divide by the actual spacing of the
+  // floating-point arguments x₀ ± h, and stop refining once rounding eats a
+  // quarter of it (at θ = 10¹⁵ both samples were θ itself: a derivative of 0).
   const D = (h: number) => {
-    const p = f(x0 + h), m = f(x0 - h);
+    const xp = x0 + h, xm = x0 - h, span = xp - xm;
+    if (!(span > 1.5 * h)) return null;
+    const p = f(xp), m = f(xm);
     for (let j = 0; j < p.length; j++) fmax = Math.max(fmax, Math.abs(p[j]), Math.abs(m[j]));
-    return p.map((v, j) => (v - m[j]) / (2 * h));
+    return { v: p.map((v, j) => (v - m[j]) / span), span };
   };
   const maxAbs = (v: Float64Array) => v.reduce((a, b) => Math.max(a, Math.abs(b)), 0);
-  const FLOOR = 1e-6; // ‖∂ψ‖ below this counts as "no dependence": errors are measured against it
-  let h = h0, Dh = D(h), prev: Float64Array | null = null, agree = 0;
-  let best: Derivative = { d: Dh, err: Infinity, converged: false, noise: Infinity };
+  // Rounding in D over a spacing `span`: each sample carries ~16ε·max|f| from the simulation plus
+  // |∂f|·ε·|x₀| from rounding the angle (a·x₀ is rounded to ε relative), for a large x₀ the larger.
+  const rounding = (span: number, g: number) => (2 * (16 * Number.EPSILON * fmax + Number.EPSILON * Math.abs(x0) * g)) / span;
+  const FLOOR = 1e-6; // ‖∂f‖ below this counts as "no dependence": relative errors are measured against it
+  let h = h0;
+  const first = D(h);
+  if (!first) { const z = f(x0); return { d: new Float64Array(z.length), err: Infinity, converged: false, noise: Infinity, unc: Infinity, fmax }; }
+  let Dh = first.v, prev: Float64Array | null = null, agree = 0;
+  let best: Derivative = { d: Dh, err: Infinity, converged: false, noise: Infinity, unc: Infinity, fmax };
   for (; h > 1e-10; h /= 2) {
-    const Dh2 = D(h / 2);
-    const R = Dh2.map((v, j) => (4 * v - Dh[j]) / 3);
+    const half = D(h / 2);
+    if (!half) break; // the samples are collapsing: no finer step exists here
+    const R = half.v.map((v, j) => (4 * v - Dh[j]) / 3);
     if (prev) {
       const scale = Math.max(maxAbs(R), FLOOR);
-      const rel = maxAbs(R.map((v, j) => v - prev![j])) / scale;
-      // Agreement to 1e-9 of ‖∂f‖, or to the rounding level of D at this step: f's own rounding
-      // (ε·max|f|) plus the rounding of the argument x₀ ± h (ε·|x₀|·|∂f|, large for fast angles far from 0).
-      const noise = (1e3 * Number.EPSILON * (fmax + Math.abs(x0) * maxAbs(R))) / (h / 2);
-      if (rel < best.err) best = { d: R, err: rel, converged: false, noise };
-      agree = rel <= Math.max(1e-9, noise / scale) ? agree + 1 : 0;
-      if (agree >= 2) return { d: R, err: rel, converged: true, noise };
+      const diff = maxAbs(R.map((v, j) => v - prev![j]));
+      const noise = 2 * rounding(half.span, maxAbs(R)); // Richardson weights the half step by 4/3
+      const unc = Math.max(diff, noise);
+      if (diff / scale < best.err) best = { d: R, err: diff / scale, converged: false, noise, unc, fmax };
+      // Agreement to 1e-9 of ‖∂f‖, or to a few times the rounding level (a derivative near 0).
+      agree = diff <= Math.max(1e-9 * scale, 4 * noise) ? agree + 1 : 0;
+      if (agree >= 2) return { d: R, err: diff / scale, converged: true, noise, unc, fmax };
     }
-    prev = R; Dh = Dh2;
+    prev = R; Dh = half.v;
   }
   return best;
 }
@@ -115,14 +127,19 @@ export function angleRate(circuit: Circuit, params: ParameterValues, sym: string
  * and a second, non-dyadic sequence (h₀·0.646…) must agree to 1e-7, else the
  * symbol is unresolved.
  */
-export function checkedDerivative(f: (x: number) => Float64Array, x0: number, h0: number): { d: Float64Array; err: number; resolved: boolean } {
+export function checkedDerivative(f: (x: number) => Float64Array, x0: number, h0: number): { d: Float64Array; err: number; resolved: boolean; uncertainty: number } {
   const a = adaptiveDerivative(f, x0, h0);
   const b = adaptiveDerivative(f, x0, h0 * 0.6460969734420495);
   let diff = 0, scale = 1e-6;
   a.d.forEach((v, j) => { diff = Math.max(diff, Math.abs(v - b.d[j])); scale = Math.max(scale, Math.abs(v)); });
-  // Resolved: both sequences converged and agree to 1e-7 of ‖∂f‖, or within their rounding level (a derivative ≈ 0).
-  const resolved = a.converged && b.converged && diff <= Math.max(1e-7 * scale, 2 * Math.max(a.noise, b.noise));
-  return { d: a.err <= b.err ? a.d : b.d, err: resolved ? Math.max(a.err, b.err, diff / scale) : Math.max(diff / scale, 1), resolved };
+  // "Consistent" (both sequences converged and agree within 1e-7 of ‖∂f‖ or their rounding level)
+  // is not yet "accurate": QC-1 fix #54 also requires the absolute uncertainty (disagreement or
+  // rounding, whichever is larger) to be under 1e-6 of max(‖∂f‖, max|f|), or under 1e-12.
+  const uncertainty = Math.max(a.unc, b.unc, diff);
+  const consistent = a.converged && b.converged && diff <= Math.max(1e-7 * scale, 2 * Math.max(a.noise, b.noise));
+  const accurate = uncertainty <= Math.max(1e-6 * Math.max(scale, a.fmax, b.fmax), 1e-12);
+  const resolved = consistent && accurate;
+  return { d: a.err <= b.err ? a.d : b.d, err: resolved ? Math.max(a.err, b.err, diff / scale) : Math.max(uncertainty / scale, 1), resolved, uncertainty };
 }
 
 /** QC-1 fix (docs/quantiom-bugs.md #40): eigenvalues and determinant of M/s (s = max |Mᵢⱼ|), mapped back, so a parameter rescaling can't cross an absolute threshold. */
