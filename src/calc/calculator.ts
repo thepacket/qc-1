@@ -653,10 +653,37 @@ export class Calculator {
   /** "± ctrl": the next wire tapped adds or removes a control on the selection. */
   ctrlPick = false;
 
+  /** Select a gate in the diagram. Its wire becomes the selected qubit too: one selection, not two. */
   selectStep(i: number | null) {
     this.diagSel = i !== null && i >= 0 && i < this.tape.length ? i : null;
     this.ctrlPick = false;
+    const e = this.diagSel !== null ? this.tape[this.diagSel] : undefined;
+    if (e?.[0]?.targets.length) this.sel = e[0].targets[0];
     this.changed();
+  }
+
+  /** DEL in the CIRC header: the selected gate when there is one, else the step before the scrub point. */
+  deleteCurrent() {
+    if (this.diagSel !== null) return this.deleteSelected();
+    this.deleteStep();
+  }
+
+  /** The selected gate as it would read with the typed angle (the diagram previews it; = applies it). */
+  selectedPreview(): Entry | null {
+    const e = this.selectedEntry();
+    if (!e || !e[0].params.length || this.entry.length === 0) return null;
+    const args = splitArgs(this.entry);
+    if (args.length > e[0].params.length || args.some((a) => !exprOk(a))) return null;
+    return e.map((s) => ({ ...s, params: s.params.map((p, j) => args[j] ?? p) }));
+  }
+
+  /** Wires a control can go on for the selected gate ("± ctrl" highlights them). */
+  controlCandidates(): Set<number> {
+    const e = this.selectedEntry();
+    const out = new Set<number>();
+    if (!e || e.some((s) => NONUNITARY.has(s.gateId))) return out;
+    for (let q = 0; q < this.n; q++) if (!e.some((s) => s.targets.includes(q))) out.add(q);
+    return out;
   }
 
   /** A tap on a wire: toggles a control in "± ctrl", else places the insertion point there (qubit q, before tape index `at`). */
@@ -679,6 +706,9 @@ export class Calculator {
     this.send({ t: "replace", n: this.n, tape, scope: { ...this.scope }, label });
     this.diagSel = sel;
     this.ctrlPick = false;
+    // The selected qubit follows the gate (moved up or down, dragged to another wire).
+    const e = sel !== null ? tape[sel] : undefined;
+    if (e?.[0]?.targets.length) this.sel = e[0].targets[0];
     this.changed();
   }
 
@@ -1174,8 +1204,12 @@ export class Calculator {
         return this.info(`next gate only if c[${k}] = ${v}`);
       }
       case "undo":
+        this.diagSel = null; // an undone edit can put another gate at the selected position
+        this.ctrlPick = false;
         return this.send({ t: "undo" }, (r) => this.info(r.op ? `undo ${opLabel(r.op)}` : "nothing to undo"));
       case "redo":
+        this.diagSel = null;
+        this.ctrlPick = false;
         return this.send({ t: "redo" }, (r) => this.info(r.op ? `redo ${opLabel(r.op)}` : "nothing to redo"));
       case "var": {
         // Repeated 2ND+, cycles the symbol just inserted: θ → φ → λ → …
@@ -1216,6 +1250,8 @@ export class Calculator {
         return this.send({ t: "clear" }, (r) => this.info(`|${"0".repeat(r.n)}⟩ (UNDO restores)`));
       }
       case "eq":
+        // With a gate selected in the diagram and an angle typed, = sets that gate's angle.
+        if (this.diagSel !== null && this.entry.length > 0 && this.selectedEntry()?.[0].params.length) return this.setSelectedParams();
         return this.send({ t: "repeat" }, (r) => r.done && this.info(formatEntry(r.done)));
     }
   }

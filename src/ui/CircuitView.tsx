@@ -13,6 +13,8 @@ const ROW = 34; // wire spacing (gates are 18 px tall: room to tell wires apart 
 const TOP = 14; // room for IF labels
 const CH = 6.6; // mono character width at 11px
 const BOX_H = 18;
+const GAP = 8; // between columns
+const GAP_EDIT = 22; // while editing: room for a tappable "+" in every gap
 const LONG_PRESS_MS = 350;
 
 /** Width a step needs in its column. */
@@ -28,44 +30,82 @@ const label = (s: Placed["step"]) => (s.gateId === "measure" ? "M" : gateLabel(s
 /** What the editor needs from the diagram (absent in the report's read-only copy). */
 type Edit = {
   sel: number | null; ctrlPick: boolean; cursorQubit: number;
+  /** The selected gate as it would read with the typed angle (drawn in its place, dashed). */
+  preview: Entry | null;
+  /** In "± ctrl": the wires that can take a control. */
+  ctrlOk: Set<number>;
   onGate: (entry: number) => void;
   onWire: (q: number, at: number) => void;
   onDrop: (entry: number, items: Placed[], col: number, dq: number) => void;
 };
 
+/** "q1, before step 3: RX(t)" / "q1, at the end": where the next gate key lands. */
+function nextPlace(calc: Calculator): string {
+  const at = calc.scrub ?? calc.tape.length;
+  const q = calc.sel;
+  const next = calc.tape.findIndex((e, k) => k >= at && e.some((s) => [...s.controls, ...s.targets].includes(q)));
+  return next < 0 ? `q${q}, at the end` : `q${q}, before step ${next + 1}: ${formatEntry(calc.tape[next])}`;
+}
+
 /**
- * CIRC → DIAG: the circuit drawn, and edited. Tap a wire to place the
- * insertion point there (the next gate key goes there); tap a gate to select
- * it (the action bar moves, re-targets, re-parameterises or deletes it; a
- * gate key changes it); long-press a gate and drag it to move it in time or
- * to another wire. Every edit is one UNDO.
+ * CIRC → DIAG: the circuit drawn, and edited. The selected wire shows a "+"
+ * in every gap: tap one to put the next gate there (the filled one is where
+ * it goes now). Tap a gate to select it; the panel under the diagram, always
+ * the same height so nothing moves under the finger, moves it, sets its angle
+ * (type a number, then = or "angle"), adds controls; a gate key changes it;
+ * DEL in the header deletes it; drag it by its handle, or long-press. Every
+ * edit is one UNDO.
  */
 export function CircuitView({ calc }: { calc: Calculator }) {
   const sel = calc.diagSel;
   const e = sel !== null ? calc.tape[sel] : undefined;
+  const preview = calc.selectedPreview();
+  const typed = calc.entry.length > 0;
   return (
     <>
-      {e && (
-        <div className="diag-bar" role="toolbar" aria-label="Selected gate">
-          <span className="diag-sel">{sel! + 1}: {formatEntry(e)}</span>
-          <button onClick={() => calc.moveSelected(-1)} aria-label="Move earlier">◀</button>
-          <button onClick={() => calc.moveSelected(1)} aria-label="Move later">▶</button>
-          <button onClick={() => calc.shiftSelected(-1)} aria-label="Move up a wire">▲</button>
-          <button onClick={() => calc.shiftSelected(1)} aria-label="Move down a wire">▼</button>
-          {e[0].params.length > 0 && <button onClick={() => calc.setSelectedParams()} aria-label="Set the angle from the typed number">angle</button>}
-          <button className={calc.ctrlPick ? "on" : ""} onClick={() => calc.toggleCtrlPick()} aria-pressed={calc.ctrlPick} aria-label="Add or remove a control: then tap a wire">± ctrl</button>
-          <button className="del" onClick={() => calc.deleteSelected()} aria-label="Delete the gate">DEL</button>
-          <button onClick={() => calc.selectStep(null)} aria-label="Deselect">✕</button>
-        </div>
-      )}
-      {e && <div className="diag-hint dim">{calc.ctrlPick ? "tap a wire to add or remove a control" : "a gate key replaces it · type a number, then angle · long-press a gate to drag"}</div>}
       <CircuitDiagram n={calc.n} tape={calc.tape} scrub={calc.scrub}
         edit={{
-          sel, ctrlPick: calc.ctrlPick, cursorQubit: calc.sel,
+          sel, ctrlPick: calc.ctrlPick, cursorQubit: calc.sel, preview, ctrlOk: calc.ctrlPick ? calc.controlCandidates() : new Set(),
           onGate: (i) => calc.selectStep(sel === i ? null : i),
           onWire: (q, at) => calc.tapWire(q, at),
           onDrop: (i, items, col, dq) => calc.dropStep(i, items, col, dq),
         }} />
+      <div className="diag-panel" role="region" aria-label="Circuit editing" aria-live="polite">
+        {!e ? (
+          <>
+            <div className="diag-status">Next gate → <b>{nextPlace(calc)}</b></div>
+            <div className="diag-hint dim">Tap a <b>+</b> on the wire to insert there, another wire to switch to it, a gate to edit it.</div>
+          </>
+        ) : calc.ctrlPick ? (
+          <>
+            <div className="diag-status">Controls for <b>{sel! + 1}: {formatEntry(e)}</b></div>
+            <div className="diag-hint">Tap a highlighted wire to add a control there, or a control to remove it.</div>
+            <div className="diag-bar" role="toolbar" aria-label="Controls">
+              <button className="on" onClick={() => calc.toggleCtrlPick()}>Done</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="diag-status">
+              <b>{sel! + 1}: {formatEntry(e)}</b>
+              {preview && <span className="diag-preview"> → {formatEntry(preview)} · = applies</span>}
+            </div>
+            <div className="diag-bar" role="toolbar" aria-label="Selected gate">
+              <button onClick={() => calc.moveSelected(-1)} aria-label="Move earlier">‹ earlier</button>
+              <button onClick={() => calc.moveSelected(1)} aria-label="Move later">later ›</button>
+              <button onClick={() => calc.shiftSelected(-1)} aria-label="Move up a wire">up</button>
+              <button onClick={() => calc.shiftSelected(1)} aria-label="Move down a wire">down</button>
+              {e[0].params.length > 0 && (
+                <button className={preview ? "on" : ""} disabled={!typed} onClick={() => calc.setSelectedParams()}
+                  aria-label="Set the angle from the typed number">angle</button>
+              )}
+              <button onClick={() => calc.toggleCtrlPick()} aria-label="Add or remove controls">± ctrl</button>
+              <button onClick={() => calc.selectStep(null)} aria-label="Deselect">done</button>
+            </div>
+            <div className="diag-hint dim">{e[0].params.length > 0 && !typed ? "Type an angle, then =. " : ""}A gate key changes it · DEL deletes it · drag the ⠿ handle to move it.</div>
+          </>
+        )}
+      </div>
     </>
   );
 }
@@ -78,14 +118,16 @@ export function CircuitDiagram({ n, tape, scrub, edit }: { n: number; tape: Entr
   const wires = useMemo(() => (n <= DIAGRAM_MAX_QUBITS ? null : usedQubits(tape)), [n, tape]);
   const tooWide = wires !== null && wires.length > DIAGRAM_MAX_QUBITS;
   const lay = useMemo(() => (!tooWide && steps <= MAX_STEPS ? layoutTape(n, tape, wires ?? undefined) : null), [n, tape, wires, tooWide, steps]);
+  // Editing leaves room between columns for the "+" insertion slots.
+  const gap = edit ? GAP_EDIT : GAP;
   const geo = useMemo(() => {
     if (!lay) return null;
     const w = new Array<number>(lay.cols).fill(20);
     for (const it of lay.items) w[it.col] = Math.max(w[it.col], need(it.step));
-    const x = [8];
-    for (let c = 0; c < lay.cols; c++) x.push(x[c] + w[c] + 8);
+    const x = [gap];
+    for (let c = 0; c < lay.cols; c++) x.push(x[c] + w[c] + gap);
     return { w, x };
-  }, [lay]);
+  }, [lay, gap]);
   const box = useRef<HTMLDivElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const main = useRef<SVGSVGElement>(null);
@@ -129,14 +171,33 @@ export function CircuitDiagram({ n, tape, scrub, edit }: { n: number; tape: Entr
   };
   const svgX = (clientX: number) => clientX - main.current!.getBoundingClientRect().left;
 
-  // The insertion point, on the selected wire: after its last gate before `at` (the next gate key lands there).
+  // The selected wire's insertion slots: one before its first gate and one after each of its gates.
+  // Slot L (L = the column of the gate it follows, −1 at the start) sits in the gap before column L + 1.
   const curRow = edit ? rowOf.get(edit.cursorQubit) : undefined;
-  const lastBefore = lay.items.filter((it) => it.entry < at && curRow !== undefined && it.lo <= curRow && curRow <= it.hi).reduce((m, it) => Math.max(m, it.col), -1);
-  const markX = geo.x[lastBefore + 1] - 4;
-  const showMark = !!edit && edit.sel === null && (scrub !== null || tape.length === 0);
+  const onRow = (it: Placed) => curRow !== undefined && it.lo <= curRow && curRow <= it.hi;
+  const lastBefore = lay.items.filter((it) => it.entry < at && onRow(it)).reduce((m, it) => Math.max(m, it.col), -1);
+  const slotX = (L: number) => geo.x[L + 1] - gap / 2;
+  // After a wire's last gate, the rest of the circuit commutes with the new one: put it at the very end
+  // (live, nothing dimmed) rather than in the middle of the tape.
+  const onWireAt = (r: number, ins: number) => (lay.items.some((it) => it.lo <= r && r <= it.hi && it.entry >= ins) ? ins : tape.length);
+  const slots = edit && edit.sel === null && curRow !== undefined
+    ? [...new Set([-1, ...lay.items.filter(onRow).map((it) => it.col)])].map((L) => {
+        const ins = onWireAt(curRow, insertionIndex(lay.items, L + 1, curRow, curRow));
+        const next = lay.items.filter(onRow).find((it) => it.entry === ins);
+        return { L, at: ins, here: L === lastBefore, label: next ? `Insert on q${edit.cursorQubit} before step ${ins + 1}` : `Insert on q${edit.cursorQubit} at the end` };
+      })
+    : [];
 
-  const onDown = (ev: RPointerEvent, entry: number) => {
+  /** A press on a gate: a tap selects it; a long press (or a press on the selected gate's handle, `now`) drags it. */
+  const onDown = (ev: RPointerEvent, entry: number, now = false) => {
     if (!edit) return;
+    if (now) {
+      ev.stopPropagation();
+      press.current = { entry, x0: ev.clientX, y0: ev.clientY, timer: 0, dragging: true, moved: false };
+      setDrag({ entry, dx: 0, dy: 0 });
+      (ev.currentTarget as Element).setPointerCapture?.(ev.pointerId);
+      return;
+    }
     const timer = window.setTimeout(() => {
       if (!press.current || press.current.moved) return;
       press.current.dragging = true;
@@ -183,29 +244,39 @@ export function CircuitDiagram({ n, tape, scrub, edit }: { n: number; tape: Entr
       <div className="circ-scroll" ref={box}>
         <svg ref={main} width={W} height={H} role="img" aria-label={`Circuit: ${tape.length} steps on ${n} qubits`}
           className={edit?.ctrlPick ? "ctrl-pick" : undefined}>
-          {lay.wires.map((q, r) => (
-            <g key={q}>
-              {/* the wire's tap target: a place for the next gate, or a control to toggle */}
-              {edit && <rect className="wire-hit" x={0} y={y(r) - ROW / 2} width={W} height={ROW}
-                onClick={(ev) => edit.onWire(q, insertionIndex(lay.items, colAt(svgX(ev.clientX)), r, r))} />}
-              <line className="wire" x1={0} x2={W} y1={y(r)} y2={y(r)} />
-            </g>
-          ))}
-          {showMark && (
-            <g className="insert-mark" pointerEvents="none">
-              <line x1={markX} x2={markX} y1={TOP} y2={H} />
-              {rowOf.has(edit!.cursorQubit) && <circle cx={markX} cy={y(rowOf.get(edit!.cursorQubit)!)} r={3.5} />}
-            </g>
-          )}
+          {lay.wires.map((q, r) => {
+            const pick = edit?.ctrlPick;
+            const ok = pick && edit!.ctrlOk.has(q);
+            return (
+              <g key={q} className={pick ? (ok ? "ctl-ok" : "ctl-no") : edit && q === edit.cursorQubit && edit.sel === null ? "cur" : undefined}>
+                {/* the wire's tap target: switch to this wire (the next gate goes where it was tapped), or toggle a control */}
+                {edit && <rect className="wire-hit" x={0} y={y(r) - ROW / 2} width={W} height={ROW}
+                  onClick={(ev) => edit.onWire(q, onWireAt(r, insertionIndex(lay.items, colAt(svgX(ev.clientX)), r, r)))} />}
+                <line className="wire" x1={0} x2={W} y1={y(r)} y2={y(r)} />
+              </g>
+            );
+          })}
           {lay.items.map((it, k) => (
             <Gate key={k} it={it} row={(q) => rowOf.get(q)!} x={geo.x[it.col] + geo.w[it.col] / 2} y={y}
               state={[
                 it.entry >= at ? "ahead" : it.entry === at - 1 && scrub !== null && !edit ? "at" : "",
                 edit?.sel === it.entry ? "sel" : "",
                 drag?.entry === it.entry ? "dragging" : "",
+                edit?.sel === it.entry && edit.preview ? "preview" : "",
               ].join(" ")}
+              shown={edit?.sel === it.entry && edit.preview ? edit.preview.find((s) => s.id === it.step.id) ?? it.step : it.step}
               offset={drag?.entry === it.entry ? drag : null}
-              onDown={edit ? (ev) => onDown(ev, it.entry) : undefined} onMove={onMove} onUp={onUp} onCancel={onCancel} />
+              onDown={edit ? (ev, now) => onDown(ev, it.entry, now) : undefined} onMove={onMove} onUp={onUp} onCancel={onCancel}
+              onActivate={edit ? () => edit.onGate(it.entry) : undefined} />
+          ))}
+          {slots.map((sl) => (
+            <g key={sl.L} className={`slot${sl.here ? " here" : ""}`} role="button" tabIndex={0} aria-label={sl.label + (sl.here ? " (the insertion point)" : "")}
+              onClick={() => edit!.onWire(edit!.cursorQubit, sl.at)}
+              onKeyDown={(ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); edit!.onWire(edit!.cursorQubit, sl.at); } }}>
+              <rect className="slot-hit" x={slotX(sl.L) - gap / 2} y={y(curRow!) - ROW / 2} width={gap} height={ROW} />
+              <circle cx={slotX(sl.L)} cy={y(curRow!)} r={7} />
+              <text x={slotX(sl.L)} y={y(curRow!) + 4} textAnchor="middle">+</text>
+            </g>
           ))}
         </svg>
       </div>
@@ -213,24 +284,30 @@ export function CircuitDiagram({ n, tape, scrub, edit }: { n: number; tape: Entr
   );
 }
 
-function Gate({ it, x, y: yRow, row, state, offset, onDown, onMove, onUp, onCancel }: {
-  it: Placed; x: number; y: (r: number) => number; row: (q: number) => number; state: string;
+function Gate({ it, shown, x, y: yRow, row, state, offset, onDown, onMove, onUp, onCancel, onActivate }: {
+  it: Placed; shown?: Placed["step"]; x: number; y: (r: number) => number; row: (q: number) => number; state: string;
   offset: { dx: number; dy: number } | null;
-  onDown?: (ev: RPointerEvent) => void; onMove: (ev: RPointerEvent) => void; onUp: (ev: RPointerEvent) => void; onCancel: () => void;
+  onDown?: (ev: RPointerEvent, now?: boolean) => void; onMove: (ev: RPointerEvent) => void; onUp: (ev: RPointerEvent) => void; onCancel: () => void;
+  onActivate?: () => void;
 }) {
-  const s = it.step;
+  const s = shown ?? it.step;
   const y = (q: number) => yRow(row(q)); // by qubit
   const yr = yRow; // by row
   const ctrl = new Set(s.controls);
   const cnot = s.gateId === "x" && s.controls.length > 0;
   const text = label(s);
   const bw = Math.max(20, text.length * CH + 10);
+  const where = [...new Set([...s.controls, ...s.targets])].sort((a, b) => a - b).map((q) => `q${q}`).join(", ");
+  const selected = state.includes("sel");
   return (
     <g className={`gate ${state}`} transform={offset ? `translate(${offset.dx},${offset.dy})` : undefined}
-      onPointerDown={onDown} onPointerMove={onDown && onMove} onPointerUp={onDown && onUp} onPointerCancel={onDown && onCancel}>
+      role={onActivate ? "button" : undefined} tabIndex={onActivate ? 0 : undefined} aria-pressed={onActivate ? selected : undefined}
+      aria-label={onActivate ? `Step ${it.entry + 1}: ${text} on ${where}` : undefined}
+      onKeyDown={onActivate && ((ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); onActivate(); } })}
+      onPointerDown={onDown && ((ev) => onDown(ev))} onPointerMove={onDown && onMove} onPointerUp={onDown && onUp} onPointerCancel={onDown && onCancel}>
       <title>{`${it.entry + 1}: ${text}`}</title>
-      {/* a hit area wider than the marks */}
-      <rect className="hit" x={x - bw / 2 - 3} y={yr(it.lo) - ROW / 2} width={bw + 6} height={(it.hi - it.lo + 1) * ROW} />
+      {/* the hit area: the gate's own width (the gaps belong to the insertion slots) */}
+      <rect className="hit" x={x - bw / 2} y={yr(it.lo) - ROW / 2} width={bw} height={(it.hi - it.lo + 1) * ROW} />
       {it.hi > it.lo && <line className="link" x1={x} x2={x} y1={yr(it.lo)} y2={yr(it.hi)} />}
       {s.controls.map((q, i) => (
         <circle key={`c${q}`} className={s.controlStates?.[i] === false ? "ctl open" : "ctl"} cx={x} cy={y(q)} r={4} />
@@ -255,6 +332,13 @@ function Gate({ it, x, y: yRow, row, state, offset, onDown, onMove, onUp, onCanc
         );
       })}
       {s.condition && <text className="iflabel" x={x} y={yr(it.lo) - BOX_H / 2 - 2} textAnchor="middle">c{s.condition.clbit}={s.condition.value}</text>}
+      {selected && onDown && (
+        // The drag handle: press and move right away (no long press needed).
+        <g className="handle-grip" onPointerDown={(ev) => onDown(ev, true)} aria-hidden>
+          <rect x={x - 11} y={yr(it.hi) + BOX_H / 2 + 1} width={22} height={13} rx={3} />
+          <text x={x} y={yr(it.hi) + BOX_H / 2 + 11} textAnchor="middle">⠿</text>
+        </g>
+      )}
     </g>
   );
 }

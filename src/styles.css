@@ -658,7 +658,7 @@ button {
 .circ-labels text { fill: var(--ink-muted); font-size: 10px; }
 .circ-scroll { flex: 1; min-width: 0; overflow-x: auto; }
 .circ svg { display: block; }
-.circ .wire { stroke: var(--ink-muted); stroke-width: 1; }
+.circ .wire { stroke: var(--ink-muted); stroke-width: 1; pointer-events: none; } /* taps go to .wire-hit */
 .circ .link { stroke: var(--ink-dim); stroke-width: 1.5; }
 .circ .hit { fill: transparent; }
 .circ .ctl { fill: var(--ink-dim); stroke: var(--ink-dim); stroke-width: 1.5; }
@@ -843,16 +843,57 @@ button {
 .ket-row .amp { white-space: pre; font-variant-numeric: tabular-nums; }
 
 /* DIAG editing: the selection's action bar, tap targets, insertion marker, drag */
-.diag-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 2px 0 3px; font-family: var(--mono); font-size: 11px; }
-.diag-bar .diag-sel { flex: 1 1 100%; color: var(--series-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.diag-bar button { min-width: 30px; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--ink-dim); color: var(--ink); }
+/* The editing panel sits under the diagram at a fixed height: selecting never moves the circuit. */
+.diag-panel {
+  flex: none;
+  height: 128px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0 2px;
+  border-top: 1px solid var(--grid);
+  font-size: 11px;
+  overflow: hidden;
+}
+.diag-panel > * { flex: none; }
+.diag-status { min-height: 15px; font-family: var(--mono); color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.diag-status b { color: var(--series-1); font-weight: 600; }
+.diag-preview { color: var(--amber); }
+.diag-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; font-family: var(--mono); font-size: 12px; }
+.diag-bar button {
+  min-width: 44px;
+  min-height: 34px;
+  padding: 0 4px;
+  border-radius: 6px;
+  border: 1px solid var(--ink-muted);
+  color: var(--ink);
+  background: var(--lcd-hi);
+}
 .diag-bar button.on { background: var(--series-1); border-color: var(--series-1); }
-.diag-bar button.del { border-color: var(--critical); color: var(--critical); }
-.diag-hint { font-size: 10px; padding-bottom: 2px; }
+.diag-bar button:disabled { opacity: 0.4; }
+.diag-hint { font-size: 10.5px; line-height: 1.35; font-family: var(--sans); }
+.diag-hint b { color: var(--series-1); }
 .circ .wire-hit { fill: transparent; cursor: crosshair; }
+/* The selected wire, its "+" insertion slots (filled: where the next gate goes) */
+.circ .cur .wire { stroke: var(--ink-dim); }
+.circ .slot { cursor: pointer; }
+.circ .slot-hit { fill: transparent; }
+.circ .slot circle { fill: var(--lcd); stroke: var(--ink-muted); stroke-width: 1; }
+.circ .slot text { fill: var(--ink-muted); font-size: 11px; pointer-events: none; }
+.circ .slot.here circle { fill: var(--series-1); stroke: var(--series-1); }
+.circ .slot.here text { fill: var(--ink); font-weight: 700; }
+.circ .slot:focus-visible circle, .circ .gate:focus-visible .box, .circ .gate:focus-visible .oplus { stroke: var(--amber); stroke-width: 2; }
+.circ .slot:focus, .circ .gate:focus { outline: none; }
+/* A typed angle previewed on the selected gate (amber, dashed); its drag handle */
+.circ .gate.preview .box { stroke: var(--amber); stroke-dasharray: 4 2; }
+.circ .gate.preview .glabel { fill: var(--amber); }
+.circ .handle-grip { cursor: grab; touch-action: none; }
+.circ .handle-grip rect { fill: var(--series-1); }
+.circ .handle-grip text { fill: var(--ink); font-size: 10px; pointer-events: none; }
+/* "± ctrl": the wires a control can go on stand out, the others fade */
+.circ .ctl-ok .wire { stroke: var(--series-1); stroke-width: 2; }
+.circ .ctl-no .wire { opacity: 0.35; }
 .circ svg.ctrl-pick .wire-hit { fill: rgba(57, 135, 229, 0.08); }
-.circ .insert-mark line { stroke: var(--amber); stroke-width: 1.5; stroke-dasharray: 3 2; }
-.circ .insert-mark circle { fill: var(--amber); }
 .circ-labels .cursor { fill: var(--amber); font-weight: 700; }
 .circ .gate.sel .box, .circ .gate.sel .oplus, .circ .gate.sel .ctl { stroke: var(--amber); stroke-width: 2; }
 .circ .gate.sel .link { stroke: var(--amber); }

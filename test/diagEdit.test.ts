@@ -92,4 +92,64 @@ describe("editing in the calculator", () => {
     expect(c.diagSel).toBeNull();
     expect(names(c.tape)).toEqual(["H q0"]);
   });
+
+  test("one selection: selecting a gate selects its wire, and the wire follows the gate when it moves", () => {
+    const c = calc();
+    keys(c, "3", "2nd", "q");
+    c.tapWire(1, 0); keys(c, "h");
+    c.tapWire(0, 0); keys(c, "x");
+    expect(c.sel).toBe(0);
+    c.selectStep(1); // the tape is [X q0, H q1]: X went in before H
+    const onQ = (i: number) => c.tape[i][0].targets[0];
+    expect(c.sel).toBe(onQ(1));
+    c.shiftSelected(1);
+    expect(c.sel).toBe(onQ(c.diagSel!));
+  });
+
+  test("header DEL deletes the selected gate when there is one, else the last step", () => {
+    const c = calc();
+    keys(c, "h", "x", "z");
+    c.selectStep(0);
+    c.deleteCurrent();
+    expect(names(c.tape)).toEqual(["X q0", "Z q0"]);
+    expect(c.diagSel).toBeNull();
+    c.deleteCurrent();
+    expect(names(c.tape)).toEqual(["X q0"]);
+  });
+
+  test("a typed angle is previewed on the selected gate and = applies it (not REPEAT)", () => {
+    const c = calc();
+    keys(c, "pi", "div", "2", "rx", "h");
+    c.selectStep(0);
+    expect(c.selectedPreview()).toBeNull();
+    keys(c, "2");
+    expect(names([c.selectedPreview()!])).toEqual(["RX(2) q0"]);
+    expect(names(c.tape)).toEqual(["RX(π÷2) q0", "H q0"]); // not applied yet
+    keys(c, "eq");
+    expect(names(c.tape)).toEqual(["RX(2) q0", "H q0"]);
+    expect(c.diagSel).toBe(0);
+    c.selectStep(null);
+    keys(c, "eq"); // without a selection = still repeats the last gate
+    expect(c.tape).toHaveLength(3);
+  });
+
+  test("± ctrl offers every wire that isn't a target; a measurement offers none", () => {
+    const c = calc();
+    keys(c, "3", "2nd", "q", "h");
+    c.selectStep(0);
+    expect([...c.controlCandidates()].sort()).toEqual([1, 2]);
+    keys(c, "meas");
+    c.selectStep(1);
+    expect(c.controlCandidates().size).toBe(0);
+  });
+
+  test("UNDO and REDO let go of the selection (another gate may now sit at that position)", () => {
+    const c = calc();
+    keys(c, "h", "x");
+    c.selectStep(1);
+    c.moveSelected(-1);
+    expect(c.diagSel).toBe(0);
+    keys(c, "undo");
+    expect(c.diagSel).toBeNull();
+  });
 });

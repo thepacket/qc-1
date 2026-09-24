@@ -168,7 +168,7 @@ export function TapeView({ calc }: { calc: Calculator }) {
     (calc.scrub === null ? end : cur).current?.scrollIntoView({ block: calc.scrub === null ? "end" : "nearest" });
   }, [tape, pane, calc.scrub]);
   const tab = (p: TapePane, label: string) => (
-    <button className={pane === p ? "on" : ""} onClick={() => setPane(pane === p && p === "menu" ? "circ" : p)}>{label}</button>
+    <button className={pane === p ? "on" : ""} onClick={() => { if (p !== "circ") calc.selectStep(null); setPane(pane === p && p === "menu" ? "circ" : p); }}>{label}</button>
   );
   return (
     <div className="view">
@@ -192,7 +192,9 @@ export function TapeView({ calc }: { calc: Calculator }) {
             onChange={(e) => calc.setScrub(Number(e.target.value))} />
           <button onClick={() => calc.setScrub(at + 1)} disabled={at >= tape.length} aria-label="Step forward">▶</button>
           <span className="dim">{calc.scrub === null ? "live" : `@${at} · insert`}</span>
-          <button className="del" onClick={() => calc.deleteStep()} disabled={at === 0} aria-label={`Delete step ${at}`}>DEL</button>
+          {calc.diagSel !== null
+            ? <button className="del" onClick={() => calc.deleteCurrent()} aria-label={`Delete the selected gate, step ${calc.diagSel + 1}`}>DEL {calc.diagSel + 1}</button>
+            : <button className="del" onClick={() => calc.deleteCurrent()} disabled={at === 0} aria-label={`Delete step ${at}`}>DEL</button>}
         </div>
       )}
       {pane === "circ" && <CircuitView calc={calc} />}
