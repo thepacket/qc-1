@@ -3,8 +3,12 @@
  * of JavaScript, typed by the user, draws whatever it likes from the state.
  * Ported from Quantiom's plotProgram, keeping its safety model:
  *
- *  1. The code runs in its own Web Worker (plotSandbox.ts): no DOM, no page.
- *  2. Network, storage and nested-worker globals are removed first.
+ *  1. QC-1: the code runs in an opaque-origin data: worker started by
+ *     plotHost.ts, whose server-sent CSP refuses every network request and
+ *     nested worker; the runner verifies that isolation before it runs
+ *     anything and refuses otherwise (docs/quantiom-bugs.md #55). Upstream
+ *     only shadowed globals, which the prototype chain gives back.
+ *  2. Network, storage and nested-worker globals are also removed.
  *  3. A timeout terminates a runaway program.
  *  4. The returned scene is sanitised: element types whitelisted, numbers
  *     clamped, colours limited to literals and the display's theme variables,
@@ -125,7 +129,7 @@ export function runPlotProgram(code: string, input: PlotProgramInput, timeoutMs 
     if (typeof Worker === "undefined") return resolve({ error: "Web Workers are unavailable here: the plot sandbox can't run." });
     let worker: Worker;
     try {
-      worker = new Worker(new URL("./plotSandbox.ts", import.meta.url), { type: "module" });
+      worker = new Worker(new URL("./plotHost.ts", import.meta.url), { type: "module" });
     } catch {
       return resolve({ error: "could not start the plot sandbox" });
     }

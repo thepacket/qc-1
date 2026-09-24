@@ -60,7 +60,11 @@ export function parseComplex(tok: string): [number, number] | null {
 }
 
 /** A typed state: k qubits and its normalised amplitudes (q0 is the leftmost bit of a label). */
+/** QC-1 (#59): typed text beyond this is refused before any parsing (a 16×16 matrix needs a few kB). */
+export const TYPED_MAX_CHARS = 20_000;
+
 export function parseState(text: string): { k: number; re: number[]; im: number[] } {
+  if (text.length > TYPED_MAX_CHARS) throw new Error(`at most ${TYPED_MAX_CHARS} characters`);
   let t = text.trim().replace(/[〉>]/g, "⟩").replace(/−/g, "-");
   if (!t) throw new Error("type a state, e.g. |00⟩ + |11⟩");
   let re: number[], im: number[], k: number;
@@ -71,6 +75,8 @@ export function parseState(text: string): { k: number; re: number[]; im: number[
     const terms = [...t.matchAll(/([+-]?)\s*([^|+-]*(?:\([^)]*\))?[^|+-]*)\s*\|([01]+)⟩/g)];
     if (!terms.length) throw new Error("no |bits⟩ terms");
     k = terms[0][3].length;
+    // QC-1 fix (docs/quantiom-bugs.md #59): check the size before allocating 2^k entries.
+    if (k > STATE_MAX_QUBITS) throw new Error(`${STATE_MAX_QUBITS} qubits at most`);
     re = new Array(1 << k).fill(0);
     im = new Array(1 << k).fill(0);
     const rest = t.replace(/([+-]?)\s*([^|+-]*(?:\([^)]*\))?[^|+-]*)\s*\|([01]+)⟩/g, "").trim();
@@ -85,6 +91,7 @@ export function parseState(text: string): { k: number; re: number[]; im: number[
     }
   } else if (/^[01]+$/.test(t)) {
     k = t.length;
+    if (k > STATE_MAX_QUBITS) throw new Error(`${STATE_MAX_QUBITS} qubits at most`); // before allocating (#59)
     re = new Array(1 << k).fill(0);
     im = new Array(1 << k).fill(0);
     re[parseInt(t, 2)] = 1;
@@ -92,6 +99,7 @@ export function parseState(text: string): { k: number; re: number[]; im: number[
     const toks = t.split(/[,;\s]+/).filter(Boolean);
     k = Math.log2(toks.length);
     if (!Number.isInteger(k) || k < 1) throw new Error("give 2, 4, 8… amplitudes, or |bits⟩ terms");
+    if (k > STATE_MAX_QUBITS) throw new Error(`${STATE_MAX_QUBITS} qubits at most`);
     re = [];
     im = [];
     for (const x of toks) {
@@ -109,6 +117,7 @@ export function parseState(text: string): { k: number; re: number[]; im: number[
 
 /** A typed matrix: square, 2^k × 2^k, rows by ";" or new lines. Returns rows of [re, im]. */
 export function parseMatrix(text: string): { k: number; U: Cx[][]; drift: number } {
+  if (text.length > TYPED_MAX_CHARS) throw new Error(`at most ${TYPED_MAX_CHARS} characters`);
   const rows = text.trim().replace(/−/g, "-").split(/[;\n]+/).map((r) => r.trim()).filter(Boolean)
     .map((r) => r.replace(/^\[|\]$/g, "").split(",").map((x) => x.trim()).filter(Boolean));
   const d = rows.length;

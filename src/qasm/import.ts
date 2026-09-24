@@ -61,6 +61,8 @@ function tokenize(src: string): Tok[] {
 
 type Arg = { reg: string; index: number | null };
 type Mod = { kind: "ctrl" | "negctrl" | "inv" | "pow"; k: number };
+/** QC-1: the most steps one import may expand to (modifiers, broadcasts and nested definitions included). */
+export const MAX_IMPORT_STEPS = 100_000;
 type Call = { k: "call"; name: string; params: string[]; args: Arg[]; mods: Mod[]; line: number };
 type Stmt =
   | Call
@@ -304,6 +306,9 @@ class Parser {
           this.eat(")");
           k = Number(e.replace(/\s+/g, ""));
           if (!Number.isInteger(k)) throw new QasmImportError(`${t}(${e}): integer expected`, line);
+          // QC-1 fix (docs/quantiom-bugs.md #57): bound counts before anything is allocated from them.
+          if ((t === "ctrl" || t === "negctrl") && k < 1) throw new QasmImportError(`${t}(${e}): at least 1 control`, line);
+          if (Math.abs(k) > MAX_IMPORT_STEPS) throw new QasmImportError(`${t}(${e}): too large (at most ${MAX_IMPORT_STEPS})`, line);
         }
         this.eat("@");
         mods.push({ kind: t, k });
@@ -488,6 +493,27 @@ export function importQasm(src: string, existing: CustomGate[] = []): ImportResu
   const created: CustomGate[] = [];
   const nativeDefs = new Set<string>();
 
+  // QC-1 fix (docs/quantiom-bugs.md #57): every emitted step is charged to one budget per import,
+  // before it is allocated, so pow(10⁹) or nested definitions can't freeze the page or exhaust memory.
+  // A custom gate costs what it expands to when it runs (definitions nest: g1 { g0; g0; }, g2 { g1; g1; }, …).
+  let budget = MAX_IMPORT_STEPS;
+  const spend = (count: number, line: number) => {
+    if (!Number.isSafeInteger(count) || count > budget) throw new QasmImportError(`the circuit expands to more than ${MAX_IMPORT_STEPS} steps`, line);
+    budget -= count;
+  };
+  const expanded = new Map<string, number>();
+  const sizeOf = (st: Step, depth = 0): number => {
+    if (!st.gateId.startsWith("custom:")) return 1;
+    const name = st.gateId.slice(7);
+    const known = expanded.get(name);
+    if (known !== undefined) return known;
+    const def = customByName.get(name) ?? [...customByName.values()].find((d) => d.name === name);
+    if (!def || depth > 64) return MAX_IMPORT_STEPS + 1;
+    const size = Math.min(MAX_IMPORT_STEPS + 1, def.tape.flat().reduce((a, x) => a + sizeOf(x, depth + 1), 0));
+    expanded.set(name, size);
+    return size;
+  };
+
   /** Steps for one call on concrete qubits (local = inside a gate body being built). */
   const emit = (
     s: Call | Extract<Stmt, { k: "gphase" }>, qubitsOf: (a: Arg) => number[], paramMap: Map<string, string>, line: number, home = 0,
@@ -498,6 +524,8 @@ export function importQasm(src: string, existing: CustomGate[] = []): ImportResu
     const states = ctrlMods.flatMap((m) => Array.from({ length: m.k }, () => m.kind === "ctrl"));
     const invCount = s.mods.filter((m) => m.kind === "inv").length;
     const pow = s.mods.filter((m) => m.kind === "pow").reduce((a, m) => a * m.k, 1);
+    if (!Number.isSafeInteger(pow) || Math.abs(pow) > MAX_IMPORT_STEPS) throw new QasmImportError("pow(…) modifiers multiply to too many repetitions", line);
+    if (nCtrl > s.args.length) throw new QasmImportError("more controls than qubit arguments", line);
     const inv = (invCount % 2 === 1) !== pow < 0;
     const reps = Math.abs(pow);
     const argQs = s.args.map(qubitsOf);
@@ -522,6 +550,7 @@ export function importQasm(src: string, existing: CustomGate[] = []): ImportResu
       } else {
         steps = baseSteps(s.name, s.params.map((e) => expr(e, line, paramMap)), rest, controls, states, line, inv);
       }
+      spend(reps * steps.reduce((a, x) => a + sizeOf(x), 0), line);
       for (let r = 0; r < reps; r++) entry.push(...steps.map((x, i) => ({ ...x, id: `${x.id}.${r}.${i}` })));
     }
     // One entry: a broadcast single-qubit gate reads like ALL on the calculator.
@@ -613,6 +642,7 @@ export function importQasm(src: string, existing: CustomGate[] = []): ImportResu
       let name = def.name;
       for (let i = 2; customByName.has(name) && !created.some((c) => c.name === name); i++) name = `${def.name}_${i}`;
       if (name !== def.name) notes.push(`gate ${def.name} renamed ${name} (the name is taken)`);
+      if (body.flat().reduce((a, x) => a + sizeOf(x), 0) > MAX_IMPORT_STEPS) throw new QasmImportError(`gate ${def.name} expands to more than ${MAX_IMPORT_STEPS} steps`, def.line);
       const g = defineGate(name, body);
       // defineGate compacts to the qubits used: keep the declared width.
       const full: CustomGate = { ...g, k, tape: body };

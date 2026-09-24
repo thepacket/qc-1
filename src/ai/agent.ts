@@ -105,7 +105,7 @@ export async function executeTool(name: string, rawArgs: string, env: AgentEnv):
       }
       case "list_analyses": {
         const f = typeof args.filter === "string" ? args.filter.toLowerCase() : "";
-        const list = ANALYSES.filter((a) => !f || `${a.id} ${a.title} ${a.category} ${a.summary}`.toLowerCase().includes(f)).map((a) => ({
+        const list = ANALYSES.filter((a) => a.id !== "plotprogram" && (!f || `${a.id} ${a.title} ${a.category} ${a.summary}`.toLowerCase().includes(f))).map((a) => ({
           id: a.id, title: a.title, category: a.category, maxQubits: a.maxQubits,
           options: a.inputs.map((s) => ({ name: s.key, kind: s.kind, ...("options" in s ? { values: s.options.map((o) => o.value) } : {}), ...("min" in s ? { min: s.min, max: s.max } : {}) })),
         }));
@@ -115,6 +115,8 @@ export async function executeTool(name: string, rawArgs: string, env: AgentEnv):
         const id = String(args.id ?? "");
         const meta = ANALYSIS_BY_ID[id];
         if (!meta) return { result: `error: no analysis "${id}" (see list_analyses)`, show: { kind: "tool", text: `no analysis ${id}` } };
+        // The model's text is untrusted: it never runs code, even sandboxed (docs/quantiom-bugs.md #55).
+        if (id === "plotprogram") return { result: "error: plot programs run user-written code; the assistant can't run them (suggest the code to the user instead)", show: { kind: "tool", text: "refused: plot program" } };
         const st = stateOf(env);
         if (!st) return { result: `error: the chat runs analyses up to ${STATE_MAX} qubits`, show: { kind: "tool", text: `${meta.title}: too many qubits` } };
         const { runAnalysis } = await import("../analysis/run");

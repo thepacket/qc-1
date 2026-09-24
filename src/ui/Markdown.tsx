@@ -44,7 +44,7 @@ export function Markdown({ source }: { source: string }) {
       continue;
     }
     if (/^-{3,}\s*$/.test(trimmed)) { out.push(<hr key={key++} className="md-rule" />); i++; continue; }
-    const h = /^(#{1,3})\s+(.*)$/.exec(line);
+    const h = HEADING.exec(trimmed);
     if (h) { out.push(<div key={key++} className={`md-h md-h${h[1].length}`}>{inline(h[2])}</div>); i++; continue; }
     if (trimmed.startsWith("|")) {
       const tbl: string[] = [];
@@ -64,15 +64,21 @@ export function Markdown({ source }: { source: string }) {
       continue;
     }
     if (!trimmed) { i++; continue; }
-    const para: string[] = [];
-    for (; i < lines.length; i++) {
-      const l = lines[i], t = l.trim();
-      if (!t || t.startsWith("#") || t.startsWith("```") || t.startsWith("|") || LIST.test(l) || /^-{3,}$/.test(t) || t.startsWith("$$") || t.startsWith("\\[")) break;
-      para.push(l);
-    }
+    // QC-1 fix (docs/quantiom-bugs.md #58): a paragraph stops only at a line some branch above
+    // will consume (the same tests), and always takes its first line: "#" or "#hashtag" used to
+    // stop it without being a heading, so the loop never advanced and the page hung.
+    const para: string[] = [line];
+    for (i++; i < lines.length && !blockStart(lines[i]); i++) para.push(lines[i]);
     out.push(<p key={key++} className="md-p">{inline(para.join(" "))}</p>);
   }
   return <>{out}</>;
+}
+
+const HEADING = /^(#{1,3})\s+(.*)$/;
+/** A line that one of the block branches consumes (blank lines included). */
+function blockStart(l: string): boolean {
+  const t = l.trim();
+  return !t || t.startsWith("```") || t.startsWith("$$") || t.startsWith("\\[") || /^-{3,}\s*$/.test(t) || HEADING.test(t) || t.startsWith("|") || LIST.test(l);
 }
 
 function Table({ rows }: { rows: string[] }) {
