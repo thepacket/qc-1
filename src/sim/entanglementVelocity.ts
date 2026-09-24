@@ -56,7 +56,8 @@ export function entanglementVelocity(
   for (let k = 1; k < points; k++) {
     if (!Number.isFinite(entropy[k]) || !Number.isFinite(entropy[k - 1])) continue;
     const slope = (entropy[k] - entropy[k - 1]) / (ts[k] - ts[k - 1]);
-    if (slope > velocity) { velocity = slope; velocityAt = ts[k]; }
+    // QC-1: equal slopes (a symmetric S(t)) keep the earliest time; rounding mustn't pick.
+    if (slope > velocity + 1e-9 * Math.max(1, Math.abs(velocity))) { velocity = slope; velocityAt = ts[k]; }
   }
   const maxEntropy = Math.max(...entropy.filter((x) => Number.isFinite(x)), 0);
   return { ts, entropy, velocity, velocityAt, maxEntropy, numQubits: n };

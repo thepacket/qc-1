@@ -43,15 +43,17 @@ export function levelStatistics(energies: number[], bins = 20): LevelStatsResult
   if (D < 3) return null;
 
   const sorted = [...energies].sort((a, b) => a - b);
-  const span = sorted[D - 1] - sorted[0] || 1;
-  const tol = 1e-9 * span + 1e-12;
+  // QC-1 fix (docs/quantiom-bugs.md #36): tolerances relative to the width only;
+  // the +1e-12 floor turned a spectrum in small units into one degenerate level.
+  const span = sorted[D - 1] - sorted[0];
+  const tol = 1e-9 * span;
 
   const spacings: number[] = [];
   let degenerate = 0;
   for (let i = 0; i < D - 1; i++) {
     const d = sorted[i + 1] - sorted[i];
     spacings.push(d);
-    if (d < tol) degenerate++;
+    if (d <= tol) degenerate++;
   }
 
   const ratios: number[] = [];
@@ -59,7 +61,7 @@ export function levelStatistics(energies: number[], bins = 20): LevelStatsResult
     const a = spacings[i - 1];
     const b = spacings[i];
     const hi = Math.max(a, b);
-    ratios.push(hi < tol ? 0 : Math.min(a, b) / hi);
+    ratios.push(hi <= tol ? 0 : Math.min(a, b) / hi);
   }
 
   const meanRatio = ratios.length ? ratios.reduce((s, r) => s + r, 0) / ratios.length : 0;

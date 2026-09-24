@@ -15,10 +15,14 @@ export function jacobiSym(Ain: number[][]): { values: number[]; vectors: number[
   const V: number[][] = Array.from({ length: n }, (_, i) =>
     Array.from({ length: n }, (_, j) => (i === j ? 1 : 0) as number),
   );
+  // QC-1 fix (docs/quantiom-bugs.md #34): stop relative to the matrix's own
+  // size; an absolute 1e-26 left H = 1e-15·X undiagonalised (energies 0, 0).
+  let fro = 0;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) fro += A[i][j] * A[i][j];
   for (let sweep = 0; sweep < 100; sweep++) {
     let off = 0;
     for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) off += A[i][j] * A[i][j];
-    if (off < 1e-26) break;
+    if (off <= 1e-28 * fro) break;
     for (let p = 0; p < n; p++) {
       for (let q = p + 1; q < n; q++) {
         if (Math.abs(A[p][q]) < 1e-300) continue;
@@ -51,8 +55,28 @@ export function jacobiSym(Ain: number[][]): { values: number[]; vectors: number[
 
 /** Eigen-decomposition of a complex Hermitian matrix via the real-symmetric
  *  embedding; returns the d eigenvalues (ascending) + complex eigenvectors. */
-export function hermitianEig(H: Complex[][]): { values: number[]; vectors: Complex[][] } {
+/**
+ * QC-1: H = c·I + s·M with c = tr H / d, tr M = 0 and max |M_ij| = 1 (s = 0
+ * for H ∝ I). Solvers work on M, so an energy offset or a change of units
+ * can't move the spectrum across an absolute tolerance.
+ */
+export function normalizeHermitian(H: Complex[][]): { M: Complex[][]; c: number; s: number } {
   const d = H.length;
+  let c = 0;
+  for (let i = 0; i < d; i++) c += H[i][i].re / d;
+  let s = 0;
+  for (let i = 0; i < d; i++) for (let j = 0; j < d; j++) s = Math.max(s, Math.hypot(H[i][j].re - (i === j ? c : 0), H[i][j].im));
+  const k = s > 0 ? 1 / s : 0;
+  return { M: H.map((row, i) => row.map((z, j) => ({ re: (z.re - (i === j ? c : 0)) * k, im: z.im * k }))), c, s };
+}
+
+export function hermitianEig(Hin: Complex[][]): { values: number[]; vectors: Complex[][] } {
+  // QC-1 fix (docs/quantiom-bugs.md #34): diagonalise the centred, scaled M
+  // and map back E = c + s·λ. Clustering 1e-9·max(1, |E|) on raw energies
+  // merged 1e-10·Z's levels and those of Z + 10¹⁰·I.
+  const { M: H, c: shift, s: scale } = normalizeHermitian(Hin);
+  const d = H.length;
+  if (scale === 0) return { values: new Array<number>(d).fill(shift), vectors: H.map((_, i) => H.map((__, j) => ({ re: i === j ? 1 : 0, im: 0 }))) };
   const M: number[][] = Array.from({ length: 2 * d }, () => new Array<number>(2 * d).fill(0));
   for (let i = 0; i < d; i++) {
     for (let j = 0; j < d; j++) {
@@ -95,7 +119,7 @@ export function hermitianEig(H: Complex[][]): { values: number[]; vectors: Compl
       for (let i = 0; i < d; i++) { v[i].re *= inv; v[i].im *= inv; }
       kept.push(v);
     }
-    for (const v of kept) { outVals.push(lambda); outVecs.push(v); }
+    for (const v of kept) { outVals.push(shift + scale * lambda); outVecs.push(v); }
     start = end;
   }
   return { values: outVals, vectors: outVecs };

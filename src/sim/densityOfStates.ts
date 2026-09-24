@@ -32,10 +32,13 @@ export function densityOfStates(energies: number[], bins = 24): DosResult | null
   }
   const span = eMax - eMin;
   // Degenerate spectrum (all equal): single populated bin.
-  const binWidth = span > 1e-12 ? span / bins : 1;
+  // QC-1 fix (docs/quantiom-bugs.md #36): flat means below the energies' own
+  // resolution, not below an absolute 1e-12.
+  const flat = !(span > 64 * Number.EPSILON * Math.max(Math.abs(eMin), Math.abs(eMax)));
+  const binWidth = !flat ? span / bins : 1;
   const counts = new Array<number>(bins).fill(0);
   for (const e of energies) {
-    let b = span > 1e-12 ? Math.floor((e - eMin) / binWidth) : 0;
+    let b = !flat ? Math.floor((e - eMin) / binWidth) : 0;
     if (b >= bins) b = bins - 1;
     if (b < 0) b = 0;
     counts[b]++;

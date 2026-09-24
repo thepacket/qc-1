@@ -745,9 +745,10 @@ function twoSymbols(id: string, ctx: AnalysisContext, opts: Opts): [string, stri
 /** Group energies into levels (value, degeneracy). */
 function levelsOf(E: number[]) {
   const out: { e: number; g: number }[] = [];
+  const tol = 1e-9 * (Math.max(...E) - Math.min(...E)); // relative to the spectrum's width, like the solver
   for (const e of E) {
     const last = out[out.length - 1];
-    if (last && Math.abs(last.e - e) < 1e-8) last.g++;
+    if (last && Math.abs(last.e - e) <= tol) last.g++;
     else out.push({ e, g: 1 });
   }
   return out;
@@ -881,7 +882,7 @@ Object.assign(RUNS, {
       charts: pts.length ? [{ kind: "scatter", x: pts.map((p) => p[0]), y: pts.map((p) => p[1]), xLabel: "E", yLabel: "ln pₖ",
         fit: res.fitted ? { a: res.intercept, b: -res.beta, label: `β = ${r3(res.beta)}` } : undefined }] : [],
       notes: [
-        "The fit β is the slope of ln pₖ against E; it describes the populations only as well as R² says. The matching β is the Gibbs state's with the same ⟨H⟩ (0 at the ground state, ∞ at the top level).",
+        "The fit β is the slope of ln pₖ against E; it describes the populations only as well as R² says. The matching β is the Gibbs state's with the same ⟨H⟩: β → +∞ (T → 0⁺) at the ground energy, 0 (T = ∞) at the levels' average, β → −∞ at the top.",
       ],
     };
   },

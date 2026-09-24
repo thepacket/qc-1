@@ -14,6 +14,7 @@
  */
 
 import { reducedDensityMatrix, type Complex } from "./density";
+import { normalizeHermitian } from "./eig";
 
 /** Eigenvalues of a real symmetric matrix via cyclic Jacobi rotations.
  *  Values only (no eigenvectors). Reliable at the small sizes here. */
@@ -22,10 +23,13 @@ function symEigenvalues(Ain: number[][]): number[] {
   if (n === 0) return [];
   if (n === 1) return [Ain[0][0]];
   const A = Ain.map((row) => [...row]);
+  // QC-1 fix (docs/quantiom-bugs.md #34): a relative stop (absolute 1e-28 left 1e-15·X undiagonalised).
+  let fro = 0;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) fro += A[i][j] * A[i][j];
   for (let sweep = 0; sweep < 100; sweep++) {
     let off = 0;
     for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) off += A[i][j] * A[i][j];
-    if (off < 1e-28) break;
+    if (off <= 1e-28 * fro) break;
     for (let p = 0; p < n; p++) {
       for (let q = p + 1; q < n; q++) {
         const apq = A[p][q];
@@ -72,7 +76,10 @@ export function densityEigenvalues(rho: Complex[][]): number[] {
  * 1, but with negative eigenvalues — that negativity is exactly the
  * entanglement signal we want to keep), e.g. the negativity matrix.
  */
-export function densityEigenvaluesSigned(rho: Complex[][]): number[] {
+export function densityEigenvaluesSigned(rhoIn: Complex[][]): number[] {
+  // QC-1 fix (docs/quantiom-bugs.md #34): this is the Hamiltonian path; work on
+  // the centred, scaled matrix (E = c + s·λ) so offsets and units don't matter.
+  const { M: rho, c: shift, s: scale } = normalizeHermitian(rhoIn);
   const d = rho.length;
   const M: number[][] = Array.from({ length: 2 * d }, () => new Array<number>(2 * d).fill(0));
   for (let i = 0; i < d; i++) {
@@ -85,7 +92,7 @@ export function densityEigenvaluesSigned(rho: Complex[][]): number[] {
   const ev = symEigenvalues(M).sort((p, q) => q - p);
   // The 2d embedding eigenvalues pair up; take one of each (even indices).
   const out: number[] = [];
-  for (let k = 0; k < 2 * d; k += 2) out.push(ev[k]);
+  for (let k = 0; k < 2 * d; k += 2) out.push(shift + scale * ev[k]);
   return out;
 }
 

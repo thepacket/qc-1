@@ -136,7 +136,7 @@ def reference(c, P):
         vel, at = 0.0, 0.0
         for k in range(1, len(ent)):
             slope = (ent[k] - ent[k - 1]) / (tsc[k] - tsc[k - 1])
-            if slope > vel:
+            if slope > vel + 1e-9 * max(1.0, abs(vel)):  # ties keep the earliest time (as QC-1)
                 vel, at = slope, tsc[k]
         out["velocity"] = {"entropy": ent, "velocity": vel, "velocityAt": at, "maxEntropy": max(ent + [0])}
         out["negdyn"] = [float(math.log2(2 * qi.negativity(qi.Statevector(p), [n - 1 - q for q in half]) + 1)) for p in states]

@@ -54,12 +54,13 @@ export function spectralFormFactor(energies: number[], samples = 240): SffResult
   }
 
   // Plateau = Σ_g (degeneracy g)² / D² (= 1/D when fully non-degenerate).
-  const tol = 1e-9 * span + 1e-12;
+  // QC-1 fix (docs/quantiom-bugs.md #36): relative to the width (a flat spectrum is one level).
+  const tol = 1e-9 * (sorted[D - 1] - sorted[0]);
   let degSquaredSum = 0;
   let i = 0;
   while (i < D) {
     let j = i + 1;
-    while (j < D && sorted[j] - sorted[i] < tol) j++;
+    while (j < D && sorted[j] - sorted[i] <= tol) j++;
     const g = j - i;
     degSquaredSum += g * g;
     i = j;

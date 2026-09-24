@@ -133,7 +133,12 @@ export function diagonalEnsemble(
     const p = populations[k], e = energies[k];
     meanE += p * e; meanE2 += p * e * e; ipr += p * p;
   }
-  const energySpread = Math.sqrt(Math.max(0, meanE2 - meanE * meanE));
+  // QC-1 fix (docs/quantiom-bugs.md #35): ⟨E²⟩ − ⟨E⟩² cancels catastrophically
+  // under an energy offset (|+⟩, Z + 10⁸·I gave 0); sum centred deviations.
+  let varE = 0;
+  for (let k = 0; k < energies.length; k++) varE += populations[k] * (energies[k] - meanE) ** 2;
+  void meanE2;
+  const energySpread = Math.sqrt(varE);
 
   return {
     energies,

@@ -78,10 +78,11 @@ export function workDistribution(
   // (E_n → E_m) is ‖Π_m U Π_n |0⟩‖², not Σ over single eigenvectors
   // |⟨k|0⟩|²|⟨l|U|k⟩|² (that drops the cross terms inside a level).
   const levels: number[][] = [];
-  const eScale = Math.max(1, ...E.map(Math.abs));
+  // QC-1 fix (docs/quantiom-bugs.md #34): levels within 1e-9 of the spectrum's width, not of max(1, |E|).
+  const eWidth = Math.max(...E) - Math.min(...E);
   E.forEach((e, k) => {
     const last = levels[levels.length - 1];
-    if (last && Math.abs(E[last[0]] - e) < 1e-9 * eScale) last.push(k);
+    if (last && Math.abs(E[last[0]] - e) <= 1e-9 * eWidth) last.push(k);
     else levels.push([k]);
   });
   const pairs: Array<{ w: number; prob: number }> = [];
@@ -125,10 +126,12 @@ export function workDistribution(
   for (const pr of pairs) { if (pr.w < wMin) wMin = pr.w; if (pr.w > wMax) wMax = pr.w; }
   if (!Number.isFinite(wMin)) { wMin = 0; wMax = 0; }
   const span = wMax - wMin;
-  const binWidth = span > 1e-12 ? span / bins : 1;
+  // QC-1: no absolute floor (1e-12 merged every work value of a small-unit H).
+  const flat = !(span > 64 * Number.EPSILON * Math.max(Math.abs(wMin), Math.abs(wMax)));
+  const binWidth = !flat ? span / bins : 1;
   const probs = new Array<number>(bins).fill(0);
   for (const pr of pairs) {
-    let b = span > 1e-12 ? Math.floor((pr.w - wMin) / binWidth) : 0;
+    let b = !flat ? Math.floor((pr.w - wMin) / binWidth) : 0;
     if (b >= bins) b = bins - 1;
     if (b < 0) b = 0;
     probs[b] += pr.prob;

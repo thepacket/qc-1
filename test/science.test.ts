@@ -25,6 +25,14 @@ import { matrixGate } from "../src/calc/typed";
 import { correlationLength } from "../src/sim/correlationLength";
 import { krylovComplexity } from "../src/sim/krylov";
 import { randomUnitary, rng, withSpectrum } from "./unitaries";
+import { hamiltonianSpectrum } from "../src/sim/hamSpectrum";
+import { ethOffDiagonal } from "../src/sim/ethOffDiagonal";
+import { eigenstateEntanglement } from "../src/sim/eigenstateEntanglement";
+import { workDistribution } from "../src/sim/workDistribution";
+import { levelStatistics } from "../src/sim/levelStatistics";
+import { spectralFormFactor } from "../src/sim/spectralFormFactor";
+import { densityOfStates } from "../src/sim/densityOfStates";
+import type { PauliTerm } from "../src/sim/trotter";
 
 function make(n: number, body: string, scope: Record<string, number> = {}) {
   const parsed = importQasm(`OPENQASM 3.0; include "stdgates.inc"; qubit[${n}] q; ${body}`);
@@ -232,5 +240,93 @@ describe("follow-up: Krylov complexity is independent of H's scale", () => {
     const chain = (c: number) => [{ coefficient: c, paulis: "XXI" }, { coefficient: c, paulis: "IXX" }, { coefficient: 0.7 * c, paulis: "ZII" }];
     const psi = make(3, "h q[0]; ry(0.4) q[2];").ctx.state;
     expect(krylovComplexity(chain(scale), psi, 3)!.krylovDim).toBe(krylovComplexity(chain(1), psi, 3)!.krylovDim);
+  });
+});
+
+// Invariance review: H′ = a·H + b·I rescales energy differences by a and moves the origin by b; nothing else changes.
+describe("energy offset and unit invariance", () => {
+  const term = (paulis: string, coefficient = 1) => ({ paulis, coefficient });
+  const zero1 = new Float64Array([1, 0, 0, 0]), plus1 = new Float64Array([Math.SQRT1_2, 0, Math.SQRT1_2, 0]);
+  const xGate = lowerTape(1, make(1, "x q[0];").ctx.tape);
+
+  test("review cases: 1e-10·Z, Z + 1e10·I, 1e-15·X keep their levels; the X-quench work is −2e-10", () => {
+    expect(diagonalEnsemble([term("Z", 1e-10)], plus1, 1)!.energies).toEqual([-1e-10, 1e-10]);
+    expect(diagonalEnsemble([term("Z"), term("I", 1e10)], plus1, 1)!.energies).toEqual([1e10 - 1, 1e10 + 1]);
+    expect(hamiltonianSpectrum([term("X", 1e-15)], 1)!.gap / 1e-15).toBeCloseTo(2, 10);
+    expect(workDistribution([term("Z", 1e-10)], xGate, {}, [])!.meanWork / 1e-10).toBeCloseTo(-2, 8);
+  });
+
+  test("review cases: Boltzmann fit under 1e8 offset and 1e-7 units; spread under offset; LAB levels", async () => {
+    const p0 = 1 / (1 + Math.exp(-2)), st = new Float64Array([Math.sqrt(1 - p0), 0, Math.sqrt(p0), 0]);
+    for (const [a, b] of [[1, 0], [1, 1e8], [1e-7, 0]]) {
+      const r = effectiveTemperature(diagonalEnsemble([term("Z", a), term("I", b)], st, 1)!);
+      expect(r.beta * a).toBeCloseTo(1, 6);
+    }
+    expect(diagonalEnsemble([term("Z"), term("I", 1e8)], plus1, 1)!.energySpread).toBeCloseTo(1, 8);
+    for (const obs of ["0.0000000001 Z", "Z + 100000000 I"]) {
+      const ui = await runAnalysis("efftemp", { n: 1, state: st, tape: [], scope: {} }, { obs });
+      expect(ui.error).toBeUndefined();
+      expect(String(ui.scalars?.[0].value)).not.toMatch(/needs/);
+    }
+  });
+
+  test("review cases: Krylov with an offset, tiny units, and H = 0", () => {
+    const k = (a: number, b: number) => krylovComplexity([term("X", a), term("I", b)], zero1, 1)!;
+    const base = k(1, 0);
+    expect(k(1, 1e10).krylovDim).toBe(2);
+    expect(k(1, 1e10).maxComplexity).toBeCloseTo(base.maxComplexity, 10);
+    expect(k(1e-14, 0).maxComplexity).toBeCloseTo(base.maxComplexity, 10);
+    const z = k(0, 0);
+    expect(z.krylovDim).toBe(1);
+    expect(z.complexity.every((x) => x === 0)).toBe(true);
+  });
+
+  test("review cases: level ratio, SFF plateau and DOS of [−3, −1, 0, 4] in any unit", () => {
+    for (const a of [1e-10, 1e-14, 1e6]) {
+      const E = [-3, -1, 0, 4].map((x) => x * a);
+      expect(levelStatistics(E)!.meanRatio).toBeCloseTo(0.375, 12);
+      expect(spectralFormFactor(E, 12)!.plateau).toBe(0.25);
+      expect(densityOfStates(E)!.counts).toEqual(densityOfStates([-3, -1, 0, 4])!.counts);
+    }
+  });
+
+  // A generic two-qubit H (non-degenerate) and a state with weight on every level.
+  const H: PauliTerm[] = [term("XX", 0.7), term("ZI", 0.43), term("IZ", 0.19), term("YZ", 0.23)];
+  const psi = new Float64Array([Math.sqrt(0.1), 0, Math.sqrt(0.2), 0, Math.sqrt(0.3), 0, Math.sqrt(0.4), 0]);
+  const quench = lowerTape(2, make(2, "h q[0]; cx q[0],q[1]; ry(0.3) q[1];").ctx.tape);
+  const all = (a: number, b: number) => {
+    const h = [...H.map((t) => ({ ...t, coefficient: a * t.coefficient })), ...(b ? [term("II", b)] : [])];
+    const spec = hamiltonianSpectrum(h, 2)!, de = diagonalEnsemble(h, psi, 2)!;
+    return {
+      spec, de, et: effectiveTemperature(de), ee: eigenstateEntanglement(h, 2)!, eth: ethOffDiagonal(h, [term("ZI")], 2)!,
+      work: workDistribution(h, quench, {}, [])!, lvl: levelStatistics(spec.energies)!, sff: spectralFormFactor(spec.energies, 16)!,
+      dos: densityOfStates(spec.energies)!, kr: krylovComplexity(h, psi, 2, { samples: 16 })!,
+    };
+  };
+  const ref = all(1, 0);
+  // Pairs (a, b) whose offset keeps the level spacing representable: ε·|b|/a ≤ 1e-7.
+  const pairs = [1e-10, 1e-3, 1, 1e6].flatMap((a) => [0, 37, 1e8].map((b) => [a, b] as const)).filter(([a, b]) => (Number.EPSILON * b) / a <= 1e-7);
+  test.each(pairs)("H′ = %s·H + %s·I", (a, b) => {
+    const r = all(a, b);
+    const tol = 1e-9 + (100 * Number.EPSILON * b) / a; // relative resolution of the shifted spectrum
+    const close = (x: number, y: number) => expect(Math.abs(x - y)).toBeLessThanOrEqual(tol * Math.max(1, Math.abs(y)));
+    r.spec.energies.forEach((e, k) => close((e - b) / a, ref.spec.energies[k]));
+    close(r.spec.gap / a, ref.spec.gap);
+    r.de.populations.forEach((p, k) => close(p, ref.de.populations[k]));
+    close((r.de.meanEnergy - b) / a, ref.de.meanEnergy);
+    close(r.de.energySpread / a, ref.de.energySpread);
+    close(r.et.beta * a, ref.et.beta);
+    close(r.et.betaEnergy * a, ref.et.betaEnergy);
+    close(r.et.r2, ref.et.r2);
+    r.ee.entropies.forEach((x, k) => close(x, ref.ee.entropies[k]));
+    r.eth.offDiag.forEach((p, k) => { close(p.omega / a, ref.eth.offDiag[k].omega); close(p.mag2, ref.eth.offDiag[k].mag2); });
+    close(r.work.meanWork / a, ref.work.meanWork);
+    close(r.work.variance / (a * a), ref.work.variance);
+    close(r.lvl.meanRatio, ref.lvl.meanRatio);
+    expect(r.sff.plateau).toBe(ref.sff.plateau);
+    expect(r.dos.counts).toEqual(ref.dos.counts);
+    expect(r.kr.krylovDim).toBe(ref.kr.krylovDim);
+    r.kr.complexity.forEach((x, k) => close(x, ref.kr.complexity[k]));
+    r.kr.times.forEach((t, k) => close(t * a, ref.kr.times[k]));
   });
 });

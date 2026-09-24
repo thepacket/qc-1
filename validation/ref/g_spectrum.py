@@ -67,8 +67,8 @@ def be_unitary(qasm):
 
 
 def ham_scale(text):
-    """Σ|h_k| ≥ ‖H‖, the scale of QC-1's Lanczos breakdown test."""
-    return float(sum(abs(c) for _, c in ham_terms(text)))
+    """Σ|h_k| over non-identity terms, the scale of QC-1's Lanczos breakdown test (bug #38)."""
+    return float(sum(abs(c) for p, c in ham_terms(text) if set(p) != {"I"}))
 
 
 def ham(text):
@@ -119,25 +119,25 @@ def circ_ref(c):
 def level_stats(E, bins=20):
     E = np.sort(E)
     D = len(E)
-    span = (E[-1] - E[0]) or 1
-    tol = 1e-9 * span + 1e-12
+    tol = 1e-9 * (E[-1] - E[0])  # relative to the width only (as QC-1, bug #36)
     sp = np.diff(E)
-    ratios = [0.0 if max(a, b) < tol else min(a, b) / max(a, b) for a, b in zip(sp[:-1], sp[1:])]
+    ratios = [0.0 if max(a, b) <= tol else min(a, b) / max(a, b) for a, b in zip(sp[:-1], sp[1:])]
     hist = np.zeros(bins)
     for x in ratios:
         hist[min(bins - 1, max(0, int(math.floor(x * bins))))] += 1
     hist /= len(ratios) / bins
     return {"spacings": sp.tolist(), "ratios": ratios, "meanRatio": float(np.mean(ratios)), "hist": hist.tolist(),
-            "bins": bins, "degenerateFraction": float(np.sum(sp < tol) / len(sp))}
+            "bins": bins, "degenerateFraction": float(np.sum(sp <= tol) / len(sp))}
 
 
 def dos(E, bins=24):
     lo, hi = float(np.min(E)), float(np.max(E))
     span = hi - lo
-    w = span / bins if span > 1e-12 else 1
+    flat = not span > 64 * np.finfo(float).eps * max(abs(lo), abs(hi))  # below the energies' resolution
+    w = span / bins if not flat else 1
     counts = np.zeros(bins)
     for e in E:
-        counts[min(bins - 1, max(0, int(math.floor((e - lo) / w)) if span > 1e-12 else 0))] += 1
+        counts[min(bins - 1, max(0, int(math.floor((e - lo) / w)) if not flat else 0))] += 1
     return {"centers": [lo + (b + 0.5) * w for b in range(bins)], "counts": counts.tolist(), "binWidth": w, "eMin": lo, "eMax": hi, "total": len(E)}
 
 
@@ -148,11 +148,11 @@ def sff(E, samples):
     tH = 2 * math.pi / (span / (D - 1))
     ts = np.exp(np.linspace(math.log(tH / 1000), math.log(tH * 20), samples))
     vals = [abs(np.sum(np.exp(-1j * E * t))) ** 2 / D ** 2 for t in ts]
-    tol = 1e-9 * span + 1e-12
+    tol = 1e-9 * (Es[-1] - Es[0])
     deg, i = 0, 0
     while i < D:
         j = i + 1
-        while j < D and Es[j] - Es[i] < tol:
+        while j < D and Es[j] - Es[i] <= tol:
             j += 1
         deg += (j - i) ** 2
         i = j
@@ -179,7 +179,7 @@ def krylov(H, psi, samples, scale):
     a, b, K = lanczos(H, psi, scale)
     T = np.diag(a) + np.diag(b[: len(a) - 1], 1) + np.diag(b[: len(a) - 1], -1)
     th = np.linalg.eigvalsh(T)
-    rng_ = (th.max() - th.min()) or 1
+    rng_ = (th.max() - th.min()) or (scale or 1)  # an eigenstate: QC-1's unit is the scale of H (bug #38)
     tmax = 12 * math.pi / rng_
     times = [tmax * s / (samples - 1) for s in range(samples)]
     psi0 = psi / np.linalg.norm(psi)
@@ -214,12 +214,12 @@ def ham_ref(h, state_qasm, state_n):
         "dos": dos(E), "levels": level_stats(E), "sff": sff(E, 24),
         "krylov": krylov(Hm, psi, 24, ham_scale(h["text"])),
         "ensemble": {"perLevel": per_level(E, pops), "meanEnergy": float(np.sum(pops * E)),
-                     "energySpread": float(math.sqrt(max(0.0, np.sum(pops * E * E) - np.sum(pops * E) ** 2)))},
+                     "energySpread": float(math.sqrt(np.sum(pops * (E - np.sum(pops * E)) ** 2)))},
     }
     # Two-point measurement with energy projectors.
     lv = []
     for k, e in enumerate(E):
-        if lv and abs(E[lv[-1][0]] - e) < 1e-9 * max(1, np.max(np.abs(E))):
+        if lv and abs(E[lv[-1][0]] - e) <= 1e-9 * (E[-1] - E[0]):
             lv[-1].append(k)
         else:
             lv.append([k])
@@ -236,10 +236,11 @@ def ham_ref(h, state_qasm, state_n):
     ws = [p[0] for p in pairs]
     wmin, wmax = min(ws), max(ws)
     span = wmax - wmin
-    bw = span / 24 if span > 1e-12 else 1
+    flat = not span > 64 * np.finfo(float).eps * max(abs(wmin), abs(wmax))
+    bw = span / 24 if not flat else 1
     probs = np.zeros(24)
     for w, p in pairs:
-        probs[min(23, max(0, int(math.floor((w - wmin) / bw)) if span > 1e-12 else 0))] += p
+        probs[min(23, max(0, int(math.floor((w - wmin) / bw)) if not flat else 0))] += p
     tot = probs.sum() or 1
     mean = sum(w * p / tot for w, p in pairs)
     out["work"] = {"works": [wmin + (b + 0.5) * bw for b in range(24)], "probs": (probs / tot).tolist(), "meanWork": mean,

@@ -48,10 +48,12 @@ function jacobiTridiag(diag: number[], off: number[]): { values: number[]; vecto
     if (i + 1 < m) { A[i][i + 1] = off[i]; A[i + 1][i] = off[i]; }
   }
   const V: number[][] = Array.from({ length: m }, (_, i) => Array.from({ length: m }, (_, j) => (i === j ? 1 : 0)));
+  let fro = 0; // QC-1 fix (docs/quantiom-bugs.md #34): relative stop
+  for (let i = 0; i < m; i++) for (let j = 0; j < m; j++) fro += A[i][j] * A[i][j];
   for (let sweep = 0; sweep < 100; sweep++) {
     let o = 0;
     for (let i = 0; i < m; i++) for (let j = i + 1; j < m; j++) o += A[i][j] * A[i][j];
-    if (o < 1e-26) break;
+    if (o <= 1e-28 * fro) break;
     for (let p = 0; p < m; p++) for (let q = p + 1; q < m; q++) {
       const apq = A[p][q];
       if (Math.abs(apq) < 1e-300) continue;
@@ -77,7 +79,20 @@ export function krylovComplexity(
   if (n < 1 || n > maxQubits || terms.length === 0) return null;
   const dim = 1 << n;
 
-  const hScale = terms.reduce((acc, t) => acc + Math.abs(t.coefficient), 0);
+  // QC-1 fix (docs/quantiom-bugs.md #38): H = c·I + s·H′ with H′ traceless and
+  // Σ|h′| = 1. The identity part only shifts every aₙ by c and the Krylov
+  // basis doesn't see it, the scale s only rescales time, so Lanczos and the
+  // tridiagonal solve run on H′ (offsets, tiny units and H = 0 all behave).
+  const isId = (t: PauliTerm) => /^I*$/.test(t.paulis);
+  const shift = terms.filter(isId).reduce((acc, t) => acc + t.coefficient, 0);
+  const hScale = terms.filter((t) => !isId(t)).reduce((acc, t) => acc + Math.abs(t.coefficient), 0);
+  const samples = opts.samples ?? 120;
+  if (hScale === 0) {
+    // H ∝ I: ψ is an eigenstate, a one-vector Krylov space and zero complexity at every time.
+    const times = Array.from({ length: samples }, (_, s0) => (12 * Math.PI * s0) / (samples - 1));
+    return { a: [shift], b: [], krylovDim: 1, times, complexity: times.map(() => 0), maxComplexity: 0, numQubits: n };
+  }
+  terms = terms.filter((t) => !isId(t)).map((t) => ({ ...t, coefficient: t.coefficient / hScale }));
   // Dense Hermitian H = Σ h_k P_k.
   const Hre: number[][] = Array.from({ length: dim }, () => new Array<number>(dim).fill(0));
   const Him: number[][] = Array.from({ length: dim }, () => new Array<number>(dim).fill(0));
@@ -138,7 +153,7 @@ export function krylovComplexity(
     // QC-1 fix (docs/quantiom-bugs.md #33): the breakdown test was absolute
     // (b < 1e-9), so H = 1e-10·X "ended" the basis after one vector; the
     // Krylov span doesn't depend on H's scale, so compare with ‖H‖ ≤ Σ|h_k|.
-    if (bn < 1e-9 * hScale) break;
+    if (bn < 1e-9) break; // H′ has Σ|h′| = 1
     b.push(bn);
     prevB = bn;
     for (let i = 0; i < dim; i++) { w.re[i] /= bn; w.im[i] /= bn; }
@@ -149,7 +164,6 @@ export function krylovComplexity(
   // Time evolution of the seed e0 in the Krylov tridiagonal basis.
   const { values: theta, vectors: V } = jacobiTridiag(a, b);
   const range = (Math.max(...theta) - Math.min(...theta)) || 1;
-  const samples = opts.samples ?? 120;
   const tMax = (12 * Math.PI) / range;
   const times: number[] = [];
   const complexity: number[] = [];
@@ -168,10 +182,10 @@ export function krylovComplexity(
       }
       C += nn * (re * re + im * im);
     }
-    times.push(t);
+    times.push(t / hScale); // back to H's units
     complexity.push(C);
     if (C > maxC) maxC = C;
   }
 
-  return { a, b, krylovDim: m, times, complexity, maxComplexity: maxC, numQubits: n };
+  return { a: a.map((x) => shift + hScale * x), b: b.map((x) => hScale * x), krylovDim: m, times, complexity, maxComplexity: maxC, numQubits: n };
 }

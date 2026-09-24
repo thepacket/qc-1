@@ -80,25 +80,28 @@ export function effectiveTemperature(diag: DiagonalEnsembleResult, threshold = 1
   let beta = NaN;
   let intercept = NaN;
   let r2 = NaN;
-  if (xs.length >= 2) {
+  // QC-1 fix (docs/quantiom-bugs.md #37): regress on centred, width-scaled
+  // energies u = (E − Ē)/w and map back (slope/w). Raw sums N·Σx² − (Σx)²
+  // cancelled under an offset (Z + 10⁸·I: "no fit"), and the absolute 1e-12
+  // denominator test refused small units (10⁻⁷·Z).
+  const xMin = Math.min(...xs), xMax = Math.max(...xs), w = xMax - xMin;
+  if (xs.length >= 2 && w > 64 * Number.EPSILON * Math.max(Math.abs(xMin), Math.abs(xMax))) {
     const N = xs.length;
-    let sx = 0, sy = 0, sxx = 0, sxy = 0;
-    for (let k = 0; k < N; k++) { sx += xs[k]; sy += ys[k]; sxx += xs[k] * xs[k]; sxy += xs[k] * ys[k]; }
-    const denom = N * sxx - sx * sx;
-    if (Math.abs(denom) > 1e-12) {
-      const slope = (N * sxy - sx * sy) / denom;
-      intercept = (sy - slope * sx) / N;
-      beta = -slope;
-      // R².
-      const meanY = sy / N;
-      let ssTot = 0, ssRes = 0;
-      for (let k = 0; k < N; k++) {
-        const fit = intercept + slope * xs[k];
-        ssTot += (ys[k] - meanY) ** 2;
-        ssRes += (ys[k] - fit) ** 2;
-      }
-      r2 = ssTot > 1e-12 ? Math.max(0, 1 - ssRes / ssTot) : 1;
+    const xBar = xs.reduce((a, b) => a + b, 0) / N, yBar = ys.reduce((a, b) => a + b, 0) / N;
+    const us = xs.map((x) => (x - xBar) / w);
+    let suu = 0, suy = 0;
+    for (let k = 0; k < N; k++) { suu += us[k] * us[k]; suy += us[k] * (ys[k] - yBar); }
+    const slopeU = suy / suu;
+    const slope = slopeU / w;
+    beta = -slope;
+    intercept = yBar - slope * xBar;
+    // R².
+    let ssTot = 0, ssRes = 0;
+    for (let k = 0; k < N; k++) {
+      ssTot += (ys[k] - yBar) ** 2;
+      ssRes += (ys[k] - yBar - slopeU * us[k]) ** 2;
     }
+    r2 = ssTot > 1e-12 ? Math.max(0, 1 - ssRes / ssTot) : 1;
   }
   const betaEnergy = energyMatchedBeta(energies, diag.meanEnergy);
   return {
