@@ -86,7 +86,9 @@ const noteMethod = (method: string) => `Noisy state: ${method}.`;
 export async function noisyView(ctx: AnalysisContext, opts: Opts): Promise<AnalysisResult> {
   const m = model(ctx);
   const n = ctx.n, mode = opts.mode as "prob" | "bloch" | "shots";
-  const stats = await noisyStatsParallel(n, ctx.tape, ctx.scope, m);
+  // Scrubbed (CIRC): the circuit up to that step.
+  const tape = typeof opts.upTo === "number" ? ctx.tape.slice(0, opts.upTo) : ctx.tape;
+  const stats = await noisyStatsParallel(n, tape, ctx.scope, m);
   const method = stats.method === "density" ? "ρ" : `${stats.trajectories} trajectories${stats.workers ? ` · ${stats.workers} cores` : ""}`;
   let view: ViewData;
   if (mode === "bloch") view = { n, mode: "bloch", vectors: stats.bloch };

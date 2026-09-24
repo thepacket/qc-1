@@ -188,9 +188,14 @@ export class Calculator {
 
   /** One slot per in-flight command (replies arrive in send order). */
   private reporters: (((r: Result) => void) | null)[] = [];
+  /** Alongside `reporters`: what to undo if that command fails (a refused insert's scrub advance). */
+  private failures: ((() => void) | null)[] = [];
   private awaitingView = false;
   private busyTimer: ReturnType<typeof setTimeout> | null = null;
   private listeners = new Set<() => void>();
+
+  /** A saved session is being loaded (its reply hasn't arrived yet). */
+  private restoring = false;
 
   constructor(readonly engine: Engine, saved?: Saved | null) {
     engine.onResult = (r) => this.onResult(r);
@@ -198,6 +203,7 @@ export class Calculator {
     engine.onAnalysis = (r) => this.onAnalysis(r);
     engine.onSync = (r) => this.onSync(r);
     const ok = saved && saved.v === 1 && Array.isArray(saved.tape);
+    this.restoring = !!ok; // before the first command: its reply comes from the default register
     // Mirror the saved session up front so the first save can't clobber it.
     this.n = ok ? saved.n : 2;
     this.tape = ok ? saved.tape : [];
@@ -217,7 +223,9 @@ export class Calculator {
       setCustomGates(this.customGates);
       this.send({ t: "gates", defs: this.customGates });
     }
-    if (ok) this.send({ t: "load", n: saved.n, tape: saved.tape, scope: saved.scope });
+    if (ok) {
+      this.send({ t: "load", n: saved.n, tape: saved.tape, scope: saved.scope }, () => { this.restoring = false; });
+    }
   }
 
   subscribe = (fn: () => void) => {
@@ -251,18 +259,26 @@ export class Calculator {
 
   /** Send a command; `report` runs with its reply unless the reply is an error. */
   private send(cmd: Cmd, report?: (r: Result) => void) {
+    let fail: (() => void) | null = null;
     if (this.scrub !== null && (cmd.t === "push" || cmd.t === "repeat")) {
       // While scrubbed, a gate goes in at the scrub point and the views follow it.
       const at = this.scrub;
       this.scrub = at + 1;
       this.send({ t: "view", req: this.viewReq() });
       cmd = { t: "insert", at, entry: cmd.t === "push" ? cmd.entry : null };
+      // If the core refuses the gate (e.g. non-Clifford above 20 qubits), the insertion point stays put.
+      fail = () => {
+        this.scrub = at;
+        this.send({ t: "view", req: this.viewReq() });
+        this.requestNoisyView();
+      };
     } else if (this.scrub !== null && cmd.t !== "view" && cmd.t !== "scope" && cmd.t !== "insert" && cmd.t !== "delete") {
       // Any other edit ends a scrub: views go back to the live state.
       this.scrub = null;
       this.send({ t: "view", req: this.viewReq() });
     }
     this.reporters.push(report ?? null);
+    this.failures.push(fail);
     this.awaitingView = true;
     if (!this.busyTimer) {
       this.busyTimer = setTimeout(() => {
@@ -278,6 +294,8 @@ export class Calculator {
 
   private onResult(r: Result) {
     const report = this.reporters.shift();
+    const fail = this.failures.shift();
+    if (r.error) this.restoring = false;
     const changed = r.rev !== this.rev;
     this.rev = r.rev;
     this.n = r.n;
@@ -286,9 +304,15 @@ export class Calculator {
     this.symbols = r.symbols;
     // Keep the local value of a symbol being dragged/played; take the rest.
     this.scope = { ...r.scope, ...this.localScope };
-    if (this.sel >= r.n) this.sel = r.n - 1;
-    this.marks = this.marks.filter((m) => m.q < r.n);
-    if (r.error) this.error(r.error);
+    // Until a saved session has loaded, replies come from the default 2-qubit register: keep the saved selection.
+    if (!this.restoring) {
+      if (this.sel >= r.n) this.sel = r.n - 1;
+      this.marks = this.marks.filter((m) => m.q < r.n);
+    }
+    if (r.error) {
+      this.error(r.error);
+      fail?.();
+    }
     else report?.(r);
     if (!r.error && r.notes?.length) this.notify(r.notes[r.notes.length - 1]);
     if (changed) {
@@ -354,6 +378,7 @@ export class Calculator {
     if (next === this.scrub) return;
     this.scrub = next;
     this.send({ t: "view", req: this.viewReq() });
+    this.requestNoisyView();
     this.changed();
   }
 
@@ -478,7 +503,8 @@ export class Calculator {
   private requestNoisyView() {
     if (!this.noiseOn || !["prob", "bloch", "shots"].includes(this.mode)) return;
     const seq = ++this.vSeq;
-    this.engine.analyze({ seq, id: "__view", opts: { mode: this.mode, shots: this.shots, seed: this.shotSeed }, noise: this.noise });
+    // Scrubbed: the noisy view is of the circuit up to that step, like the ideal views.
+    this.engine.analyze({ seq, id: "__view", opts: { mode: this.mode, shots: this.shots, seed: this.shotSeed, upTo: this.scrub }, noise: this.noise });
   }
 
   cancelAnalysis() {
