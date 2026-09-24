@@ -9,7 +9,7 @@ import { makeQr, qrPath, QR_MAX } from "../qasm/qr";
 import { qiskitPython } from "../qasm/toQiskit";
 import { EXAMPLE_CATEGORIES, EXAMPLE_COUNT, describeProgram, loadExample } from "../examples";
 import type { Vec3 } from "../calc/analysis";
-import { complex, ket, num, pct } from "./format";
+import { ket, num, pct } from "./format";
 import { project } from "./charts/sphere";
 
 type ViewProps<M extends ViewData["mode"]> = { calc: Calculator; data: Extract<ViewData, { mode: M }> };
@@ -21,6 +21,10 @@ export function Pending() {
     </div>
   );
 }
+
+/** Table cells of KET: sign column kept (space for +), three decimals. */
+const fix = (x: number) => `${x < -5e-4 ? "−" : " "}${Math.abs(x).toFixed(3)}`;
+const fixI = (x: number) => `${x < -5e-4 ? "−" : "+"}${Math.abs(x).toFixed(3)}i`;
 
 /** Fixed row height of the long lists (13px text × 1.5). */
 const ROW_H = 20;
@@ -65,6 +69,11 @@ export function KetView({ data }: ViewProps<"ket">) {
       </div>
     );
   }
+  // A table: real and imaginary parts in their own columns, three decimals, signs aligned;
+  // the imaginary column only when some amplitude has one (a real state reads 0.707 |00⟩).
+  const showIm = rows.some((r) => Math.abs(r.im) >= 5e-4);
+  const showRe = !showIm || rows.some((r) => Math.abs(r.re) >= 5e-4);
+  const cols = `${showRe ? "6ch " : ""}${showIm ? "7.5ch " : ""}1fr auto`;
   return (
     <div className="view">
       <div className="view-head">
@@ -72,8 +81,9 @@ export function KetView({ data }: ViewProps<"ket">) {
         {nonzero > rows.length && ` · the ${rows.length.toLocaleString()} largest; the other ${(nonzero - rows.length).toLocaleString()} hold ${pct(data.restP)}`}
       </div>
       <RowList items={rows} row={({ i, re, im }) => (
-        <div className="row" key={i}>
-          <span className="amp">{complex(re, im)}</span>
+        <div className="row ket-row" key={i} style={{ gridTemplateColumns: cols }}>
+          {showRe && <span className="amp">{fix(re)}</span>}
+          {showIm && <span className="amp">{fixI(im)}</span>}
           <span className="ket">{ket(i, n)}</span>
           <span className="dim">{pct(re * re + im * im)}</span>
         </div>

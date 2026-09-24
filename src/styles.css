@@ -821,3 +821,6 @@ button {
 /* Long lists render only the rows in view (views.tsx RowList): fixed-height rows. */
 .vrow { position: absolute; left: 0; right: 0; height: 20px; }
 .vrow > .row, .vrow > .bar-row { height: 20px; line-height: 20px; }
+/* KET as a table: fixed columns on every row (the template is set per view), tabular digits, signs aligned. */
+.ket-row { column-gap: 6px; }
+.ket-row .amp { white-space: pre; font-variant-numeric: tabular-nums; }
