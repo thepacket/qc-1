@@ -23,7 +23,40 @@ export type EffectiveTempResult = {
   r2: number;
   /** Fit line ln p = intercept − βE, for drawing. */
   intercept: number;
+  /** QC-1: whether the fit exists (≥ 2 populated levels at different energies); β, T, R², intercept are NaN otherwise. */
+  fitted: boolean;
+  /** QC-1: the canonical β whose thermal state has the same ⟨H⟩ (±∞ at the spectrum's edges, NaN for H ∝ I). */
+  betaEnergy: number;
+  /** QC-1: 1/betaEnergy (0 at the ground state). */
+  temperatureEnergy: number;
 };
+
+/**
+ * QC-1: β of the Gibbs state e^{−βH}/Z with Tr(ρ_β H) equal to the state's
+ * ⟨H⟩ (energy matching). ⟨H⟩_β falls monotonically with β, so bisection finds
+ * it; a state at the lowest (highest) level has β = +∞ (−∞).
+ */
+export function energyMatchedBeta(energies: number[], meanEnergy: number): number {
+  const lo = Math.min(...energies), hi = Math.max(...energies);
+  const tol = 1e-12 * Math.max(1, Math.abs(lo), Math.abs(hi));
+  if (hi - lo < tol) return NaN;
+  if (meanEnergy <= lo + tol) return Infinity;
+  if (meanEnergy >= hi - tol) return -Infinity;
+  const mean = (b: number) => {
+    const x = energies.map((e) => -b * e), m = Math.max(...x);
+    let z = 0, ez = 0;
+    energies.forEach((e, k) => { const w = Math.exp(x[k] - m); z += w; ez += w * e; });
+    return ez / z;
+  };
+  let a = -1, b = 1;
+  while (mean(a) < meanEnergy && a > -1e12) a *= 2;
+  while (mean(b) > meanEnergy && b < 1e12) b *= 2;
+  for (let i = 0; i < 200 && b - a > 1e-15 * Math.max(1, Math.abs(a), Math.abs(b)); i++) {
+    const c = (a + b) / 2;
+    if (mean(c) > meanEnergy) a = c; else b = c;
+  }
+  return (a + b) / 2;
+}
 
 export function effectiveTemperature(diag: DiagonalEnsembleResult, threshold = 1e-9): EffectiveTempResult {
   const { energies, populations } = diag;
@@ -34,9 +67,12 @@ export function effectiveTemperature(diag: DiagonalEnsembleResult, threshold = 1
   for (let k = 0; k < energies.length; k++) {
     if (Number.isFinite(logPop[k])) { xs.push(energies[k]); ys.push(logPop[k]); }
   }
-  let beta = 0;
-  let intercept = 0;
-  let r2 = 0;
+  // QC-1 fix (docs/quantiom-bugs.md #28): with fewer than two populated
+  // levels there is no line to fit; upstream reported β = 0, T = ∞ (an
+  // eigenstate, even the ground state, read as infinitely hot). No fit: NaN.
+  let beta = NaN;
+  let intercept = NaN;
+  let r2 = NaN;
   if (xs.length >= 2) {
     const N = xs.length;
     let sx = 0, sy = 0, sxx = 0, sxy = 0;
@@ -57,5 +93,9 @@ export function effectiveTemperature(diag: DiagonalEnsembleResult, threshold = 1
       r2 = ssTot > 1e-12 ? Math.max(0, 1 - ssRes / ssTot) : 1;
     }
   }
-  return { energies, logPop, beta, temperature: beta !== 0 ? 1 / beta : Infinity, r2, intercept };
+  const betaEnergy = energyMatchedBeta(energies, diag.meanEnergy);
+  return {
+    energies, logPop, beta, temperature: beta !== 0 ? 1 / beta : Infinity, r2, intercept,
+    fitted: Number.isFinite(beta), betaEnergy, temperatureEnergy: 1 / betaEnergy,
+  };
 }

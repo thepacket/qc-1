@@ -96,7 +96,10 @@ export function tSweepSpectrum(
       }
       // Normalise: DC by 1/points, AC bins by 2/points so a unit-amplitude
       // cosine reads exactly 1 at its bin.
-      const norm = m === 0 ? 1 / points : 2 / points;
+      // QC-1 fix (docs/quantiom-bugs.md #27): the Nyquist bin of an even
+      // length is its own mirror image (cos πk = ±1 is all real), so it takes
+      // 1/points like DC; with 2/points a unit cosine there read 2.
+      const norm = m === 0 || 2 * m === points ? 1 / points : 2 / points;
       mag[q][m] = Math.hypot(re, im) * norm;
     }
   }

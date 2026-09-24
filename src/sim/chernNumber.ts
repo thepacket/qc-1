@@ -25,6 +25,12 @@ export type ChernResult = {
   /** Chern number C = (1/2π) Σ F (≈ integer). */
   chern: number;
   grid: number;
+  /** QC-1: min |⟨ψ(0,·)|ψ(2π,·)⟩| over both edges; below 1 the family isn't periodic and C isn't an invariant. */
+  periodicOverlap: number;
+  /** QC-1: smallest |link| ⟨ψ(k)|ψ(k+μ̂)⟩ on the mesh (near 0: too coarse, or the state changes abruptly). */
+  minLink: number;
+  /** QC-1: largest |plaquette flux|; near π the mesh can't resolve the curvature. */
+  maxFlux: number;
 };
 
 /** ⟨a|b⟩ of two interleaved-re/im statevectors. */
@@ -63,8 +69,18 @@ export function chernNumber(
     }
   }
 
+  // QC-1: guards. The torus needs ψ(2π, φ) ≡ ψ(0, φ) and ψ(θ, 2π) ≡ ψ(θ, 0) up to a phase.
+  let periodicOverlap = 1, minLink = 1, maxFlux = 0;
+  for (let k = 0; k < grid; k++) {
+    const a = (2 * Math.PI * k) / grid;
+    const e0 = simulate(circuit, { ...paramValues, [sym0]: 2 * Math.PI, [sym1]: a }, customGates).state;
+    const e1 = simulate(circuit, { ...paramValues, [sym0]: a, [sym1]: 2 * Math.PI }, customGates).state;
+    periodicOverlap = Math.min(periodicOverlap, Math.hypot(...inner(states[0][k], e0)), Math.hypot(...inner(states[k][0], e1)));
+  }
+
   const link = (a: Float64Array, b: Float64Array): [number, number] => {
     const [re, im] = inner(a, b);
+    minLink = Math.min(minLink, Math.hypot(re, im));
     const mag = Math.hypot(re, im) || 1;
     return [re / mag, im / mag];
   };
@@ -87,11 +103,16 @@ export function chernNumber(
       let prod = cmul(U1, U2ip);
       prod = cmul(prod, conj(U1jp));
       prod = cmul(prod, conj(U2));
-      const F = Math.atan2(prod[1], prod[0]);
+      // QC-1 fix (docs/quantiom-bugs.md #29): the link ⟨ψ(k)|ψ(k+μ̂)⟩ ≈ e^{−iA_μ}
+      // for the Berry connection A = i⟨ψ|∂ψ⟩, so arg of the plaquette is −∫F.
+      // The Berry-phase panel (γ = −arg Π links) and the QGT (F = −2 Im Q)
+      // use A; the flux here takes the same orientation.
+      const F = -Math.atan2(prod[1], prod[0]);
+      maxFlux = Math.max(maxFlux, Math.abs(F));
       curvature[i][j] = F;
       chern += F;
     }
   }
   chern /= 2 * Math.PI;
-  return { symbols: [sym0, sym1], curvature, chern, grid };
+  return { symbols: [sym0, sym1], curvature, chern, grid, periodicOverlap, minLink, maxFlux };
 }

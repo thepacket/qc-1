@@ -88,7 +88,7 @@ test("dump validation cases", async () => {
       group: "spectrum",
       circuits: circs.map((c) => ({ ...c, qasm: exportQasm3(c.n, c.tape), qc1: spc.computeCirc(c) })),
       hams: spc.hamCases().map((h) => {
-        const st = circs.find((c) => c.n === h.n && c.id.startsWith("rand"))!;
+        const st = circs.find((c) => (h.state ? c.id === h.state : c.n === h.n && c.id.startsWith("rand")))!;
         return { ...h, stateId: st.id, stateQasm: exportQasm3(st.n, st.tape), qc1: spc.computeHam(h, st) };
       }),
       geom: spc.geomCases().map((g) => ({ ...g, qasm: exportQasm3(g.n, g.tape), qc1: spc.computeGeom(g) })),

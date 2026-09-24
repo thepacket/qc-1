@@ -3,18 +3,17 @@
  * (the one-period Floquet operator), e^{iθ_k}, distributed on the unit circle.
  *
  * U is **normal** (unitary), so it commutes with its Hermitian parts
- * H_c = (U + U†)/2 and H_s = (U − U†)/2i and shares their eigenvectors. We
- * diagonalise the Hermitian combination M = H_c + α·H_s (α breaks the cos θ
- * degeneracy between ±θ), then read each quasi-energy off as the
- * Rayleigh-quotient phase θ_k = arg⟨v_k|U|v_k⟩ (exact, since v_k is an
- * eigenvector of U). No general complex eigensolver needed. The level-spacing
+ * H_c = (U + U†)/2 and H_s = (U − U†)/2i and shares their eigenvectors.
+ * QC-1: we diagonalise H_c, then H_s inside each H_c cluster (calc/normalEig),
+ * and read each quasi-energy off as the Rayleigh-quotient phase
+ * θ_k = arg⟨v_k|U|v_k⟩, reporting the largest eigenpair residual. The level-spacing
  * of {θ_k} is the Floquet analogue of energy-level statistics — Poisson
  * (integrable) vs circular-ensemble repulsion (chaotic). Builds the dense U,
  * capped at a small n, run on demand.
  */
 
 import type { Complex } from "./density";
-import { hermitianEig } from "./eig";
+import { normalEig } from "../calc/normalEig";
 import { simulate, type ParameterValues } from "./simulate";
 import type { Circuit } from "./types";
 type CustomGate = unknown; // QC-1: custom gates arrive in Phase 6
@@ -26,6 +25,8 @@ export type FloquetResult = {
   spacings: number[];
   /** Mean consecutive-gap ratio ⟨r⟩ (Poisson ≈ 0.386, COE ≈ 0.527). */
   meanR: number;
+  /** QC-1: largest eigenpair residual ‖U v − e^{iθ} v‖. */
+  residual: number;
 };
 
 export function floquetSpectrum(
@@ -46,35 +47,15 @@ export function floquetSpectrum(
     for (let i = 0; i < dim; i++) { Ure[i][j] = psi[2 * i]; Uim[i][j] = psi[2 * i + 1]; }
   }
 
-  // M = H_c + α H_s, Hermitian. H_c = (U+U†)/2, H_s = (U−U†)/2i.
-  const alpha = 0.1 + Math.PI / 100; // irrational-ish, breaks ±θ degeneracy
-  const M: Complex[][] = Array.from({ length: dim }, () => new Array<Complex>(dim));
-  for (let i = 0; i < dim; i++) {
-    for (let j = 0; j < dim; j++) {
-      // U†[i][j] = conj(U[j][i]).
-      const udRe = Ure[j][i], udIm = -Uim[j][i];
-      const hcRe = (Ure[i][j] + udRe) / 2, hcIm = (Uim[i][j] + udIm) / 2;
-      // H_s = (U − U†)/(2i) = (U − U†)·(−i/2)
-      const dRe = Ure[i][j] - udRe, dIm = Uim[i][j] - udIm;
-      const hsRe = dIm / 2, hsIm = -dRe / 2;
-      M[i][j] = { re: hcRe + alpha * hsRe, im: hcIm + alpha * hsIm };
-    }
-  }
-
-  const { vectors } = hermitianEig(M);
-  const quasiEnergies: number[] = vectors.map((v) => {
-    // ⟨v|U|v⟩ = Σ_{i,j} conj(v_i) U[i][j] v_j.
-    let re = 0, im = 0;
-    for (let i = 0; i < dim; i++) {
-      // (U v)_i = Σ_j U[i][j] v_j
-      let uvRe = 0, uvIm = 0;
-      for (let j = 0; j < dim; j++) {
-        uvRe += Ure[i][j] * v[j].re - Uim[i][j] * v[j].im;
-        uvIm += Ure[i][j] * v[j].im + Uim[i][j] * v[j].re;
-      }
-      re += v[i].re * uvRe + v[i].im * uvIm;
-      im += v[i].re * uvIm - v[i].im * uvRe;
-    }
+  // QC-1 fix (docs/quantiom-bugs.md #25): one Hermitian combination
+  // M = H_c + α·H_s merges two distinct phases whenever cos θ₁ + α sin θ₁ =
+  // cos θ₂ + α sin θ₂ (e.g. a global phase atan α), and the Rayleigh phase of
+  // the mixed vector is then neither. Diagonalise U as a normal matrix
+  // (cluster by cluster, see calc/normalEig.ts) and keep the residual.
+  const U: Complex[][] = Ure.map((row, i) => row.map((re, j) => ({ re, im: Uim[i][j] })));
+  const eig = normalEig(U);
+  const residual = eig.residual;
+  const quasiEnergies: number[] = eig.values.map(({ re, im }) => {
     // QC-1 fix (docs/quantiom-bugs.md #15): quasi-energies live on a circle;
     // report them in (−π, π] (atan2 gives −π for a −0 imaginary part).
     const th = Math.atan2(im, re);
@@ -90,11 +71,13 @@ export function floquetSpectrum(
   const meanGap = gaps.length > 0 ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 1;
   const spacings = gaps.map((g) => g / (meanGap || 1));
   const ratios: number[] = [];
-  for (let i = 1; i < gaps.length; i++) {
-    const a = gaps[i - 1], b = gaps[i];
+  // QC-1 fix (docs/quantiom-bugs.md #26): on the circle the last gap is
+  // followed by the first; without that pair ⟨r⟩ depends on the global phase.
+  for (let i = 0; i < (gaps.length > 1 ? gaps.length : 0); i++) {
+    const a = gaps[i], b = gaps[(i + 1) % gaps.length];
     const mx = Math.max(a, b);
     if (mx > 1e-15) ratios.push(Math.min(a, b) / mx);
   }
   const meanR = ratios.length > 0 ? ratios.reduce((a, b) => a + b, 0) / ratios.length : 0;
-  return { quasiEnergies, spacings, meanR };
+  return { quasiEnergies, spacings, meanR, residual };
 }

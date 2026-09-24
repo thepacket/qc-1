@@ -55,7 +55,7 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 - **Structure factor** (live, n ≤ 16, n ≥ 2) — S(k): Fourier transform of the ZZ correlations; k = 0 ferromagnetic, k = π Néel order.
 - **Symmetry sectors** (live, n ≤ 20) — Weight in each excitation-number sector and the Z₂ parity ⟨ΠZ⟩.
 - **Counting statistics** (live, n ≤ 20; inputs: A) — Distribution of the number of 1s in region A; its variance is the charge fluctuation.
-- **Entanglement contour** (live, n ≤ 20, n ≥ 2; inputs: region size) — Where a region's entropy comes from: S([0..j]) − S([0..j−1]) per site.
+- **Prefix conditional entropy** (live, n ≤ 20, n ≥ 2; inputs: region size) — S(qⱼ | q₀…qⱼ₋₁) = S(q₀…qⱼ) − S(q₀…qⱼ₋₁) for each site of the region q₀…: it sums to S(region) but depends on the order and can be negative, so it is not an entanglement contour.
 - **Schmidt gap** (live, n ≤ 20, n ≥ 2) — λ₁ − λ₂ across every cut; it closes at a critical point.
 - **Entanglement Hamiltonian** (live, n ≤ 20, n ≥ 2; inputs: A) — Entanglement energies ξᵢ = −ln λᵢ (Li–Haldane spectrum) across the cut.
 - **Entanglement-spectrum statistics** (live, n ≤ 20, n ≥ 3; inputs: A) — Gap ratios of the entanglement spectrum: ⟨r⟩ ≈ 0.386 Poisson (localized), 0.536 GOE (ergodic).
@@ -73,12 +73,12 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 - **⟨Z⟩ spectrum** (live, n ≤ 14; inputs: qubit) — Fourier spectrum of ⟨Z⟩(t) over one period: a peak at bin m is m oscillations per period.
 - **Loschmidt echo** (live, n ≤ 14) — Return probability |⟨ψ(0)|ψ(t)⟩|² and its rate function; cusps mark dynamical phase transitions.
 - **Imbalance** (live, n ≤ 14) — Staggered magnetisation (1/n)Σ(−1)ⁱ⟨Zᵢ⟩ over t: it decays when thermalising, stays in localised phases.
-- **Entanglement velocity** (live, n ≤ 12, n ≥ 2) — Half-cut entropy S(t) and its steepest slope, the entanglement velocity.
+- **Entanglement growth rate** (live, n ≤ 12, n ≥ 2) — Half-cut entropy S(t) and its steepest slope max dS/dt, in bits per unit of the parameter t.
 - **Negativity over t** (live, n ≤ 12, n ≥ 2; inputs: A) — Log-negativity across the cut as t sweeps: growth, oscillation, sudden death and revival.
 - **OTOC** (RUN, n ≤ 6, n ≥ 2; inputs: W on, V on) — C(t) = 1 − Re⟨W(t)VW(t)V⟩ on |0…0⟩ with Z operators: it rises when the operator front reaches V.
 - **OTOC light cone** (RUN, n ≤ 5, n ≥ 2; inputs: W on) — OTOC over every qubit and t: the operator light cone.
 - **Butterfly velocity** (RUN, n ≤ 5, n ≥ 2; inputs: W on) — Arrival time of the OTOC front at each distance, and the fitted speed v_B.
-- **Lyapunov exponent** (RUN, n ≤ 6, n ≥ 2; inputs: W on, V on) — Early-time exponential growth rate of the OTOC, λ_L.
+- **OTOC growth rate** (RUN, n ≤ 6, n ≥ 2; inputs: W on, V on) — Slope of ln C(t) over the OTOC's first rising window, with the fit's R²: an empirical rate, a Lyapunov exponent only for chaotic dynamics.
 - **Operator weight** (RUN, n ≤ 4; inputs: Z on) — How Z on one qubit spreads under W(t) = U†WU: weight by Pauli support size, over t.
 - **Autocorrelation** (RUN, n ≤ 6; inputs: qubit) — Infinite-temperature ⟨Z(t)Z(0)⟩ and its spectrum: how long a qubit remembers its polarisation.
 - **Space-time ⟨Z⟩** (live, n ≤ 14) — ⟨Z⟩ of every qubit after every circuit step.
@@ -97,7 +97,7 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 - **Spectral form factor** (live, n ≤ 6; inputs: H) — |Σ e^(−iEt)|²/D² on log-log axes: dip, ramp, plateau.
 - **Krylov complexity** (live, n ≤ 6; inputs: H) — Lanczos coefficients bₙ of H from the current state, and the spread complexity C(t).
 - **Diagonal ensemble** (live, n ≤ 6; inputs: H) — The state's weight on each energy level of H, ⟨H⟩, ΔE and the effective dimension.
-- **Effective temperature** (live, n ≤ 6; inputs: H) — Boltzmann fit ln p = c − βE to the energy populations (non-degenerate H).
+- **Effective temperature** (live, n ≤ 6; inputs: H) — Boltzmann fit ln p = c − βE to the energy populations, and the β of the Gibbs state with the same ⟨H⟩ (non-degenerate H).
 - **ETH matrix elements** (RUN, n ≤ 5; inputs: H, O) — |⟨Eₘ|O|Eₙ⟩|² against ω = Eₘ − Eₙ, and the diagonal ⟨Eₙ|O|Eₙ⟩ (non-degenerate H).
 - **Eigenstate entanglement** (RUN, n ≤ 6, n ≥ 2; inputs: H) — Half-chain entropy of every eigenstate of H against its energy: volume-law arch vs area law.
 - **Work distribution** (RUN, n ≤ 5; inputs: H) — Two-point-measurement work W = Eₘ − Eₙ for the circuit as a quench from |0…0⟩ (energy-level projectors).

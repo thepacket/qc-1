@@ -30,6 +30,10 @@ export function cases(): DynCase[] {
   };
   return [
     { id: "rabi", n: 1, scope: { t: 0 }, tape: [s("rx", [0], ["t"])] },
+    // ⟨Z⟩ = cos 8t: all its weight in the Nyquist bin of the 16-sample spectrum.
+    { id: "nyquist", n: 1, scope: { t: 0 }, tape: [s("rx", [0], ["8*t"])] },
+    // A slow XX rotation: the OTOC rises over most of the sweep (a growth window of several samples).
+    { id: "slowxx", n: 2, scope: { t: 0 }, tape: [s("h", [0]), s("rxx", [0, 1], ["t/4"])] },
     { id: "twofreq", n: 2, scope: { t: 0, theta: 0.3 }, tape: [s("rx", [0], ["2*t"]), s("ry", [1], ["t+θ"]), s("x", [1], [], [0])] },
     { id: "ising3", n: 3, scope: { t: 0 }, tape: [s("x", [1]), ...ising(3)] },
     { id: "scramble4", n: 4, scope: { t: 0 },
@@ -66,7 +70,7 @@ export function compute(c: DynCase) {
     const b = butterflyVelocity(circ, sc, [], 0, "Z", "Z", 0.5, P.otoc)!;
     out.butterfly = { series: b.series.map((x) => ({ distance: x.distance, vQubit: x.vQubit, C: x.C, arrival: x.arrival })), vB: b.vB, intercept: b.intercept };
     const ly = lyapunovExponent(circ, sc, [], 0, c.n - 1, P.otoc)!;
-    out.lyapunov = { C: ly.C, lnC: ly.lnC, lyapunov: ly.lyapunov, intercept: ly.intercept };
+    out.lyapunov = { C: ly.C, lnC: ly.lnC, lyapunov: ly.lyapunov, intercept: ly.intercept, r2: ly.r2 };
     out.spacetimeEntropy = spaceTimeEntropy(circ, sc, [])!.s;
     out.asymmetry = entanglementAsymmetrySweep(circ, sc, [])!.asymmetry;
   }

@@ -77,7 +77,8 @@ export function temporalAutocorrelation(
       re += C[k] * Math.cos(phi);
       im += C[k] * Math.sin(phi);
     }
-    spectrum[m] = Math.hypot(re, im) * (m === 0 ? 1 / P : 2 / P);
+    // QC-1 fix (docs/quantiom-bugs.md #27): DC and, for even P, Nyquist take 1/P.
+    spectrum[m] = Math.hypot(re, im) * (m === 0 || 2 * m === P ? 1 / P : 2 / P);
   }
   return { ts, C, freqs, spectrum, numQubits: n };
 }

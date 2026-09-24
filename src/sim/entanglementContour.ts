@@ -12,6 +12,12 @@
  * increment flags a site whose inclusion *lowers* the entropy (strong local
  * correlation). Statevector path; each prefix is diagonalised on its own
  * side, so the region is capped at `maxSide` qubits.
+ *
+ * QC-1 (docs/quantiom-bugs.md #30): this is the chain rule of conditional
+ * entropies, s(j) = S(j | 0..j−1), not an entanglement contour: a contour
+ * (Chen–Vidal) is non-negative, order-independent, and vanishes on sites not
+ * entangled with the complement, while here Bell ⊗ |0⟩ with A = {0,1} gives
+ * [+1, −1]. QC-1 shows it as "Prefix conditional entropy".
  */
 
 import { reducedDensityMatrix } from "./density";

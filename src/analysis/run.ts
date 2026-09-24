@@ -467,7 +467,8 @@ Object.assign(RUNS, {
     if (!res) return { error: "region too large (≤ 7 qubits)" };
     return {
       scalars: [{ label: "S(region)", value: r3(res.total), unit: "bits" }],
-      charts: [{ kind: "bars", title: "s(j) = S([0..j]) − S([0..j−1])", labels: res.contour.map((_, j) => `q${j}`), values: res.contour, signed: true, unit: "bits" }],
+      charts: [{ kind: "bars", title: "S(qⱼ | q₀…qⱼ₋₁) = S(q₀…qⱼ) − S(q₀…qⱼ₋₁)", labels: res.contour.map((_, j) => `q${j}`), values: res.contour, signed: true, unit: "bits" }],
+      notes: ["A chain rule, not an entanglement contour: the terms depend on the site order, and a negative one means that site is entangled with earlier sites of the region."],
     };
   },
 
@@ -859,10 +860,18 @@ Object.assign(RUNS, {
     if (isDegenerate(E)) return { error: "H has degenerate levels: per-eigenstate populations aren't defined; use a generic H" };
     const res = effectiveTemperature(diagonalEnsemble(terms, ctx.state, ctx.n)!);
     const pts = res.energies.map((e, k) => [e, res.logPop[k]] as const).filter(([, y]) => Number.isFinite(y));
+    const inf = (x: number) => (Number.isNaN(x) ? "—" : x === Infinity ? "∞" : x === -Infinity ? "−∞" : r3(x));
     return {
-      scalars: [{ label: "β", value: r3(res.beta) }, { label: "T = 1/β", value: Number.isFinite(res.temperature) ? r3(res.temperature) : "∞" }, { label: "R²", value: r3(res.r2) }],
-      charts: [{ kind: "scatter", x: pts.map((p) => p[0]), y: pts.map((p) => p[1]), xLabel: "E", yLabel: "ln pₖ",
-        fit: { a: res.intercept, b: -res.beta, label: `β = ${r3(res.beta)}` } }],
+      scalars: [
+        { label: "β (Boltzmann fit)", value: res.fitted ? r3(res.beta) : "— (needs ≥ 2 populated levels)" },
+        ...(res.fitted ? [{ label: "T = 1/β (fit)", value: inf(res.temperature) }, { label: "R² of the fit", value: r3(res.r2) }] : []),
+        { label: "β matching ⟨H⟩", value: inf(res.betaEnergy) }, { label: "T matching ⟨H⟩", value: inf(res.temperatureEnergy) },
+      ],
+      charts: pts.length ? [{ kind: "scatter", x: pts.map((p) => p[0]), y: pts.map((p) => p[1]), xLabel: "E", yLabel: "ln pₖ",
+        fit: res.fitted ? { a: res.intercept, b: -res.beta, label: `β = ${r3(res.beta)}` } : undefined }] : [],
+      notes: [
+        "The fit β is the slope of ln pₖ against E; it describes the populations only as well as R² says. The matching β is the Gibbs state's with the same ⟨H⟩ (0 at the ground state, ∞ at the top level).",
+      ],
     };
   },
 
@@ -917,8 +926,16 @@ Object.assign(RUNS, {
     const grid = num("chern", "grid", opts, ctx.n);
     const res = chernNumber(lowerTape(ctx.n, ctx.tape), ctx.scope, [], a, b, grid)!;
     const lab = (k: number) => (k % Math.max(1, Math.floor(grid / 4)) === 0 ? `${r3((2 * k) / grid)}π` : "");
+    const periodic = res.periodicOverlap > 1 - 1e-6;
+    const notes: string[] = [];
+    if (!periodic) notes.push(`The states aren't periodic over [0, 2π)² (|⟨ψ(0)|ψ(2π)⟩| down to ${r3(res.periodicOverlap)}): the flux sum is not a topological invariant.`);
+    if (res.minLink < 0.2 || res.maxFlux > Math.PI / 2) notes.push(`Coarse mesh for this family (smallest link overlap ${r3(res.minLink)}, largest plaquette flux ${r3(res.maxFlux / Math.PI)}π): try a finer grid.`);
     return {
-      scalars: [{ label: "Chern number C", value: r3(res.chern) }],
+      scalars: [
+        { label: "Chern number C", value: periodic ? r3(res.chern) : `${r3(res.chern)} (not an invariant)` },
+        { label: "periodicity |⟨ψ(0)|ψ(2π)⟩|", value: r3(res.periodicOverlap) },
+      ],
+      notes,
       charts: [{ kind: "heatmap", scale: "div", min: -Math.PI, max: Math.PI, rows: Array.from({ length: grid }, (_, k) => lab(k)),
         cols: Array.from({ length: grid }, (_, k) => lab(k)), values: res.curvature, title: `Berry flux: rows ${symbolGlyph(a)}, cols ${symbolGlyph(b)}` }],
     };
@@ -986,7 +1003,8 @@ Object.assign(RUNS, {
     const res = entanglementVelocity(lowerTape(ctx.n, ctx.tape), ctx.scope, [], 64);
     if (!res) return { error: "half cut too large (≤ 6 qubits a side)" };
     return {
-      scalars: [{ label: "v_E = max dS/dt", value: r3(res.velocity), unit: "bits per unit t" }, { label: "at t", value: `${r3(res.velocityAt / Math.PI)}π` }],
+      scalars: [{ label: "max dS/dt", value: r3(res.velocity), unit: "bits per unit of t" }, { label: "at t", value: `${r3(res.velocityAt / Math.PI)}π` }],
+      notes: ["t is the circuit's parameter: this is a velocity in physical time only when the circuit is exp(−iHt) itself (e.g. a Trotter circuit with steps ∝ t), and in sites only after dividing by the entangling area."],
       charts: [{ kind: "lines", x: tAxis(res.ts), xLabel: "t / π", yLabel: "S (bits)", yMin: 0, series: [{ name: "S(half)", y: res.entropy }] }],
     };
   },
@@ -1004,6 +1022,7 @@ Object.assign(RUNS, {
 
   otoc(ctx, opts) {
     requireT(ctx);
+    requireUnitary(ctx); // Heisenberg-picture operators need U(t)
     const w = num("otoc", "w", opts, ctx.n), v = num("otoc", "v", opts, ctx.n);
     const res = otoc(lowerTape(ctx.n, ctx.tape), ctx.scope, [], w, v, "Z", "Z", 48)!;
     return { charts: [{ kind: "lines", x: tAxis(res.ts), xLabel: "t / π", yLabel: "C(t)", yMin: 0, series: [{ name: `W=Z${w}, V=Z${v}`, y: res.C }] }] };
@@ -1011,6 +1030,7 @@ Object.assign(RUNS, {
 
   otoccone(ctx, opts) {
     requireT(ctx);
+    requireUnitary(ctx); // Heisenberg-picture operators need U(t)
     const w = num("otoccone", "w", opts, ctx.n);
     const res = otocLightcone(lowerTape(ctx.n, ctx.tape), ctx.scope, [], w, "Z", "Z", 28)!;
     return {
@@ -1021,6 +1041,7 @@ Object.assign(RUNS, {
 
   butterfly(ctx, opts) {
     requireT(ctx);
+    requireUnitary(ctx); // Heisenberg-picture operators need U(t)
     const w = num("butterfly", "w", opts, ctx.n);
     const res = butterflyVelocity(lowerTape(ctx.n, ctx.tape), ctx.scope, [], w, "Z", "Z", 0.5, 32)!;
     const pts = res.series.filter((s) => s.arrival !== null);
@@ -1033,18 +1054,27 @@ Object.assign(RUNS, {
 
   lyapunov(ctx, opts) {
     requireT(ctx);
+    requireUnitary(ctx); // Heisenberg-picture operators need U(t)
     const w = num("lyapunov", "w", opts, ctx.n), v = num("lyapunov", "v", opts, ctx.n);
     const res = lyapunovExponent(lowerTape(ctx.n, ctx.tape), ctx.scope, [], w, v, 48)!;
     const pts = res.ts.map((t, k) => [t, res.lnC[k]] as const).filter(([, y]) => Number.isFinite(y));
     return {
-      scalars: [{ label: "λ_L", value: Number.isFinite(res.lyapunov) ? r3(res.lyapunov) : "— (no clean growth window)" }],
+      scalars: [
+        { label: "growth rate of ln C", value: Number.isFinite(res.lyapunov) ? r3(res.lyapunov) : "— (no rising window of ≥ 3 samples)" },
+        ...(Number.isFinite(res.r2) ? [{ label: "R² of the fit", value: r3(res.r2) }] : []),
+      ],
+      notes: [
+        "Fitted over the first contiguous rising window of C(t). It is a Lyapunov exponent λ_L only when the dynamics is chaotic and C grows exponentially (R² near 1); an oscillating C gives an empirical slope, not chaos.",
+        ...(Number.isFinite(res.r2) && res.r2 < 0.95 ? ["R² < 0.95: ln C isn't a straight line in this window, so the growth isn't exponential."] : []),
+      ],
       charts: pts.length >= 2 ? [{ kind: "scatter", x: pts.map((p) => p[0]), y: pts.map((p) => p[1]), xLabel: "t", yLabel: "ln C",
-        fit: Number.isFinite(res.lyapunov) ? { a: res.intercept, b: res.lyapunov, label: `λ = ${r3(res.lyapunov)}` } : undefined }] : [],
+        fit: Number.isFinite(res.lyapunov) ? { a: res.intercept, b: res.lyapunov, label: `slope ${r3(res.lyapunov)}` } : undefined }] : [],
     };
   },
 
   opweight(ctx, opts) {
     requireT(ctx);
+    requireUnitary(ctx); // Heisenberg-picture operators need U(t)
     const w = num("opweight", "w", opts, ctx.n);
     const res = operatorWeightGrowth(lowerTape(ctx.n, ctx.tape), ctx.scope, [], w, "Z", 24)!;
     const rows = Array.from({ length: ctx.n + 1 }, (_, k) => res.weights.map((row) => row[k]));
@@ -1056,6 +1086,7 @@ Object.assign(RUNS, {
 
   autocorr(ctx, opts) {
     requireT(ctx);
+    requireUnitary(ctx); // Heisenberg-picture operators need U(t)
     const q = num("autocorr", "q", opts, ctx.n);
     const res = temporalAutocorrelation(lowerTape(ctx.n, ctx.tape), ctx.scope, [], q, 49)!;
     return {

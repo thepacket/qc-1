@@ -96,7 +96,7 @@ def reference(c, P):
     spec = []
     for q in range(n):
         f = np.fft.rfft([zexp(p, n, q) for p in per])
-        spec.append([abs(x) * (1 / P["spec"] if m == 0 else 2 / P["spec"]) for m, x in enumerate(f)])
+        spec.append([abs(x) * (1 / P["spec"] if m == 0 or 2 * m == P["spec"] else 2 / P["spec"]) for m, x in enumerate(f)])  # DC and Nyquist: 1/N
     out["spectrum"] = spec
     psi0 = state(qc, {**sc, "t": 0})
     L = [float(abs(np.vdot(psi0, p)) ** 2) for p in states]
@@ -110,7 +110,7 @@ def reference(c, P):
         Cs.append(float(np.real(np.trace(U.conj().T @ Z0 @ U @ Z0))) / 2 ** n)
     f = np.fft.rfft(Cs[:-1])  # one uniform period: t_k, k = 0 … P−2
     Pp = P["sweep"] - 1
-    out["autocorr"] = {"C": Cs, "spectrum": [abs(x) * (1 / Pp if m == 0 else 2 / Pp) for m, x in enumerate(f)]}
+    out["autocorr"] = {"C": Cs, "spectrum": [abs(x) * (1 / Pp if m == 0 or 2 * m == Pp else 2 / Pp) for m, x in enumerate(f)]}
     prefix = [state(qasm3.loads(text), sc) for text in c["qc1"]["prefixQasm"]]
     out["spacetime"] = [[zexp(p, n, q) for p in prefix] for q in range(n)]
     if n <= 4:
@@ -156,11 +156,21 @@ def reference(c, P):
         out["butterfly"] = {"series": series, "vB": vB, "intercept": icpt if icpt is not None else 0}
         cmax = max(C)
         lo, hi = max(1e-3, 0.02 * cmax), 0.7 * cmax
-        lnC = [math.log(x) if lo < x < hi else None for x in C]
+        lnC = [None] * len(C)  # the first contiguous rising run inside (lo, hi)
+        k0 = next((k for k, x in enumerate(C) if lo < x < hi), None)
+        if k0 is not None:
+            k = k0
+            while k < len(C) and lo < C[k] < hi and (k == k0 or C[k] > C[k - 1]):
+                lnC[k] = math.log(C[k])
+                k += 1
         xs = [t for t, y in zip(tso, lnC) if y is not None]
         ys = [y for y in lnC if y is not None]
-        lam, icp = linfit(xs, ys) if len(xs) >= 2 else (None, None)
-        out["lyapunov"] = {"C": C, "lnC": lnC, "lyapunov": lam, "intercept": icp}
+        lam, icp = linfit(xs, ys) if len(xs) >= 3 else (None, None)
+        r2 = None
+        if lam is not None:
+            ss_tot = sum((y - np.mean(ys)) ** 2 for y in ys)
+            r2 = max(0.0, 1 - sum((y - icp - lam * x) ** 2 for x, y in zip(xs, ys)) / ss_tot) if ss_tot > 1e-12 else 1.0
+        out["lyapunov"] = {"C": C, "lnC": lnC, "lyapunov": lam, "intercept": icp, "r2": r2}
         out["spacetimeEntropy"] = [[S_half(p, n, [q]) for p in prefix] for q in range(n)]
         aq = list(range(min(5, math.ceil(n / 2))))
         asym = []

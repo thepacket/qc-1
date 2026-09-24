@@ -37,13 +37,15 @@ export function circCases(): CircCase[] {
 }
 
 /** Hamiltonians: degenerate (ZZ chain, pure field), TFIM, and generic random couplings. */
-export function hamCases(): { id: string; n: number; text: string; degenerate: boolean }[] {
+export function hamCases(): { id: string; n: number; text: string; degenerate: boolean; state?: string }[] {
   return [
     { id: "zz3", n: 3, text: "ZZI + IZZ", degenerate: true },
     { id: "zfield3", n: 3, text: "ZII + IZI + IIZ", degenerate: true },
     { id: "tfim4", n: 4, text: "-1*ZZII - 1*IZZI - 1*IIZZ - 0.7*XIII - 0.7*IXII - 0.7*IIXI - 0.7*IIIX", degenerate: false },
     { id: "rand3", n: 3, text: "0.73*XYI - 0.41*IZZ + 0.29*YIX + 1.13*ZII - 0.37*IXI + 0.61*IIY + 0.23*ZXZ", degenerate: false },
     { id: "rand4", n: 4, text: "0.8*XXII + 0.6*IYYI - 0.9*IIZZ + 0.35*ZIIX + 0.47*IXIZ - 0.21*YIYI + 0.33*IIIX + 0.19*ZIII", degenerate: false },
+    // |00⟩ is this H's ground state: no Boltzmann fit, energy-matched β = +∞.
+    { id: "ground2", n: 2, text: "-1*ZI - 0.5*IZ", degenerate: false, state: "empty2" },
   ];
 }
 
@@ -97,7 +99,7 @@ export function computeHam(h: ReturnType<typeof hamCases>[number], state: CircCa
     out.eth = { diag: eth.diag, meanOffDiag: eth.meanOffDiag, offDiag: eth.offDiag };
     out.ensembleFull = { populations: de.populations, ipr: de.ipr, effectiveDim: de.effectiveDim };
     out.eigEnt = ee;
-    out.effTemp = { beta: et.beta, r2: et.r2, intercept: et.intercept };
+    out.effTemp = { beta: et.fitted ? et.beta : null, r2: et.fitted ? et.r2 : null, intercept: et.fitted ? et.intercept : null, betaEnergy: Number.isFinite(et.betaEnergy) ? et.betaEnergy : String(et.betaEnergy) };
   }
   return out;
 }

@@ -28,6 +28,28 @@ TOL = 1e-9
 PAULI = {"I": np.eye(2), "X": np.array([[0, 1], [1, 0]]), "Y": np.array([[0, -1j], [1j, 0]]), "Z": np.diag([1, -1])}
 
 
+
+def matched_beta(E, mean):
+    """β of the Gibbs state with Tr(ρ_β H) = mean (scipy brentq on the log-sum-exp mean)."""
+    from scipy.optimize import brentq
+    from scipy.special import logsumexp
+    E = np.asarray(E, dtype=float)
+    lo, hi = E.min(), E.max()
+    tol = 1e-12 * max(1.0, abs(lo), abs(hi))
+    if hi - lo < tol:
+        return None
+    if mean <= lo + tol:
+        return math.inf
+    if mean >= hi - tol:
+        return -math.inf
+    avg = lambda b: float(np.exp(logsumexp(-b * E, b=E - lo + 1) - logsumexp(-b * E)) + lo - 1)
+    a, b = -1.0, 1.0
+    while avg(a) < mean:
+        a *= 2
+    while avg(b) > mean:
+        b *= 2
+    return float(brentq(lambda x: avg(x) - mean, a, b, xtol=1e-14, rtol=1e-14))
+
 def label_mat(s):
     m = np.array([[1.0 + 0j]])
     for ch in s:
@@ -74,7 +96,7 @@ def circ_ref(c):
     th = np.sort(np.where(th <= -math.pi + 1e-12, math.pi, th))  # (−π, π]
     gaps = np.append(np.diff(th), 2 * math.pi - (th[-1] - th[0])) if len(th) > 1 else np.diff(th)  # circular
     mg = gaps.mean() if len(gaps) else 1.0
-    ratios = [min(x, y) / max(x, y) for x, y in zip(gaps[:-1], gaps[1:]) if max(x, y) > 1e-15]
+    ratios = [min(x, y) / max(x, y) for x, y in zip(gaps, np.roll(gaps, -1)) if max(x, y) > 1e-15] if len(gaps) > 1 else []  # every cyclic pair
     out["floquet"] = {"quasiEnergies": th.tolist(), "spacings": (gaps / (mg or 1)).tolist(), "meanR": float(np.mean(ratios)) if ratios else 0.0}
     return out
 
@@ -235,11 +257,16 @@ def ham_ref(h, state_qasm, state_n):
         out["eigEnt"] = {"energies": E.tolist(), "entropies": ents, "maxEntropy": min(half, n - half), "numQubits": n}
         xs = [e for e, p in zip(E, pops) if p > 1e-9]
         ys = [math.log(p) for p in pops if p > 1e-9]
-        slope, icpt = np.polyfit(xs, ys, 1)
-        pred = icpt + slope * np.array(xs)
-        ss_tot = float(np.sum((np.array(ys) - np.mean(ys)) ** 2))
-        out["effTemp"] = {"beta": float(-slope), "r2": max(0.0, 1 - float(np.sum((np.array(ys) - pred) ** 2)) / ss_tot) if ss_tot > 1e-12 else 1.0,
-                          "intercept": float(icpt)}
+        if len(xs) >= 2 and np.ptp(xs) > 1e-9:
+            slope, icpt = np.polyfit(xs, ys, 1)
+            pred = icpt + slope * np.array(xs)
+            ss_tot = float(np.sum((np.array(ys) - np.mean(ys)) ** 2))
+            out["effTemp"] = {"beta": float(-slope), "r2": max(0.0, 1 - float(np.sum((np.array(ys) - pred) ** 2)) / ss_tot) if ss_tot > 1e-12 else 1.0,
+                              "intercept": float(icpt)}
+        else:  # one populated level: no fit
+            out["effTemp"] = {"beta": None, "r2": None, "intercept": None}
+        bm = matched_beta(E, float(np.dot(pops, E)))
+        out["effTemp"]["betaEnergy"] = "NaN" if bm is None else "Infinity" if bm == math.inf else "-Infinity" if bm == -math.inf else bm
     return out
 
 
@@ -279,7 +306,7 @@ def geom_ref(g):
         for j in range(N):
             ip, jp = (i + 1) % N, (j + 1) % N
             z = link(grid[i][j], grid[ip][j]) * link(grid[ip][j], grid[ip][jp]) * np.conj(link(grid[i][jp], grid[ip][jp])) * np.conj(link(grid[i][j], grid[i][jp]))
-            curv[i][j] = float(np.angle(z))
+            curv[i][j] = float(-np.angle(z))  # Berry curvature of A = i<psi|d psi> (link ~ e^{-iA})
             tot += curv[i][j]
     return {"berry": {"gamma": gamma, "overlapMagnitude": float(abs(prod)), "loop": [list(p) for p in pts]},
             "chern": {"chern": tot / (2 * math.pi), "curvature": curv}}
