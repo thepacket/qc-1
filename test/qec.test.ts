@@ -42,7 +42,7 @@ describe("union-find decoder", () => {
         expect(r.logicalX || r.logicalZ, `${p} on ${qs}`).toBe(false);
       }
     }
-  });
+  }, 30_000); // exhaustive: ~2.6 s alone at d = 7, more when the suite runs in parallel
 
   test("mixed errors too: every pair of single-qubit Paulis on d=5", () => {
     const c = surfaceCode(5);
