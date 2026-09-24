@@ -9,7 +9,7 @@ import { elementToSvg, saveSvg } from "./svgExport";
 export const DIAGRAM_MAX_QUBITS = 1024; // wires; the pane scrolls both ways
 const MAX_STEPS = 20000;
 
-const ROW = 24; // wire spacing
+const ROW = 34; // wire spacing (gates are 18 px tall: room to tell wires apart and tap them)
 const TOP = 14; // room for IF labels
 const CH = 6.6; // mono character width at 11px
 const BOX_H = 18;
