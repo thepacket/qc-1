@@ -22,7 +22,7 @@ from qiskit.quantum_info import Statevector
 from common import OUT, be_statevector, fail, r, write_fixture
 
 TOL = 1e-9
-QGT_TOL = 1e-6  # QC-1 uses plain central differences (ε = 1e-4): O(ε²) truncation
+QGT_TOL = 1e-8  # QC-1 converges adaptive Richardson differences to ~1e-9 (bug #39); this reference is fixed-step Richardson
 TERM = re.compile(r"([+-]*)\s*((?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)?\s*\*?\s*([IXYZ]+)")
 
 

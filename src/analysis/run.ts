@@ -696,11 +696,17 @@ Object.assign(RUNS, {
     if (!res) return { error: "needs n ≤ 12 and ≤ 8 symbols" };
     const L = res.symbols.map(symbolGlyph);
     return {
-      scalars: [{ label: "det g", value: r3(res.metricDet) }, { label: "eigenvalues of g", value: res.metricEigenvalues.map(r3).join(", ") }],
+      scalars: [
+        { label: "det g", value: r3(res.metricDet) }, { label: "eigenvalues of g", value: res.metricEigenvalues.map(r3).join(", ") },
+        { label: "derivative error (est.)", value: Math.max(...res.derivativeError).toExponential(1) },
+      ],
       charts: [
         { kind: "heatmap", scale: "div", rows: L, cols: L, values: res.metric, title: "Fubini–Study metric g" },
         { kind: "heatmap", scale: "div", rows: L, cols: L, values: res.berry, title: "Berry curvature F" },
       ],
+      notes: res.unresolved.length
+        ? [`The derivative in ${res.unresolved.map(symbolGlyph).join(", ")} didn't converge (the state changes too fast, or too irregularly, in that symbol): its rows of g and F are unreliable.`]
+        : [],
     };
   },
 

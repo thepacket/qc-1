@@ -330,3 +330,38 @@ describe("energy offset and unit invariance", () => {
     r.kr.times.forEach((t, k) => close(t * a, ref.kr.times[k]));
   });
 });
+
+// Convergence review: QGT derivatives and the metric's eigenvalues at any parameter scale.
+describe("QGT: adaptive derivatives and scale-free eigenvalues", () => {
+  const qgtOf = (body: string, scope: Record<string, number>, syms: string[]) =>
+    quantumGeometricTensor(make(1, body, scope).circ, [], scope, syms)!;
+
+  test.each([1e-5, 1, 1e3, 1e5])("RY(a·θ) at θ = 0 with a = %s: g = a²/4 (review: 3.7% at a = 1e5 with a fixed step)", (a) => {
+    const r = qgtOf(`ry(${a}*theta) q[0];`, { theta: 0 }, ["theta"]);
+    expect(r.metric[0][0] / (a * a / 4)).toBeCloseTo(1, 7);
+    expect(r.unresolved).toEqual([]);
+  });
+
+  test("ordinary scale: RZ(φ)RY(θ) at (0.73, 0.41) matches g_θθ = 1/4, g_φφ = sin²θ/4, F_θφ = −sin θ/2 to 1e-9", () => {
+    const r = qgtOf("ry(theta) q[0]; rz(phi) q[0];", { theta: 0.73, phi: 0.41 }, ["theta", "phi"]);
+    const s = Math.sin(0.73);
+    expect(Math.abs(r.metric[0][0] - 0.25)).toBeLessThan(1e-9);
+    expect(Math.abs(r.metric[1][1] - (s * s) / 4)).toBeLessThan(1e-9);
+    expect(Math.abs(r.metric[0][1])).toBeLessThan(1e-9);
+    expect(Math.abs(r.berry[0][1] + s / 2)).toBeLessThan(1e-9);
+    expect(Math.max(...r.derivativeError)).toBeLessThan(1e-8);
+  });
+
+  test.each([1e-5, 1, 1e3])("RY(a(θ+φ)) with a = %s keeps its null direction: eigenvalues [0, a²/2], det 0 (review: [2.5e-11, 2.5e-11] at 1e-5)", (a) => {
+    const r = qgtOf(`ry(${a}*(theta+phi)) q[0];`, { theta: 0.2, phi: 0.1 }, ["theta", "phi"]);
+    const [lo, hi] = r.metricEigenvalues;
+    expect(Math.abs(lo)).toBeLessThan(1e-9 * a * a);
+    expect(hi / (a * a / 2)).toBeCloseTo(1, 7);
+    expect(Math.abs(r.metricDet)).toBeLessThan(1e-9 * a ** 4);
+  });
+
+  test("a dependence too fast to resolve at any step is flagged, not reported as a number silently", () => {
+    const r = qgtOf("ry(1000000000000*theta) q[0];", { theta: 0.3 }, ["theta"]);
+    expect(r.unresolved).toEqual(["theta"]);
+  });
+});
