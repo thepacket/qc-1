@@ -19,6 +19,10 @@ describe(`benchmarking (vs ${fx.meta.reference})`, () => {
     expect(mine.rb.p).toBeCloseTo(ref.rb.p!, 6);
     mine.rbi.survival.forEach((v, i) => expect(v).toBeCloseTo(ref.rb.interleaved![i], 9));
   });
+  test("interleaved X with only X noisy: Aer survival and p = 1 − λ (the X gate itself runs)", () => {
+    mine.rbx.survival.forEach((v, i) => expect(v).toBeCloseTo(ref.rbx.survival![i], 9));
+    expect(mine.rbx.p).toBeCloseTo(ref.rbx.p!, 6);
+  });
   test("unitarity", () => {
     mine.unitarity.purity.forEach((v, i) => expect(v).toBeCloseTo(ref.unitarity.purity![i], 9));
     expect(mine.unitarity.u).toBeCloseTo(ref.unitarity.u!, 6);

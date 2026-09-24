@@ -29,24 +29,28 @@ export const BENCH_RUNS: Record<string, Run> = {
       kind: "lines", x: ref.lengths, xLabel: "Cliffords m", yLabel: "P(0)", yMin: 0.4, yMax: 1,
       series: [{ name: "survival", y: ref.survival }, { name: "fit", y: ref.lengths.map((x) => ref.A * ref.p ** x + ref.B), dashed: true }],
     }];
+    const shown = (x: number) => (Number.isNaN(x) ? "— (not identifiable)" : x);
     const scalars: AnalysisResult["scalars"] = [
-      { label: "p", value: ref.p }, { label: "error per Clifford r = (1−p)/2", value: ref.epc },
+      { label: "p", value: shown(ref.p) }, { label: "error per Clifford r = (1−p)/2", value: shown(ref.epc) },
       { label: "A, B", value: `${ref.A.toFixed(4)}, ${ref.B.toFixed(4)}` },
     ];
     if (gate) {
       const inter = rb(m, { sequences: num("rb", "sequences", opts, ctx.n), interleave: gate });
-      scalars.push({ label: `interleaved ${gate.toUpperCase()}: p`, value: inter.p }, { label: `error of ${gate.toUpperCase()} = (1 − p_int/p)/2`, value: (1 - inter.p / ref.p) / 2 });
+      scalars.push({ label: `interleaved ${gate.toUpperCase()}: p`, value: shown(inter.p) }, { label: `error of ${gate.toUpperCase()} = (1 − p_int/p)/2`, value: shown((1 - inter.p / ref.p) / 2) });
       charts[0] = { ...charts[0], kind: "lines", series: [...(charts[0] as { series: { name: string; y: number[] }[] }).series, { name: `interleaved ${gate}`, y: inter.survival }] } as typeof charts[0];
     }
-    return { scalars, charts, notes: [NOISE_NOTE, "Single-qubit Cliffords (24, from H and S); P(m) = A·pᵐ + B fitted with B free."] };
+    const flat = !ref.identifiable ? ["The survival curve is flat: the decay isn't identifiable from it. At survival 1 no noise reaches these gates (p = 1, r = 0)."] : [];
+    return { scalars, charts, notes: [NOISE_NOTE, "Single-qubit Cliffords (24, from H and S); P(m) = A·pᵐ + B fitted with B free. The interleaved gate runs as itself, with its own noise.", ...flat] };
   },
 
   unitarity(ctx) {
     const u = unitarity(needNoise(ctx));
     return {
-      scalars: [{ label: "unitarity u", value: u.u }, { label: "coherent part of the error", value: "u ≈ 1: coherent, u < p²: incoherent" }],
+      scalars: [{ label: "unitarity u", value: Number.isNaN(u.u) ? "— (flat purity curve: not identifiable)" : u.u }],
       charts: [{ kind: "lines", x: u.lengths, xLabel: "Cliffords m", yLabel: "|Bloch|²", yMin: 0, yMax: 1, series: [{ name: "purity", y: u.purity }] }],
-      notes: [NOISE_NOTE, "Mean squared Bloch length after m random Cliffords, fitted as A·uᵐ⁻¹ + B (Wallman et al. 2015)."],
+      notes: [NOISE_NOTE, "Mean squared Bloch length after m random Cliffords, fitted as A·uᵐ⁻¹ + B (Wallman et al. 2015).",
+        "For one channel, u ≥ p² (Cauchy–Schwarz on the unital block), with equality for depolarizing noise: u close to p² means incoherent (stochastic) error, u well above p² means a coherent part. u = 1 is a unitary channel, including no error at all. Compare with p from RB only when both come from the same gate set and noise.",
+        ...(u.identifiable ? [] : ["The purity curve is flat: the decay isn't identifiable. At |Bloch|² = 1 no noise reaches the qubit (u = 1)."])],
     };
   },
 
@@ -80,7 +84,7 @@ export const BENCH_RUNS: Record<string, Run> = {
 
   t1t2(ctx) {
     const r = t1t2(needNoise(ctx));
-    const f = (x: number) => (Number.isFinite(x) ? x : "∞");
+    const f = (x: number) => (Number.isNaN(x) ? "— (not identifiable)" : Number.isFinite(x) ? x : "∞ (no decay)");
     return {
       scalars: [{ label: "T1", value: f(r.T1), unit: "gates" }, { label: "T2* (Ramsey)", value: f(r.T2), unit: "gates" }, { label: "T2 (echo)", value: f(r.T2echo), unit: "gates" }],
       charts: [{ kind: "lines", x: r.delays, xLabel: "idle gates", yLabel: "P", yMin: 0, yMax: 1, series: [{ name: "T1: P(1)", y: r.t1 }, { name: "Ramsey: P(0)", y: r.ramsey }, { name: "echo: P(1)", y: r.echo }] }],
@@ -110,15 +114,13 @@ export const BENCH_RUNS: Record<string, Run> = {
     if (terms[0].paulis.length !== ctx.n) throw new Error(`Pauli strings need ${ctx.n} letters`);
     const N = num("shadows", "snapshots", opts, ctx.n);
     const sh = classicalShadows(ctx.n, ctx.state, N);
-    let est = 0, se2 = 0;
     const rows = terms.map((t) => {
       const e = sh.estimate(t.paulis);
-      est += t.coefficient * e.mean;
-      se2 += (t.coefficient * e.stderr) ** 2;
       return [t.paulis, t.coefficient, e.mean, e.stderr, pauliSumExpectation(ctx.state, ctx.n, [{ coefficient: 1, paulis: t.paulis }])];
     });
+    const H = sh.estimateSum(terms); // per-snapshot Σ hₖ vₖ: covariances between terms included
     return {
-      scalars: [{ label: "⟨H⟩ from shadows", value: `${est.toFixed(4)} ± ${Math.sqrt(se2).toFixed(4)}` }, { label: "exact ⟨H⟩", value: pauliSumExpectation(ctx.state, ctx.n, terms) }],
+      scalars: [{ label: "⟨H⟩ from shadows", value: `${H.mean.toFixed(4)} ± ${H.stderr.toFixed(4)}` }, { label: "exact ⟨H⟩", value: pauliSumExpectation(ctx.state, ctx.n, terms) }],
       charts: [{ kind: "table", headers: ["P", "h", "estimate", "±", "exact"], rows }],
       notes: [`${N} random-Pauli snapshots of the current (ideal) state; each weight-k Pauli costs about 3ᵏ more snapshots.`],
     };
@@ -128,9 +130,9 @@ export const BENCH_RUNS: Record<string, Run> = {
     if (ctx.tape.some((e) => e.some((s) => NONUNITARY.has(s.gateId) || s.condition))) throw new Error("process tomography needs a unitary circuit");
     const noisy = num("tomography", "channel", opts, ctx.n) === 1;
     if (noisy) needNoise(ctx);
-    const R = processTomography(ctx.n, ctx.tape, noisy ? ctx.noise! : null);
+    const R = processTomography(ctx.n, ctx.tape, noisy ? ctx.noise! : null, ctx.scope);
     const labels = Array.from({ length: 4 ** ctx.n }, (_, k) => Array.from({ length: ctx.n }, (_, q) => "IXYZ"[(k >> (2 * (ctx.n - 1 - q))) & 3]).join(""));
-    const ideal = processTomography(ctx.n, ctx.tape, null);
+    const ideal = processTomography(ctx.n, ctx.tape, null, ctx.scope);
     const d = 1 << ctx.n;
     // Process fidelity F = Tr(R_ideal^T R)/d², average gate fidelity (dF + 1)/(d + 1).
     let tr = 0;

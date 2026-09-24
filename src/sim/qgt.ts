@@ -46,21 +46,30 @@ export type QgtResult = {
  * of ‖∂ψ‖; otherwise the best-agreeing R, flagged unresolved. Agreement is a
  * heuristic (see #41 for the aliasing it can't see on its own).
  */
-function adaptiveDerivative(f: (x: number) => Float64Array, x0: number, h0 = 0.05): { d: Float64Array; err: number } {
-  const D = (h: number) => { const p = f(x0 + h), m = f(x0 - h); return p.map((v, j) => (v - m[j]) / (2 * h)); };
+type Derivative = { d: Float64Array; err: number; converged: boolean; noise: number };
+function adaptiveDerivative(f: (x: number) => Float64Array, x0: number, h0 = 0.05): Derivative {
+  let fmax = 0; // the largest |f| seen: rounding in f(x ± h) is about ε·fmax, i.e. ε·fmax/h in D(h)
+  const D = (h: number) => {
+    const p = f(x0 + h), m = f(x0 - h);
+    for (let j = 0; j < p.length; j++) fmax = Math.max(fmax, Math.abs(p[j]), Math.abs(m[j]));
+    return p.map((v, j) => (v - m[j]) / (2 * h));
+  };
   const maxAbs = (v: Float64Array) => v.reduce((a, b) => Math.max(a, Math.abs(b)), 0);
   const FLOOR = 1e-6; // ‖∂ψ‖ below this counts as "no dependence": errors are measured against it
   let h = h0, Dh = D(h), prev: Float64Array | null = null, agree = 0;
-  let best = { d: Dh, err: Infinity };
+  let best: Derivative = { d: Dh, err: Infinity, converged: false, noise: Infinity };
   for (; h > 1e-10; h /= 2) {
     const Dh2 = D(h / 2);
     const R = Dh2.map((v, j) => (4 * v - Dh[j]) / 3);
     if (prev) {
       const scale = Math.max(maxAbs(R), FLOOR);
       const rel = maxAbs(R.map((v, j) => v - prev![j])) / scale;
-      if (rel < best.err) best = { d: R, err: rel };
-      agree = rel <= 1e-9 ? agree + 1 : 0;
-      if (agree >= 2) return { d: R, err: rel };
+      // Agreement to 1e-9 of ‖∂f‖, or to the rounding level of D at this step: f's own rounding
+      // (ε·max|f|) plus the rounding of the argument x₀ ± h (ε·|x₀|·|∂f|, large for fast angles far from 0).
+      const noise = (1e3 * Number.EPSILON * (fmax + Math.abs(x0) * maxAbs(R))) / (h / 2);
+      if (rel < best.err) best = { d: R, err: rel, converged: false, noise };
+      agree = rel <= Math.max(1e-9, noise / scale) ? agree + 1 : 0;
+      if (agree >= 2) return { d: R, err: rel, converged: true, noise };
     }
     prev = R; Dh = Dh2;
   }
@@ -75,7 +84,7 @@ function adaptiveDerivative(f: (x: number) => Float64Array, x0: number, h0 = 0.0
  * a phase p(λ) |∂λ|), so a first step h ≤ 0.1/rate can't alias. Nonlinear
  * angle expressions are sampled at 9 points, a heuristic the cross-check backs.
  */
-function angleRate(circuit: Circuit, params: ParameterValues, sym: string, x0: number, h: number): number {
+export function angleRate(circuit: Circuit, params: ParameterValues, sym: string, x0: number, h: number): number {
   const steps: Step[] = [];
   const add = (st: Step, depth: number) => {
     const def = depth < 8 ? customOf(st.gateId) : undefined;
@@ -106,13 +115,14 @@ function angleRate(circuit: Circuit, params: ParameterValues, sym: string, x0: n
  * and a second, non-dyadic sequence (h₀·0.646…) must agree to 1e-7, else the
  * symbol is unresolved.
  */
-export function checkedDerivative(f: (x: number) => Float64Array, x0: number, h0: number): { d: Float64Array; err: number } {
+export function checkedDerivative(f: (x: number) => Float64Array, x0: number, h0: number): { d: Float64Array; err: number; resolved: boolean } {
   const a = adaptiveDerivative(f, x0, h0);
   const b = adaptiveDerivative(f, x0, h0 * 0.6460969734420495);
   let diff = 0, scale = 1e-6;
   a.d.forEach((v, j) => { diff = Math.max(diff, Math.abs(v - b.d[j])); scale = Math.max(scale, Math.abs(v)); });
-  const rel = diff / scale;
-  return { d: a.err <= b.err ? a.d : b.d, err: rel <= 1e-7 ? Math.max(a.err, b.err, rel) : Math.max(rel, 1) };
+  // Resolved: both sequences converged and agree to 1e-7 of ‖∂f‖, or within their rounding level (a derivative ≈ 0).
+  const resolved = a.converged && b.converged && diff <= Math.max(1e-7 * scale, 2 * Math.max(a.noise, b.noise));
+  return { d: a.err <= b.err ? a.d : b.d, err: resolved ? Math.max(a.err, b.err, diff / scale) : Math.max(diff / scale, 1), resolved };
 }
 
 /** QC-1 fix (docs/quantiom-bugs.md #40): eigenvalues and determinant of M/s (s = max |Mᵢⱼ|), mapped back, so a parameter rescaling can't cross an absolute threshold. */
@@ -215,8 +225,8 @@ export function quantumGeometricTensor(
     const original = work[sym] ?? 0;
     const at = (x: number) => simulate(circuit, { ...work, [sym]: x }, customGates).state;
     const rate = angleRate(circuit, params, sym, original, epsilon);
-    const { d, err } = checkedDerivative(at, original, rate > 0 ? Math.min(epsilon, 0.1 / rate) : epsilon);
-    dpsi.push(d); derivativeError.push(err);
+    const { d, err, resolved } = checkedDerivative(at, original, rate > 0 ? Math.min(epsilon, 0.1 / rate) : epsilon);
+    dpsi.push(d); derivativeError.push(resolved ? err : Math.max(err, 1));
   }
 
   const psiDotD = dpsi.map((d) => innerProduct(psi, d, dim)); // ⟨ψ|∂_i ψ⟩

@@ -9,12 +9,15 @@ export const MODELS = {
   global: sanitiseNoise({ enabled: true, p1: 0.02, p2: 0.06, ad: 0.01, pd: 0.015, readout: 0 }),
   ad: sanitiseNoise({ enabled: true, p1: 0, p2: 0, ad: 0.03, pd: 0, readout: 0 }),
   pd: sanitiseNoise({ enabled: true, p1: 0, p2: 0, ad: 0, pd: 0.04, readout: 0 }),
+  // Only X is noisy: interleaved RB must run X itself to see it (bug #50).
+  xgate: sanitiseNoise({ enabled: true, p1: 0, p2: 0, ad: 0, pd: 0, readout: 0, perGate: { x: 0.2 } }),
 };
 
 export function compute() {
   const m = MODELS.global;
   const r = rb(m, { lengths: [1, 2, 4, 8, 16, 32], sequences: 6, seed: 11 });
   const ri = rb(m, { lengths: [1, 2, 4, 8, 16, 32], sequences: 6, seed: 11, interleave: "h" });
+  const rx = rb(MODELS.xgate, { lengths: [1, 2, 4, 8], sequences: 4, seed: 17, interleave: "x" });
   const u = unitarity(m, { lengths: [1, 2, 4, 8, 16], sequences: 5, seed: 12 });
   const qv = quantumVolume(m, { widths: [2, 3], circuits: 4, seed: 13 });
   const x = xeb(m, { n: 3, depths: [1, 2, 4], circuits: 3, seed: 14 });
@@ -31,6 +34,7 @@ export function compute() {
     models: MODELS,
     rb: { lengths: r.lengths, survival: r.survival, A: r.A, B: r.B, p: r.p, qasm: r.sequences.map((ss) => ss.map((t) => q(1, t))) },
     rbi: { survival: ri.survival, p: ri.p, qasm: ri.sequences.map((ss) => ss.map((t) => q(1, t))) },
+    rbx: { lengths: rx.lengths, survival: rx.survival, p: rx.p, qasm: rx.sequences.map((ss) => ss.map((t) => q(1, t))) },
     unitarity: { lengths: u.lengths, purity: u.purity, u: u.u, A: u.A, B: u.B, qasm: u.tapes.map((ss) => ss.map((t) => q(1, t))) },
     qv: qv.rows.map((w) => ({ width: w.width, hops: w.hops, qasm: w.circuits.map((t) => q(w.width, t)) })),
     xeb: { n: x.n, depths: x.depths, perCircuit: x.perCircuit, qasm: x.circuits.map((cs) => cs.map((t) => q(x.n, t))) },

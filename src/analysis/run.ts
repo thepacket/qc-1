@@ -360,6 +360,9 @@ Object.assign(RUNS, {
 
   majorana(ctx) {
     const res = majoranaStars(ctx.state, ctx.n)!;
+    if (!res.stars.length) {
+      return { scalars: [{ label: "symmetric weight", value: r3(res.symmetricWeight) }], notes: ["No constellation: the state has no permutation-symmetric component (e.g. a singlet)."] };
+    }
     return {
       scalars: [{ label: "symmetric weight", value: r3(res.symmetricWeight) }],
       charts: [{ kind: "stars", stars: res.stars }],
@@ -444,12 +447,15 @@ Object.assign(RUNS, {
 
   symmetry(ctx) {
     const res = symmetrySectors(probsOf(ctx.state, ctx.n), ctx.n);
+    // QC-1 fix (docs/quantiom-bugs.md #47): these say whether the *state* lies in one
+    // sector; that is not a conservation law (X|0⟩ = |1⟩ has definite number and parity).
     return {
       scalars: [
         { label: "⟨ΠZ⟩ parity", value: r3(res.parityExpectation) },
-        { label: "number conserved", value: res.numberConserved ? "yes" : "no" },
-        { label: "parity conserved", value: res.parityConserved ? "yes" : "no" },
+        { label: "definite excitation number", value: res.numberConserved ? "yes" : "no" },
+        { label: "definite parity", value: res.parityConserved ? "yes" : "no" },
       ],
+      notes: ["Whether the final state lies in a single sector. Whether the circuit conserves number or parity is a property of its gates, not of one output state."],
       charts: [{ kind: "bars", title: "weight by number of 1s", labels: res.weightSectors.map((_, k) => `k=${k}`), values: res.weightSectors, max: 1 }],
     };
   },
@@ -478,8 +484,11 @@ Object.assign(RUNS, {
 
   schmidtgap(ctx) {
     const res = schmidtGap(ctx.state, ctx.n)!;
+    // QC-1 fix (docs/quantiom-bugs.md #46): an uncomputed cut is "—", not a gap of 0.
+    const skipped = res.gap.filter((g) => !Number.isFinite(g)).length;
     return {
-      charts: [{ kind: "bars", title: "λ₁ − λ₂ per cut", labels: res.gap.map((_, k) => `${k}|${k + 1}`), values: res.gap.map((g) => (Number.isFinite(g) ? g : 0)), max: 1 }],
+      charts: [{ kind: "bars", title: "λ₁ − λ₂ per cut", labels: res.gap.map((_, k) => `${k}|${k + 1}`), values: res.gap.map((g) => (Number.isFinite(g) ? g : NaN)), max: 1 }],
+      notes: skipped ? [`${skipped} central cut${skipped > 1 ? "s" : ""} (—) not computed: both sides are over 8 qubits.`] : [],
     };
   },
 
@@ -511,10 +520,14 @@ Object.assign(RUNS, {
   mps(ctx, opts) {
     const target = num("mps", "target", opts, ctx.n);
     const res = mpsBondDimension(ctx.state, ctx.n, target)!;
+    // QC-1 fix #46: uncomputed cuts are "—", and the maxima cover only the computed cuts.
+    const skipped = res.chi.filter((c) => !Number.isFinite(c)).length;
+    const over = skipped ? " (computed cuts)" : "";
     return {
-      scalars: [{ label: "max χ", value: res.maxChi }, { label: "worst cut", value: `${res.worstCut}|${res.worstCut + 1}` }],
+      scalars: [{ label: `max χ${over}`, value: res.maxChi }, { label: `worst cut${over}`, value: `${res.worstCut}|${res.worstCut + 1}` }],
+      notes: skipped ? [`${skipped} central cut${skipped > 1 ? "s" : ""} (—) not computed: both sides are over 8 qubits, and the largest bond may be there (up to 2^min(k, n−k)).`] : [],
       charts: [
-        { kind: "bars", title: "required χ per cut", labels: res.chi.map((_, k) => `${k}|${k + 1}`), values: res.chi.map((c) => (Number.isFinite(c) ? c : 0)) },
+        { kind: "bars", title: "required χ per cut", labels: res.chi.map((_, k) => `${k}|${k + 1}`), values: res.chi.map((c) => (Number.isFinite(c) ? c : NaN)) },
         { kind: "lines", title: "truncation error at the worst cut", x: res.truncError.map((_, i) => i + 1), xLabel: "χ", yLabel: "ε(χ)",
           series: [{ name: "ε", y: res.truncError }], yMin: 0 },
       ],
@@ -616,6 +629,10 @@ Object.assign(RUNS, {
       ],
       charts: [{ kind: "lines", x: history.map((_, i) => i + 1), xLabel: "step", yLabel: "⟨H⟩", series: [{ name: "⟨H⟩", y: history }] }],
       apply: { label: "use these values", scope: final },
+      notes: [
+        ...(res.stopped === "unresolved" ? ["Stopped: a gradient didn't converge (the energy changes too fast in some symbol to differentiate reliably), so no step was taken from here."] : []),
+        ...(res.stopped === "converged" ? ["Converged means the gradient vanished: a local minimum, or possibly a saddle; not necessarily the global one."] : []),
+      ],
     };
   },
 
@@ -651,7 +668,10 @@ Object.assign(RUNS, {
         kind: "table", headers: ["symbol", "Var ∂⟨H⟩", "mean ∂⟨H⟩"],
         rows: syms.map((s, i) => [symbolGlyph(s), res.variancePerSymbol[i].toExponential(3), r3(res.meanGradPerSymbol[i])]),
       }],
-      notes: ["Random points are drawn afresh on every run."],
+      notes: [
+        "Random points are drawn afresh on every run. Gradients use checked adaptive differences.",
+        ...syms.flatMap((s, i) => (res.unresolvedPerSymbol[i] ? [`${symbolGlyph(s)}: ${res.unresolvedPerSymbol[i]} of the samples had a gradient that didn't converge; its variance is unreliable.`] : [])),
+      ],
     };
   },
 

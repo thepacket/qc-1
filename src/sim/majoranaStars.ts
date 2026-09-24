@@ -89,6 +89,11 @@ export function majoranaStars(state: Float64Array, n: number, maxQubits = 6): Ma
     symmetricWeight += a[k].re * a[k].re + a[k].im * a[k].im;
   }
 
+  // QC-1 fix (docs/quantiom-bugs.md #48): with no symmetric component there is
+  // no constellation. Upstream filled the missing roots with south-pole stars,
+  // drawing |1…1⟩ for the singlet. Below 1e-12 of weight: no stars.
+  if (symmetricWeight < 1e-12) return { stars: [], symmetricWeight, numQubits: n };
+
   // Polynomial coefficient of z^(n−k) is (−1)^k √C(n,k) a_k → ascending order.
   const coeffs: C[] = Array.from({ length: n + 1 }, () => ({ re: 0, im: 0 }));
   for (let k = 0; k <= n; k++) {

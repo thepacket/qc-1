@@ -65,6 +65,13 @@ def main():
     surv_i = [np.mean([rho_of(t, 1, m)[0, 0].real for t in ts]) for ts in rbi["qasm"]]
     close(surv_i, rbi["survival"], "interleaved RB survival")
     close(fit(rb["lengths"], surv_i)[1], rbi["p"], "interleaved RB p", 1e-6)
+    # Interleaved X where only X is noisy (depolarizing λ = 0.2): Aer on the exported sequences, and the
+    # closed form ½ + ½(1 − λ)ᵐ (the Clifford twirl of depolarizing is depolarizing; every other gate is ideal).
+    rbx = c["rbx"]
+    surv_x = [np.mean([rho_of(t, 1, M["xgate"])[0, 0].real for t in ts]) for ts in rbx["qasm"]]
+    close(surv_x, rbx["survival"], "interleaved X survival (per-gate noise)")
+    close([0.5 + 0.5 * 0.8 ** L for L in rbx["lengths"]], rbx["survival"], "interleaved X closed form", 1e-12)
+    close(fit(rbx["lengths"], surv_x)[1], rbx["p"], "interleaved X p", 1e-6)
     # Unitarity
     u = c["unitarity"]
     pur = []
@@ -130,6 +137,7 @@ def main():
         {"id": "rb", "survival": surv, "p": p, "A": A, "B": B, "interleaved": surv_i},
         {"id": "unitarity", "purity": pur, "u": uu},
         {"id": "t1t2", "T1": -1 / np.log(1 - gad), "T2": -2 / np.log(1 - gpd)},
+        {"id": "rbx", "survival": surv_x, "p": 0.8},
     ], {"abs": 1e-6, "p": 1e-6, "A": 1e-6, "B": 1e-6, "u": 1e-6})  # fits converge to ~1e-9 across platforms
 
 

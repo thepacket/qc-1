@@ -2,6 +2,7 @@ import type { Circuit } from "./types";
 type CustomGate = unknown; // QC-1: custom gates arrive in Phase 6
 import { simulate, type ParameterValues } from "./simulate";
 import { evaluateObservable, type Pauli, type Observable } from "./expectation";
+import { angleRate, checkedDerivative, quantumGeometricTensor } from "./qgt";
 
 // QC-1: ideal-state subset. The noisy evaluation, WebGPU trajectory dispatch
 // and zero-noise extrapolation (zneFit) arrive with noise mode (Phase 8);
@@ -55,7 +56,7 @@ export type OptimizerResult = {
   steps: number;
   finalValue: number;
   finalParams: ParameterValues;
-  stopped: "converged" | "max-steps" | "cancelled";
+  stopped: "converged" | "max-steps" | "cancelled" | "unresolved";
 };
 
 export async function optimizeExpectation(
@@ -81,18 +82,19 @@ export async function optimizeExpectation(
   let kicked = false;
 
   for (let step = 0; step < options.steps; step++) {
-    // Central finite differences per symbol.
+    // QC-1 fix (docs/quantiom-bugs.md #45): the QGT's checked derivative
+    // (first step under the circuit's angle rate, non-dyadic cross-check)
+    // instead of one central difference at ε, which read RY(20000π·θ)'s
+    // gradient as 0 and certified the maximum as "converged".
+    await evaluate(circuit, customGates, params, options.observable, noise); // noise-mode guard
     const grad = new Array<number>(symbols.length);
+    let unresolved = false;
     for (let i = 0; i < symbols.length; i++) {
-      const sym = symbols[i];
-      const original = params[sym] ?? 0;
-      params[sym] = original + epsilon;
-      const ePlus = await evaluate(circuit, customGates, params, options.observable, noise);
-      params[sym] = original - epsilon;
-      const eMinus = await evaluate(circuit, customGates, params, options.observable, noise);
-      params[sym] = original;
-      grad[i] = sign * (ePlus - eMinus) / (2 * epsilon);
+      const r = checkedGradient(circuit, customGates, params, options.observable, symbols[i], epsilon);
+      grad[i] = sign * r.g;
+      if (!r.resolved) unresolved = true;
     }
+    if (unresolved) return { steps: step + 1, finalValue: lastValue, finalParams: params, stopped: "unresolved" };
 
     // Apply update.
     let normSq = 0;
@@ -148,7 +150,11 @@ export async function optimizeExpectation(
       // once (a true minimum pulls it straight back) and carry on.
       if (step === 0 && !kicked) {
         kicked = true;
-        for (const s of symbols) params[s] = (params[s] ?? 0) + 0.1;
+        // QC-1 fix #45: a nudge of 0.1 can be whole periods of a fast angle; keep it under the angle rate.
+        for (const s of symbols) {
+          const rate = angleRate(circuit, params, s, params[s] ?? 0, 0.1);
+          params[s] = (params[s] ?? 0) + (rate > 0 ? Math.min(0.1, 0.1 / rate) : 0.1);
+        }
         lastValue = await evaluate(circuit, customGates, params, options.observable, noise);
         continue;
       }
@@ -156,6 +162,25 @@ export async function optimizeExpectation(
     }
   }
   return { steps: options.steps, finalValue: lastValue, finalParams: params, stopped: "max-steps" };
+}
+
+/**
+ * QC-1 (docs/quantiom-bugs.md #45): ∂⟨O⟩/∂sym by the QGT's checked derivative:
+ * first step h₀ ≤ min(start, 0.1/angle rate), Richardson halving, and a
+ * non-dyadic cross-check; `resolved` is false when they don't settle or agree.
+ */
+export function checkedGradient(
+  circuit: Circuit, customGates: CustomGate[], params: ParameterValues, observable: Pauli[] | Observable, sym: string, start: number,
+): { g: number; err: number; resolved: boolean } {
+  const obs = toObservable(observable);
+  const x0 = params[sym] ?? 0;
+  const f = (x: number) => {
+    const r = simulate(circuit, { ...params, [sym]: x }, customGates);
+    return Float64Array.of(r.isStabilizer ? 0 : evaluateObservable(r.state, circuit.numQubits, obs));
+  };
+  const rate = angleRate(circuit, params, sym, x0, start);
+  const r = checkedDerivative(f, x0, rate > 0 ? Math.min(start, 0.1 / rate) : start);
+  return { g: r.d[0], err: r.err, resolved: r.resolved };
 }
 
 async function evaluate(
@@ -195,6 +220,10 @@ function computeFubiniStudy(
   if (baseResult.isStabilizer) {
     return Array.from({ length: k }, () => new Array<number>(k).fill(0));
   }
+  // QC-1 fix #45: the QGT's metric, with its checked derivatives (was fixed-step ε).
+  void epsilon;
+  const q = quantumGeometricTensor(circuit, customGates, params, symbols);
+  if (q) return q.metric;
   const dim = 1 << circuit.numQubits;
   const psi = baseResult.state;
   // ∂_i ψ as a Float64Array per symbol.
@@ -343,31 +372,25 @@ export async function barrenPlateauDiagnostic(
   symbols: string[],
   samples: number,
   noise?: NoiseModel,
-): Promise<{ variancePerSymbol: number[]; meanGradPerSymbol: number[] }> {
-  const eps = 1e-3;
+): Promise<{ variancePerSymbol: number[]; meanGradPerSymbol: number[]; unresolvedPerSymbol: number[] }> {
+  // QC-1 fix #45: checked derivatives (a fixed ε = 1e-3 aliased RY(2000π·θ) to a variance of 1e-19).
   const grads: number[][] = symbols.map(() => []);
+  const unresolved = symbols.map(() => 0);
+  const base0: ParameterValues = {};
+  for (const sym of symbols) base0[sym] = 0;
+  await evaluate(circuit, customGates, base0, observable, noise); // noise-mode guard
   for (let s = 0; s < samples; s++) {
     const base: ParameterValues = {};
     for (const sym of symbols) base[sym] = (Math.random() * 2 - 1) * Math.PI;
-    // Central differences per symbol: 2k independent evaluations, run
-    // concurrently so the GPU queue overlaps trajectory passes.
-    const evals = await Promise.all(symbols.flatMap((sym) => {
-      const plus: ParameterValues = { ...base, [sym]: (base[sym] ?? 0) + eps };
-      const minus: ParameterValues = { ...base, [sym]: (base[sym] ?? 0) - eps };
-      return [
-        evaluate(circuit, customGates, plus, observable, noise),
-        evaluate(circuit, customGates, minus, observable, noise),
-      ];
-    }));
-    for (let i = 0; i < symbols.length; i++) {
-      const ePlus = evals[2 * i];
-      const eMinus = evals[2 * i + 1];
-      grads[i].push((ePlus - eMinus) / (2 * eps));
-    }
+    symbols.forEach((sym, i) => {
+      const r = checkedGradient(circuit, customGates, base, observable, sym, 0.05);
+      grads[i].push(r.g);
+      if (!r.resolved) unresolved[i]++;
+    });
   }
   const variancePerSymbol = grads.map((g) => variance(g));
   const meanGradPerSymbol = grads.map((g) => g.reduce((a, b) => a + b, 0) / Math.max(1, g.length));
-  return { variancePerSymbol, meanGradPerSymbol };
+  return { variancePerSymbol, meanGradPerSymbol, unresolvedPerSymbol: unresolved };
 }
 
 function variance(xs: number[]): number {

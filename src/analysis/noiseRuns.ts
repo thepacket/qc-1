@@ -35,6 +35,11 @@ function model(ctx: AnalysisContext): NoiseModel {
 function densityOf(ctx: AnalysisContext, m: NoiseModel): { rho: Float64Array; method: string } {
   if (densityOk(ctx.n, ctx.tape)) return { rho: noisyDensity(ctx.n, ctx.tape, ctx.scope, m).rho, method: "exact density matrix" };
   if (ctx.n > 8) throw new Error(`needs a unitary circuit up to ${DENSITY_MAX} qubits, or n ≤ 8 for a trajectory estimate`);
+  return { rho: trajectoryDensity(ctx, m), method: `${m.trajectories} trajectories (the circuit measures, resets or uses IF)` };
+}
+
+/** ρ averaged over trajectories: the unconditional ensemble (every measurement outcome, with its probability). */
+function trajectoryDensity(ctx: AnalysisContext, m: NoiseModel): Float64Array {
   const d = 1 << ctx.n, rho = new Float64Array(2 * d * d);
   let T = 0;
   runTrajectories(ctx.n, ctx.tape, ctx.scope, m, (st) => {
@@ -45,7 +50,41 @@ function densityOf(ctx: AnalysisContext, m: NoiseModel): { rho: Float64Array; me
     }
   });
   for (let i = 0; i < rho.length; i++) rho[i] /= T;
-  return { rho, method: `${T} trajectories (the circuit measures, resets or uses IF)` };
+  return rho;
+}
+
+/**
+ * QC-1 fix (docs/quantiom-bugs.md #44): the ideal reference conditioned like
+ * the noisy state. For a unitary circuit that is |ψ⟩⟨ψ|. With measurements the
+ * noisy ρ averages every outcome, so the reference is the noiseless
+ * unconditional ensemble too: the same trajectories with every rate at zero
+ * (same random stream, so the sampling noise largely cancels in comparisons).
+ * Comparing the ensemble with the recorded branch gave fidelity ½ at zero noise.
+ */
+function idealReference(ctx: AnalysisContext, m: NoiseModel): { pure: Float64Array } | { mixed: Float64Array } {
+  if (densityOk(ctx.n, ctx.tape)) return { pure: idealState(ctx) };
+  const zero: NoiseModel = { ...m, p1: 0, p2: 0, ad: 0, pd: 0, readout: 0, crosstalk: 0, perQubit: undefined, perGate: undefined };
+  return { mixed: trajectoryDensity(ctx, zero) };
+}
+const UNCONDITIONAL = "The circuit measures: both states are the unconditional ensemble over measurement outcomes (each branch with its probability), not the recorded outcomes.";
+
+/** Uhlmann fidelity (Tr √(√σ ρ √σ))² of two density matrices. */
+function uhlmann(sigma: Float64Array, rho: Float64Array, d: number): number {
+  const e = hermitianEig(toComplex(sigma, d));
+  // √σ = V diag(√λ) V†
+  const sq: Complex[][] = Array.from({ length: d }, (_, i) => Array.from({ length: d }, (_, j) => {
+    let re = 0, im = 0;
+    e.values.forEach((l, k) => {
+      const w = Math.sqrt(Math.max(0, l)), a = e.vectors[k][i], b = e.vectors[k][j]; // a · conj(b)
+      re += w * (a.re * b.re + a.im * b.im); im += w * (a.im * b.re - a.re * b.im);
+    });
+    return { re, im };
+  }));
+  const R = toComplex(rho, d);
+  const mul = (A: Complex[][], B: Complex[][]) => A.map((row) => B[0].map((_, j) => row.reduce((acc, z, k) => ({ re: acc.re + z.re * B[k][j].re - z.im * B[k][j].im, im: acc.im + z.re * B[k][j].im + z.im * B[k][j].re }), { re: 0, im: 0 })));
+  const M = mul(mul(sq, R), sq);
+  const t = hermitianEig(M).values.reduce((a, v) => a + Math.sqrt(Math.max(0, v)), 0);
+  return t * t;
 }
 
 const toComplex = (rho: Float64Array, d: number): Complex[][] =>
@@ -134,7 +173,22 @@ export const NOISE_RUNS: Record<string, Run> = {
     const m = model(ctx);
     const d = 1 << ctx.n;
     const { rho, method } = densityOf(ctx, m);
-    const psi = idealState(ctx);
+    const ref = idealReference(ctx, m);
+    if ("mixed" in ref) {
+      const sigma = ref.mixed, diff = new Float64Array(rho);
+      for (let i = 0; i < diff.length; i++) diff[i] -= sigma[i];
+      const ev = eigenvalues(rho, d);
+      return {
+        scalars: [
+          { label: "fidelity F(σ, ρ)", value: r4(Math.min(1, uhlmann(sigma, rho, d))) },
+          { label: "trace distance", value: r4(hermitianEig(toComplex(diff, d)).values.reduce((a, v) => a + Math.abs(v), 0) / 2) },
+          { label: "purity Tr ρ²", value: r4(ev.reduce((a, p) => a + p * p, 0)) },
+          { label: "entropy S(ρ)", value: r4(entropyOf(ev)), unit: "bits" },
+        ],
+        notes: [noteMethod(method), UNCONDITIONAL, "σ is the noiseless ensemble; F is the Uhlmann fidelity."],
+      };
+    }
+    const psi = ref.pure;
     // F = ⟨ψ|ρ|ψ⟩
     let F = 0;
     for (let i = 0; i < d; i++) for (let j = 0; j < d; j++) {
@@ -244,13 +298,23 @@ export const NOISE_RUNS: Record<string, Run> = {
       for (let j = 0; j < d; j++) if (i !== j) l1 += Math.hypot(rho[2 * (i * d + j)], rho[2 * (i * d + j) + 1]);
     }
     const Sdiag = entropyOf(diag), S = entropyOf(eigenvalues(rho, d));
-    // The same for the ideal state, for comparison.
-    const psi = idealState(ctx);
+    // The same for the ideal reference, conditioned the same way (#44).
+    const ref = idealReference(ctx, m);
     let l1i = 0, Si = 0;
-    const amp = Array.from({ length: d }, (_, i) => Math.hypot(psi[2 * i], psi[2 * i + 1]));
-    const sum = amp.reduce((a, b) => a + b, 0);
-    l1i = sum * sum - amp.reduce((a, b) => a + b * b, 0);
-    Si = entropyOf(amp.map((a) => a * a));
+    if ("mixed" in ref) {
+      const sg = ref.mixed, dg: number[] = [];
+      for (let i = 0; i < d; i++) {
+        dg.push(Math.max(0, sg[2 * (i * d + i)]));
+        for (let j = 0; j < d; j++) if (i !== j) l1i += Math.hypot(sg[2 * (i * d + j)], sg[2 * (i * d + j) + 1]);
+      }
+      Si = entropyOf(dg) - entropyOf(eigenvalues(sg, d));
+    } else {
+      const psi = ref.pure;
+      const amp = Array.from({ length: d }, (_, i) => Math.hypot(psi[2 * i], psi[2 * i + 1]));
+      const sum = amp.reduce((a, b) => a + b, 0);
+      l1i = sum * sum - amp.reduce((a, b) => a + b * b, 0);
+      Si = entropyOf(amp.map((a) => a * a));
+    }
     return {
       scalars: [
         { label: "l1 coherence (noisy)", value: r4(l1) },
@@ -258,7 +322,7 @@ export const NOISE_RUNS: Record<string, Run> = {
         { label: "relative-entropy coherence (noisy)", value: r4(Sdiag - S), unit: "bits" },
         { label: "relative-entropy coherence (ideal)", value: r4(Si), unit: "bits" },
       ],
-      notes: [noteMethod(method), "Computational-basis coherence (Baumgratz, Cramer & Plenio 2014): l1 = Σ_{i≠j}|ρ_ij|, C_rel = S(diag ρ) − S(ρ)."],
+      notes: [noteMethod(method), ...("mixed" in ref ? [UNCONDITIONAL] : []), "Computational-basis coherence (Baumgratz, Cramer & Plenio 2014): l1 = Σ_{i≠j}|ρ_ij|, C_rel = S(diag ρ) − S(ρ)."],
     };
   },
 

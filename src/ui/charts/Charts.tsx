@@ -96,7 +96,7 @@ function Heatmap({ c }: { c: Extract<Chart, { kind: "heatmap" }> }) {
 
 // ─── Bars (horizontal) ───────────────────────────────────────────────
 function Bars({ c }: { c: Extract<Chart, { kind: "bars" }> }) {
-  const max = c.max ?? Math.max(...c.values.map(Math.abs), 1e-12);
+  const max = c.max ?? Math.max(...c.values.filter(Number.isFinite).map(Math.abs), 1e-12);
   return (
     <Frame title={c.title}>
       <div className="hbars">
@@ -108,12 +108,12 @@ function Bars({ c }: { c: Extract<Chart, { kind: "bars" }> }) {
               <span className="lbl">{l}</span>
               <span className="track">
                 <span style={{
-                  width: `${(Math.abs(v) / max) * 100}%`,
+                  width: `${Number.isFinite(v) ? (Math.abs(v) / max) * 100 : 0}%`,
                   background: ph !== undefined ? phaseColor(ph) : c.signed && v < 0 ? "var(--series-2)" : undefined,
                 }} />
               </span>
               <span className="val">
-                {fmt(v)}
+                {Number.isFinite(v) ? fmt(v) : "—"}
                 {ph !== undefined && ` ∠${Math.round((ph * 180) / Math.PI)}°`}
               </span>
             </div>

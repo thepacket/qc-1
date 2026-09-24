@@ -70,8 +70,16 @@ export function cliffordGroup(): CliffordGroup {
 
 // ─── Fits ──────────────────────────────────────────────────────────────
 
-/** Least-squares fit y ≈ A·pˣ + B (p in (0, 1]): A, B linear for each p, p by golden section. */
-export function fitDecay(xs: number[], ys: number[], fixedB?: number): { A: number; B: number; p: number } {
+/**
+ * Least-squares fit y ≈ A·pˣ + B (p in (0, 1]): A, B linear for each p, p by golden section.
+ * QC-1 fix (docs/quantiom-bugs.md #51): flat data (spread ≤ 1e-9) doesn't identify p: every p fits with A = 0, and the
+ * minimiser would return an arbitrary one (0.003 for noiseless RB: an error of ½
+ * per Clifford). Then `identifiable` is false and p is NaN; see `decayOrIdeal`.
+ */
+export function fitDecay(xs: number[], ys: number[], fixedB?: number): { A: number; B: number; p: number; identifiable: boolean; level: number } {
+  const level = ys.reduce((a, b) => a + b, 0) / ys.length;
+  const spread = Math.max(...ys) - Math.min(...ys);
+  if (!(spread > 1e-9)) return { A: 0, B: fixedB ?? level, p: NaN, identifiable: false, level };
   const solve = (p: number) => {
     const f = xs.map((x) => p ** x);
     if (fixedB !== undefined) {
@@ -99,27 +107,44 @@ export function fitDecay(xs: number[], ys: number[], fixedB?: number): { A: numb
     else { lo = a; a = b; fa = fb; b = lo + g * (hi - lo); fb = solve(b).err; }
   }
   const p = (lo + hi) / 2, r = solve(p);
-  return { A: r.A, B: r.B, p };
+  return { A: r.A, B: r.B, p, identifiable: true, level };
+}
+
+/**
+ * The decay rate of a fit, with the one justified reading of flat data: a
+ * curve pinned at its ideal value (no noise reaches it) has p = 1, no decay.
+ * Flat data anywhere else (e.g. fully decayed before the first length) is NaN.
+ */
+export function decayOrIdeal(f: { p: number; level: number; identifiable: boolean }, ideal: number): number {
+  if (f.identifiable) return f.p;
+  return Math.abs(f.level - ideal) <= 1e-9 ? 1 : NaN;
 }
 
 // ─── Randomized benchmarking ───────────────────────────────────────────
 
-/** One RB sequence on qubit q: m random Cliffords (each followed by `interleave`), then the recovery. */
-export function rbSequence(m: number, rng: () => number, q = 0, interleave: number | null = null): Entry[] {
+/**
+ * One RB sequence on qubit q: m random Cliffords (each followed by the gate
+ * `interleave`), then the recovery. QC-1 fix: the interleaved gate runs as
+ * itself (so its own per-gate noise applies); its Clifford index only tracks
+ * the recovery (docs/quantiom-bugs.md #50). It used to be replaced by its H/S decomposition, so an X
+ * with 20% depolarizing measured an error of 0.
+ */
+export function rbSequence(m: number, rng: () => number, q = 0, interleave: string | null = null): Entry[] {
   const G = cliffordGroup();
   const tape: Entry[] = [];
   let acc = 0;
   const push = (c: number) => { for (const g of G.gates[c]) tape.push([step(g, [q])]); acc = G.comp[acc][c]; };
+  const inter = interleave !== null ? G.index(interleave) : -1;
   for (let k = 0; k < m; k++) {
     push(Math.floor(rng() * 24) % 24);
-    if (interleave !== null) push(interleave);
+    if (interleave !== null) { tape.push([step(interleave, [q])]); acc = G.comp[acc][inter]; }
   }
   for (const g of G.gates[G.inv[acc]]) tape.push([step(g, [q])]);
   if (!tape.length) tape.push([step("i", [q])]);
   return tape;
 }
 
-export type RbCurve = { lengths: number[]; survival: number[]; A: number; B: number; p: number; epc: number };
+export type RbCurve = { lengths: number[]; survival: number[]; A: number; B: number; p: number; epc: number; identifiable: boolean };
 
 /** Exact P(0) of a one-qubit tape under the model. */
 function survival1(tape: Entry[], m: NoiseModel): number {
@@ -130,11 +155,11 @@ export function rb(m: NoiseModel, opts: { lengths?: number[]; sequences?: number
   const lengths = opts.lengths ?? [1, 2, 4, 8, 16, 32, 64];
   const K = opts.sequences ?? 12;
   const rng = mulberry32(opts.seed ?? 0x5eb);
-  const inter = opts.interleave ? cliffordGroup().index(opts.interleave) : null;
-  const seqs = lengths.map((len) => Array.from({ length: K }, () => rbSequence(len, rng, 0, inter)));
+  const seqs = lengths.map((len) => Array.from({ length: K }, () => rbSequence(len, rng, 0, opts.interleave ?? null)));
   const survival = seqs.map((ss) => ss.reduce((a, t) => a + survival1(t, m), 0) / K);
   const f = fitDecay(lengths, survival);
-  return { lengths, survival, ...f, epc: (1 - f.p) / 2, sequences: seqs };
+  const p = decayOrIdeal(f, 1);
+  return { lengths, survival, ...f, p, epc: (1 - p) / 2, sequences: seqs };
 }
 
 /** Purity-based unitarity: E[Tr ρ²]-like decay of the Bloch length² (Wallman et al. 2015), fitted as A·uᵐ⁻¹ + B. */
@@ -160,7 +185,7 @@ export function unitarity(m: NoiseModel, opts: { lengths?: number[]; sequences?:
     return acc / K;
   });
   const f = fitDecay(lengths.map((l) => l - 1), purity);
-  return { lengths, purity, u: f.p, A: f.A, B: f.B, tapes };
+  return { lengths, purity, u: decayOrIdeal(f, 1), A: f.A, B: f.B, identifiable: f.identifiable, tapes };
 }
 
 // ─── Quantum volume ────────────────────────────────────────────────────
@@ -280,7 +305,7 @@ export function xeb(m: NoiseModel, opts: { n?: number; depths?: number[]; circui
     return vals.reduce((a, b) => a + b, 0) / Math.max(1, vals.length);
   });
   const f = fitDecay(depths, fidelity, 0);
-  return { n, depths, fidelity, perCycle: f.p, circuits, perCircuit };
+  return { n, depths, fidelity, perCycle: decayOrIdeal(f, 1), circuits, perCircuit };
 }
 
 // ─── Mirror circuits ───────────────────────────────────────────────────
@@ -328,8 +353,9 @@ export function t1t2(m: NoiseModel, opts: { delays?: number[] } = {}) {
   const ramsey = delays.map((k) => p([[step("h", [0])], ...idle(k), [step("h", [0])]])[0]); // P(0)
   const echo = delays.map((k) => p([[step("h", [0])], ...idle(Math.floor(k / 2)), [step("x", [0])], ...idle(Math.ceil(k / 2)), [step("h", [0])]])[6]);
   const f1 = fitDecay(delays, t1), f2 = fitDecay(delays, ramsey), fe = fitDecay(delays, echo);
-  const tau = (q: number) => (q >= 1 ? Infinity : -1 / Math.log(q));
-  return { delays, t1, ramsey, echo, T1: tau(f1.p), T2: tau(f2.p), T2echo: tau(fe.p), fits: { t1: f1, ramsey: f2, echo: fe } };
+  const tau = (q: number) => (Number.isNaN(q) ? NaN : q >= 1 ? Infinity : -1 / Math.log(q));
+  // Ideal values: P(1) after X is 1, P(0) after H·H is 1, P(1) after H·X·H is 0.
+  return { delays, t1, ramsey, echo, T1: tau(decayOrIdeal(f1, 1)), T2: tau(decayOrIdeal(f2, 1)), T2echo: tau(decayOrIdeal(fe, 0)), fits: { t1: f1, ramsey: f2, echo: fe } };
 }
 
 // ─── Repetition code ───────────────────────────────────────────────────
@@ -396,7 +422,8 @@ export function classicalShadows(n: number, state: Float64Array, snapshots: numb
     const done = [...Array(n).keys()].map((q) => applyStep(st, n, step("measure", [q]), rng).outcome ?? 0);
     done.forEach((o, q) => (bits[s * n + q] = o));
   }
-  const estimate = (pauli: string, groups = 10) => {
+  /** The single-snapshot estimator of ⟨P⟩ for every snapshot. */
+  const values = (pauli: string) => {
     const vals: number[] = [];
     for (let s = 0; s < snapshots; s++) {
       let v = 1;
@@ -408,6 +435,9 @@ export function classicalShadows(n: number, state: Float64Array, snapshots: numb
       }
       vals.push(v);
     }
+    return vals;
+  };
+  const stats = (vals: number[], groups: number) => {
     const size = Math.max(1, Math.floor(vals.length / groups));
     const means: number[] = [];
     for (let g = 0; g + size <= vals.length; g += size) means.push(vals.slice(g, g + size).reduce((a, b) => a + b, 0) / size);
@@ -416,7 +446,19 @@ export function classicalShadows(n: number, state: Float64Array, snapshots: numb
     const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, vals.length - 1));
     return { median: means[means.length >> 1], mean, stderr: sd / Math.sqrt(vals.length) };
   };
-  return { snapshots, estimate };
+  const estimate = (pauli: string, groups = 10) => stats(values(pauli), groups);
+  /**
+   * QC-1 fix (docs/quantiom-bugs.md #42): a Pauli sum's standard error from its
+   * per-snapshot values Σ hₖ vₖ(s). Every term uses the same snapshots, so
+   * adding the terms' variances ignored their covariance (X + X read ± 0.045,
+   * 2X ± 0.063; X − X read ± 0.045 for a value that is exactly 0 on every snapshot).
+   */
+  const estimateSum = (terms: { coefficient: number; paulis: string }[], groups = 10) => {
+    const total = new Array<number>(snapshots).fill(0);
+    for (const t of terms) values(t.paulis).forEach((v, s) => (total[s] += t.coefficient * v));
+    return stats(total, groups);
+  };
+  return { snapshots, estimate, estimateSum };
 }
 
 // ─── Process tomography ────────────────────────────────────────────────
@@ -427,7 +469,7 @@ export function classicalShadows(n: number, state: Float64Array, snapshots: numb
  * qubit, run, read every Pauli expectation, and invert linearly. With exact
  * expectation values it is the channel's PTM R_ij = Tr(P_i Λ(P_j))/2ⁿ.
  */
-export function processTomography(n: number, tape: Entry[], m: NoiseModel | null): number[][] {
+export function processTomography(n: number, tape: Entry[], m: NoiseModel | null, scope: Record<string, number> = {}): number[][] {
   if (n > 2) throw new Error("process tomography here is for up to 2 qubits");
   const d = 1 << n, K = 4 ** n;
   // Input states: product of {|0⟩, |1⟩, |+⟩, |+i⟩} per qubit (big-endian digits).
@@ -439,8 +481,9 @@ export function processTomography(n: number, tape: Entry[], m: NoiseModel | null
     const inTape: Entry[] = [];
     for (let q = 0; q < n; q++) for (const g of prep[(a >> (2 * (n - 1 - q))) & 3]) inTape.push([step(g, [q])]);
     const psi = new Register(n, inTape.length ? inTape : [[step("i", [0])]]).state;
-    const rho = m ? noisyDensity(n, tape, {}, m, psi).rho : (() => {
-      const s = new Register(n, [...inTape, ...tape]).state, r = new Float64Array(2 * d * d);
+    // QC-1 fix (docs/quantiom-bugs.md #43): the circuit's symbols take their current values.
+    const rho = m ? noisyDensity(n, tape, scope, m, psi).rho : (() => {
+      const s = new Register(n, [...inTape, ...tape], scope).state, r = new Float64Array(2 * d * d);
       for (let i = 0; i < d; i++) for (let j = 0; j < d; j++) {
         r[2 * (i * d + j)] = s[2 * i] * s[2 * j] + s[2 * i + 1] * s[2 * j + 1];
         r[2 * (i * d + j) + 1] = s[2 * i + 1] * s[2 * j] - s[2 * i] * s[2 * j + 1];
