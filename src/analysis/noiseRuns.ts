@@ -7,7 +7,7 @@
  */
 import type { AnalysisContext, AnalysisResult, Opts } from "./types";
 import { ANALYSIS_BY_ID, defaultCut, inputValue, pauliValue } from "./catalog";
-import type { ViewData } from "../calc/core";
+import { SHOT_ROWS, type ViewData } from "../calc/core";
 import { topK } from "../calc/analysis";
 import { Register } from "../calc/register";
 import { densityOk, noisyDensity, noisyShots, noisyStats, runTrajectories, DENSITY_MAX } from "../noise/sim";
@@ -94,7 +94,8 @@ export async function noisyView(ctx: AnalysisContext, opts: Opts): Promise<Analy
     const shots = Number(opts.shots) || 1024;
     const counts = noisyShots(n, stats.probs, m, shots, 0x5407 + (Number(opts.seed) || 0));
     const rows = [...counts.entries()].sort((a, b) => b[1] - a[1]);
-    view = { n, mode: "shots", shots, distinct: rows.length, rows: rows.slice(0, KET_ROWS).map(([i, count]) => ({ i, count })) };
+    const listed = rows.slice(0, SHOT_ROWS);
+    view = { n, mode: "shots", shots, distinct: rows.length, rows: listed.map(([i, count]) => ({ i, count })), other: shots - listed.reduce((s, [, c]) => s + c, 0) };
   } else {
     const st = new Float64Array(2 * stats.probs.length);
     stats.probs.forEach((p, i) => (st[2 * i] = Math.sqrt(p)));

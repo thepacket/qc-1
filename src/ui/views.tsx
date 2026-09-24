@@ -84,7 +84,10 @@ export function ProbView({ data }: ViewProps<"prob">) {
 
 export function ShotsView({ data }: ViewProps<"shots">) {
   const items = data.rows.map(({ i, count, bits }) => ({ label: bits ? (bits.length > 24 ? `${bits.slice(0, 24)}…` : bits) : ket(i, data.n), p: count, note: String(count) }));
-  return <Bars items={items} head={`${data.shots.toLocaleString()} shots · ${data.distinct} outcomes · tap SHOTS to re-roll`} />;
+  // Every shot is accounted for: outcomes beyond the listed ones are summed in one last row.
+  if (data.other > 0) items.push({ label: `${(data.distinct - data.rows.length).toLocaleString()} other outcomes`, p: data.other, note: String(data.other) });
+  const shots = data.requested ? `${data.shots.toLocaleString()} shots (of ${data.requested.toLocaleString()}: the budget at n = ${data.n})` : `${data.shots.toLocaleString()} shots`;
+  return <Bars items={items} head={`${shots} · ${data.distinct.toLocaleString()} outcomes · tap SHOTS to re-roll`} />;
 }
 
 async function copyText(calc: Calculator, text: string, done = "QASM copied") {

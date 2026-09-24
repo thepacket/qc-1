@@ -27,7 +27,13 @@ export type ViewData = {
   | { mode: "ket"; rows: { i: number; re: number; im: number }[]; nonzero: number; generators?: string[] }
   | { mode: "prob"; rows: { i: number; p: number }[]; complete: boolean; marginals?: number[] }
   | { mode: "bloch"; vectors: Vec3[] }
-  | { mode: "shots"; rows: { i: number; count: number; bits?: string }[]; distinct: number; shots: number }
+  | {
+      mode: "shots"; rows: { i: number; count: number; bits?: string }[]; distinct: number; shots: number;
+      /** Shots whose outcomes aren't listed (beyond SHOT_ROWS distinct outcomes). */
+      other: number;
+      /** The shots asked for, when the stabilizer's work budget ran fewer. */
+      requested?: number;
+    }
   | { mode: "tape" }
   | { mode: "lab" }
 );
@@ -72,6 +78,8 @@ export type Result = {
 
 export const KET_ROWS = 64;
 const BAR_ROWS = 32;
+/** Distinct shot outcomes listed (the rest are summed into `other`). */
+export const SHOT_ROWS = 1024;
 
 let repeatId = 0;
 
@@ -266,7 +274,11 @@ export class Core {
           counts.set(bits, (counts.get(bits) ?? 0) + 1);
         }
         const rows = [...counts.entries()].sort((a, b) => b[1] - a[1]);
-        return { n, stab: true, mode: "shots", shots, distinct: rows.length, rows: rows.slice(0, BAR_ROWS).map(([bits, count], i) => ({ i, count, bits })) };
+        const listed = rows.slice(0, SHOT_ROWS);
+        return {
+          n, stab: true, mode: "shots", shots, distinct: rows.length, rows: listed.map(([bits, count], i) => ({ i, count, bits })),
+          other: shots - listed.reduce((s, [, c]) => s + c, 0), ...(shots < req.shots ? { requested: req.shots } : {}),
+        };
       }
       case "tape": return { n, mode: "tape" };
       case "lab": return { n, mode: "lab" };
@@ -291,9 +303,10 @@ export class Core {
         return { n, mode: "bloch", vectors: [...Array(n).keys()].map((q) => bloch(state, n, q)) };
       case "shots": {
         const hit = [...sampleState(state, req.shots).entries()].sort((a, b) => b[1] - a[1]);
+        const listed = hit.slice(0, SHOT_ROWS);
         return {
           n, mode: "shots", shots: req.shots, distinct: hit.length,
-          rows: hit.slice(0, BAR_ROWS).map(([i, count]) => ({ i, count })),
+          rows: listed.map(([i, count]) => ({ i, count })), other: req.shots - listed.reduce((s, [, c]) => s + c, 0),
         };
       }
       case "tape":
