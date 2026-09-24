@@ -1,7 +1,7 @@
 import { CircuitView } from "./CircuitView";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Calculator } from "../calc/calculator";
-import { KET_ROWS, type ViewData } from "../calc/core";
+import type { ViewData } from "../calc/core";
 import { formatEntry } from "../calc/steps";
 import { exportQasm3 } from "../qasm/fromTape";
 import { shareHash } from "../qasm/share";
@@ -22,17 +22,46 @@ export function Pending() {
   );
 }
 
+/** Fixed row height of the long lists (13px text × 1.5). */
+const ROW_H = 20;
+
+/**
+ * A scrolling list that renders only the rows in view (plus a margin), so a
+ * view can list thousands of amplitudes or outcomes without re-rendering them
+ * all on every key press. Short lists render plainly.
+ */
+function RowList<T>({ items, row }: { items: T[]; row: (x: T, i: number) => ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [top, setTop] = useState(0);
+  const [height, setHeight] = useState(600);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setHeight(el.clientHeight || 600));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  if (items.length <= 200) return <div className="rows">{items.map(row)}</div>;
+  const start = Math.max(0, Math.floor(top / ROW_H) - 20);
+  const end = Math.min(items.length, Math.ceil((top + height) / ROW_H) + 20);
+  return (
+    <div className="rows" ref={box} onScroll={(e) => setTop(e.currentTarget.scrollTop)}>
+      <div style={{ position: "relative", height: items.length * ROW_H }}>
+        {items.slice(start, end).map((x, k) => (
+          <div key={start + k} className="vrow" style={{ top: (start + k) * ROW_H }}>{row(x, start + k)}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function KetView({ data }: ViewProps<"ket">) {
   const { n, rows, nonzero } = data;
   if (data.generators) {
     return (
       <div className="view">
-        <div className="view-head">stabilizer state · {n} generators{n > data.generators.length ? ` (first ${data.generators.length})` : ""}</div>
-        <div className="rows">
-          {data.generators.map((g, i) => (
-            <div className="row gen-row" key={i}><span className="dim">g{i + 1}</span><span className="ket">{g}</span></div>
-          ))}
-        </div>
+        <div className="view-head">stabilizer state · {n} generators</div>
+        <RowList items={data.generators} row={(g, i) => <div className="row gen-row" key={i}><span className="dim">g{i + 1}</span><span className="ket">{g}</span></div>} />
       </div>
     );
   }
@@ -40,35 +69,31 @@ export function KetView({ data }: ViewProps<"ket">) {
     <div className="view">
       <div className="view-head">
         {nonzero === 1 ? "basis state" : `${nonzero.toLocaleString()} terms`}
-        {nonzero > KET_ROWS && ` · top ${KET_ROWS}`}
+        {nonzero > rows.length && ` · the ${rows.length.toLocaleString()} largest; the other ${(nonzero - rows.length).toLocaleString()} hold ${pct(data.restP)}`}
       </div>
-      <div className="rows">
-        {rows.map(({ i, re, im }) => (
-          <div className="row" key={i}>
-            <span className="amp">{complex(re, im)}</span>
-            <span className="ket">{ket(i, n)}</span>
-            <span className="dim">{pct(re * re + im * im)}</span>
-          </div>
-        ))}
-      </div>
+      <RowList items={rows} row={({ i, re, im }) => (
+        <div className="row" key={i}>
+          <span className="amp">{complex(re, im)}</span>
+          <span className="ket">{ket(i, n)}</span>
+          <span className="dim">{pct(re * re + im * im)}</span>
+        </div>
+      )} />
     </div>
   );
 }
 
 function Bars({ items, head }: { items: { label: string; p: number; note: string }[]; head: string }) {
-  const max = Math.max(1e-12, ...items.map((x) => x.p));
+  const max = items.reduce((m, x) => Math.max(m, x.p), 1e-12); // (no spread: lists can be long)
   return (
     <div className="view">
       <div className="view-head">{head}</div>
-      <div className="rows">
-        {items.map((x) => (
-          <div className="bar-row" key={x.label}>
-            <span className="ket">{x.label}</span>
-            <span className="bar"><span style={{ width: `${(x.p / max) * 100}%` }} /></span>
-            <span className="dim">{x.note}</span>
-          </div>
-        ))}
-      </div>
+      <RowList items={items} row={(x) => (
+        <div className="bar-row" key={x.label}>
+          <span className="ket">{x.label}</span>
+          <span className="bar"><span style={{ width: `${(x.p / max) * 100}%` }} /></span>
+          <span className="dim">{x.note}</span>
+        </div>
+      )} />
     </div>
   );
 }
@@ -76,10 +101,12 @@ function Bars({ items, head }: { items: { label: string; p: number; note: string
 export function ProbView({ data }: ViewProps<"prob">) {
   if (data.marginals) {
     const items = data.marginals.map((p, q) => ({ label: `q${q}`, p, note: pct(p) }));
-    return <Bars items={items} head={`P(qᵢ = 1) · stabilizer state${data.n > items.length ? ` · first ${items.length} qubits` : ""}`} />;
+    return <Bars items={items} head={`P(qᵢ = 1) · stabilizer state${data.n > items.length ? ` · first ${items.length} of ${data.n} qubits (work budget)` : ""}`} />;
   }
   const items = data.rows.map(({ i, p }) => ({ label: ket(i, data.n), p, note: pct(p) }));
-  return <Bars items={items} head={data.complete ? "P(basis)" : `most likely ${items.length}`} />;
+  // Every bit of probability is accounted for: what isn't listed is one last row.
+  if (!data.complete && data.restP > 1e-9) items.push({ label: "all other outcomes", p: data.restP, note: pct(data.restP) });
+  return <Bars items={items} head={data.complete ? "P(basis)" : `the ${data.rows.length.toLocaleString()} most likely + the rest`} />;
 }
 
 export function ShotsView({ data }: ViewProps<"shots">) {
@@ -465,7 +492,11 @@ function Sphere({ v, r, labels, className }: { v: Vec3; r: number; labels?: bool
 
 export function BlochView({ calc, data }: ViewProps<"bloch">) {
   const all = data.vectors;
-  const v = all[calc.sel] ?? { x: 0, y: 0, z: 1 };
+  // A wide stabilizer register computes the first vectors only (work budget): never show a made-up one.
+  if (calc.sel >= all.length) {
+    return <div className="view"><p className="dim note">q{calc.sel}: Bloch vectors are computed for the first {all.length} of {data.n} qubits here (each costs O(n²) on the tableau). Select q0–q{all.length - 1}.</p></div>;
+  }
+  const v = all[calc.sel];
   const len = Math.hypot(v.x, v.y, v.z);
   const theta = Math.acos(Math.max(-1, Math.min(1, len > 1e-9 ? v.z / len : 1)));
   const phi = Math.atan2(v.y, v.x);

@@ -7,7 +7,7 @@ import { ChartView } from "./charts/Charts";
 import { fmt, fmtC } from "./charts/colors";
 import { CircuitDiagram } from "./CircuitView";
 
-const KET_ROWS = 32;
+const KET_ROWS = 1024;
 const bits = (i: number, n: number) => i.toString(2).padStart(n, "0");
 
 /**
@@ -46,7 +46,7 @@ export function ReportView({ calc }: { calc: Calculator }) {
         {!ket ? <p className="report-dim">…</p> : ket.generators ? (
           <>
             <p>Stabilizer generators (the state is the +1 eigenstate of each; q0 first):</p>
-            <pre className="report-pre">{ket.generators.slice(0, 64).join("\n")}{ket.generators.length > 64 ? `\n… ${ket.generators.length - 64} more` : ""}</pre>
+            <pre className="report-pre">{ket.generators.join("\n")}</pre>
           </>
         ) : (
           <>

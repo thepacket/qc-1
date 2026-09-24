@@ -35,7 +35,7 @@ export const ANALYSES: AnalysisMeta[] = [
   { id: "qsphere", title: "Q-sphere", category: "state", mode: "live", maxQubits: 8, inputs: [],
     summary: "Basis states on a sphere by Hamming weight; size = |amplitude|, colour = phase." },
   { id: "density", title: "Reduced density matrix", category: "entanglement", mode: "live", maxQubits: 20,
-    inputs: [{ kind: "cut", key: "kept", label: "keep", min: 1, max: 4 }],
+    inputs: [{ kind: "cut", key: "kept", label: "keep", min: 1, max: 6 }],
     summary: "ρ of the kept qubits (others traced out), with purity Tr ρ² and entropy." },
   { id: "mutualinfo", title: "Mutual information", category: "entanglement", mode: "live", maxQubits: 12, minQubits: 2, inputs: [],
     summary: "I(i:j) = S(i) + S(j) − S(ij) for every pair, in bits: total (classical + quantum) correlation." },

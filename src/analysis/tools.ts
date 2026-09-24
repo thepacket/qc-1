@@ -400,7 +400,7 @@ export const TOOL_RUNS: Record<string, Run> = {
       scalars: [{ label: "branches", value: t.leaves.length }, { label: "events on the longest path", value: t.events }],
       charts: [
         ...(t.leaves.length <= 16 ? [{ kind: "tree" as const, nodes: t.nodes, title: "every measurement history (edge width ∝ outcome probability)" }] : []),
-        { kind: "table", title: `outcome histories (${bits} = final classical bits)`, headers: ["outcomes", bits, "p"], rows: leaves.slice(0, 64).map((l) => [l.path, l.cbits, l.p]) },
+        { kind: "table", title: `outcome histories (${bits} = final classical bits)`, headers: ["outcomes", bits, "p"], rows: leaves.map((l) => [l.path, l.cbits, l.p]) },
       ],
       notes: ["All histories, not just the recorded one: each measurement splits the state; IF conditions follow each branch's bits."],
     };

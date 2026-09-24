@@ -5,8 +5,8 @@ import { gateLabel, MEASURE_IDS, type Entry } from "../calc/steps";
 import { elementToSvg, saveSvg } from "./svgExport";
 
 /** Diagram limits: beyond these the LIST pane is the readable form. */
-export const DIAGRAM_MAX_QUBITS = 128; // wires; the pane scrolls both ways
-const MAX_STEPS = 4000;
+export const DIAGRAM_MAX_QUBITS = 1024; // wires; the pane scrolls both ways
+const MAX_STEPS = 20000;
 
 const ROW = 24; // wire spacing
 const TOP = 14; // room for IF labels

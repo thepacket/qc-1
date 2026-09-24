@@ -93,7 +93,7 @@ import { BENCH_RUNS } from "./benchRuns";
 import { VERIFY_RUNS } from "./verifyRuns";
 import { QEC_RUNS } from "./qecRuns";
 
-const ROWS = 64;
+const ROWS = 4096;
 const ket = (i: number, n: number) => `|${i.toString(2).padStart(n, "0")}⟩`;
 const qlabels = (n: number) => [...Array(n).keys()].map((q) => `q${q}`);
 const r3 = (x: number) => Math.round(x * 1000) / 1000;
@@ -186,7 +186,7 @@ const RUNS: Record<string, Run> = {
 
   density(ctx, opts) {
     const { n, state } = ctx;
-    const kept = cutOf(opts, "kept", n, [0]).slice(0, 4);
+    const kept = cutOf(opts, "kept", n, [0]).slice(0, 6);
     const rho = reducedDensityMatrix(state, n, kept);
     const labels = [...Array(1 << kept.length).keys()].map((i) => i.toString(2).padStart(kept.length, "0"));
     return {

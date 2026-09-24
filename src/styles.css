@@ -818,3 +818,6 @@ button {
 .md-table th, .md-table td { padding: 2px 8px; border-bottom: 1px solid var(--ink-faint); text-align: left; }
 .chat-msg a { color: var(--series-1); }
 .tex .katex { font-size: 1.05em; }
+/* Long lists render only the rows in view (views.tsx RowList): fixed-height rows. */
+.vrow { position: absolute; left: 0; right: 0; height: 20px; }
+.vrow > .row, .vrow > .bar-row { height: 20px; line-height: 20px; }

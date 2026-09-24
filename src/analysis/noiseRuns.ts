@@ -7,7 +7,7 @@
  */
 import type { AnalysisContext, AnalysisResult, Opts } from "./types";
 import { ANALYSIS_BY_ID, defaultCut, inputValue, pauliValue } from "./catalog";
-import { SHOT_ROWS, type ViewData } from "../calc/core";
+import { KET_ROWS, SHOT_ROWS, type ViewData } from "../calc/core";
 import { topK } from "../calc/analysis";
 import { Register } from "../calc/register";
 import { densityOk, noisyDensity, noisyShots, noisyStats, runTrajectories, DENSITY_MAX } from "../noise/sim";
@@ -81,7 +81,7 @@ const noteMethod = (method: string) => `Noisy state: ${method}.`;
 
 // ─── Views ─────────────────────────────────────────────────────────────
 
-const KET_ROWS = 32;
+
 
 export async function noisyView(ctx: AnalysisContext, opts: Opts): Promise<AnalysisResult> {
   const m = model(ctx);
@@ -99,8 +99,10 @@ export async function noisyView(ctx: AnalysisContext, opts: Opts): Promise<Analy
   } else {
     const st = new Float64Array(2 * stats.probs.length);
     stats.probs.forEach((p, i) => (st[2 * i] = Math.sqrt(p)));
-    const rows = n <= 4 ? [...Array(1 << n).keys()] : topK(st, KET_ROWS).idx;
-    view = { n, mode: "prob", complete: n <= 4, rows: rows.map((i) => ({ i, p: stats.probs[i] })) };
+    const { idx, nonzero } = topK(st, KET_ROWS);
+    const rows = n <= 4 ? [...Array(1 << n).keys()] : idx;
+    const listed = rows.reduce((s, i) => s + stats.probs[i], 0);
+    view = { n, mode: "prob", complete: n <= 4 || nonzero <= KET_ROWS, restP: Math.max(0, 1 - listed), rows: rows.map((i) => ({ i, p: stats.probs[i] })) };
   }
   return { view: { ...view, method } };
 }
@@ -197,7 +199,7 @@ export const NOISE_RUNS: Record<string, Run> = {
     const { rho, method } = densityOf(ctx, m);
     const ev = eigenvalues(rho, d);
     const purity = ev.reduce((a, p) => a + p * p, 0);
-    const shown = ev.slice(0, 16);
+    const shown = ev.filter((x, i) => i < 64 && x > 1e-12);
     return {
       scalars: [
         { label: "purity", value: r4(purity) },
@@ -295,7 +297,7 @@ export const NOISE_RUNS: Record<string, Run> = {
     const mitigated = flip(measured, true);
     const clipped = mitigated.map((x) => Math.max(0, x));
     const z = clipped.reduce((a, b) => a + b, 0);
-    const top = [...Array(d).keys()].sort((a, b) => stats.probs[b] - stats.probs[a]).slice(0, 8);
+    const top = [...Array(d).keys()].sort((a, b) => stats.probs[b] - stats.probs[a]).slice(0, 32);
     return {
       charts: [{
         kind: "table", title: "probabilities", headers: ["", "state (no readout)", "measured", "mitigated"],

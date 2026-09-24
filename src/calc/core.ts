@@ -24,8 +24,8 @@ export type ViewData = {
   /** Stabilizer mode (n > 20): generators, marginals, bitstring shots. */
   stab?: boolean;
 } & (
-  | { mode: "ket"; rows: { i: number; re: number; im: number }[]; nonzero: number; generators?: string[] }
-  | { mode: "prob"; rows: { i: number; p: number }[]; complete: boolean; marginals?: number[] }
+  | { mode: "ket"; rows: { i: number; re: number; im: number }[]; nonzero: number; generators?: string[]; /** Probability in the terms not listed. */ restP: number }
+  | { mode: "prob"; rows: { i: number; p: number }[]; complete: boolean; marginals?: number[]; /** Probability in the outcomes not listed. */ restP: number }
   | { mode: "bloch"; vectors: Vec3[] }
   | {
       mode: "shots"; rows: { i: number; count: number; bits?: string }[]; distinct: number; shots: number;
@@ -76,8 +76,9 @@ export type Result = {
   error?: string;
 };
 
-export const KET_ROWS = 64;
-const BAR_ROWS = 32;
+/** KET and PROB list up to this many basis states (all of a 12-qubit state); the rest is summed in `restP`. */
+export const KET_ROWS = 4096;
+const BAR_ROWS = KET_ROWS;
 /** Distinct shot outcomes listed (the rest are summed into `other`). */
 export const SHOT_ROWS = 1024;
 
@@ -90,7 +91,14 @@ function registerFor(c: Contents): AnyRegister {
   return stabFor(c.n) ? new StabilizerRegister(c.n, c.tape, c.scope) : new Register(c.n, c.tape, c.scope);
 }
 
-const STAB_ROWS = 128;
+/**
+ * Stabilizer views: every generator (cheap), but single-qubit expectations
+ * cost O(n²) each on the tableau, so marginals and Bloch vectors are sized
+ * to a work budget (~100 ms on a laptop): all qubits up to n ≈ 512, then as
+ * many as fit (the view says so).
+ */
+const STAB_EXP_BUDGET = 1.3e8;
+const stabFit = (n: number, perQubit: number) => Math.min(n, Math.max(1, Math.floor(STAB_EXP_BUDGET / (perQubit * n * n))));
 /** Work budget for sampling shots from a tableau (each shot measures every qubit, O(n²) each). */
 const SHOT_BUDGET = 3e8;
 
@@ -259,9 +267,9 @@ export class Core {
     const n = this.reg.n;
     const single = (q: number, p: "X" | "Y" | "Z") => tab.pauliExpectation(Array.from({ length: n }, (_, i) => (i === q ? p : "I")));
     switch (req.mode) {
-      case "ket": return { n, stab: true, mode: "ket", rows: [], nonzero: 0, generators: tab.stabilizers().slice(0, STAB_ROWS) };
-      case "prob": return { n, stab: true, mode: "prob", rows: [], complete: false, marginals: Array.from({ length: Math.min(n, STAB_ROWS) }, (_, q) => (1 - single(q, "Z")) / 2) };
-      case "bloch": return { n, stab: true, mode: "bloch", vectors: Array.from({ length: Math.min(n, 32) }, (_, q) => ({ x: single(q, "X"), y: single(q, "Y"), z: single(q, "Z") })) };
+      case "ket": return { n, stab: true, mode: "ket", rows: [], nonzero: 0, restP: 0, generators: tab.stabilizers() };
+      case "prob": return { n, stab: true, mode: "prob", rows: [], complete: false, restP: 0, marginals: Array.from({ length: stabFit(n, 1) }, (_, q) => (1 - single(q, "Z")) / 2) };
+      case "bloch": return { n, stab: true, mode: "bloch", vectors: Array.from({ length: stabFit(n, 3) }, (_, q) => ({ x: single(q, "X"), y: single(q, "Y"), z: single(q, "Z") })) };
       case "shots": {
         const shots = Math.max(1, Math.min(req.shots, Math.floor(SHOT_BUDGET / (n * n * n))));
         let seed = 0x5407 + req.shotSeed;
@@ -293,11 +301,14 @@ export class Core {
         const { idx, nonzero } = topK(state, KET_ROWS);
         // Few terms → basis order reads like Dirac notation; many → most likely first.
         const order = nonzero <= KET_ROWS ? [...idx].sort((a, b) => a - b) : idx;
-        return { n, mode: "ket", nonzero, rows: order.map((i) => ({ i, re: state[2 * i], im: state[2 * i + 1] })) };
+        const listed = idx.reduce((s, i) => s + p(i), 0);
+        return { n, mode: "ket", nonzero, restP: Math.max(0, 1 - listed), rows: order.map((i) => ({ i, re: state[2 * i], im: state[2 * i + 1] })) };
       }
       case "prob": {
-        if (n <= 4) return { n, mode: "prob", complete: true, rows: [...Array(1 << n).keys()].map((i) => ({ i, p: p(i) })) };
-        return { n, mode: "prob", complete: false, rows: topK(state, BAR_ROWS).idx.map((i) => ({ i, p: p(i) })) };
+        if (n <= 4) return { n, mode: "prob", complete: true, restP: 0, rows: [...Array(1 << n).keys()].map((i) => ({ i, p: p(i) })) };
+        const { idx, nonzero } = topK(state, BAR_ROWS);
+        const rows = idx.map((i) => ({ i, p: p(i) }));
+        return { n, mode: "prob", complete: nonzero <= BAR_ROWS, restP: Math.max(0, 1 - rows.reduce((s, r) => s + r.p, 0)), rows };
       }
       case "bloch":
         return { n, mode: "bloch", vectors: [...Array(n).keys()].map((q) => bloch(state, n, q)) };
