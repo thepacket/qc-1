@@ -736,8 +736,8 @@ button {
   touch-action: pan-x;
   border-radius: 7px;
   font-family: var(--mono);
-  font-size: 12.5px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   color: var(--ink);
   background: var(--key-gate);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -2px 0 rgba(0, 0, 0, 0.35);
@@ -747,6 +747,7 @@ button {
   padding: 0 3px;
 }
 .tile:active { filter: brightness(1.2); }
+.tile.long { font-size: 12px; } /* State…, Matrix…, reset, custom names: still fit the tile */
 .tile:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
 .tile-pauli { background: var(--g-pauli); }
 .tile-rotation { background: var(--g-rotation); }

@@ -44,8 +44,10 @@ describe("a classical register of its own (Quantiom's)", () => {
     c.placeItem(tile("measure"), 2, 0);
     expect(measuredBit(c.tape[0][0])).toBe(2);
     expect(c.setMeasureBit(0, 4)).toBe(true);
-    expect(c.setClassicalCount(4)).toBe(false);
-    expect(c.message?.text).toBe("c[4] is in use");
+    expect(c.setClassicalCount(4)).toBe(false); // c4 is in use: refused, quietly
+    expect(c.message?.kind).not.toBe("error");
+    expect(c.bits).toBe(5);
+    expect(c.usedBits).toBe(5);
     expect(c.setMeasureBit(0, 1)).toBe(true);
     expect(c.setClassicalCount(2)).toBe(true);
     const d = calc();

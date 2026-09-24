@@ -218,3 +218,20 @@ describe("editing in the calculator", () => {
     expect(c.diagSel).toBeNull();
   });
 });
+
+describe("error messages", () => {
+  test("an error stays until the next edit or selection succeeds", () => {
+    const c = calc();
+    c.setQubitCount(3);
+    add(c, "h", [0]);
+    expect(c.addControl(0, 0)).toBe(false);
+    expect(c.message?.kind).toBe("error");
+    c.setShots(0); // another refusal: still an error
+    expect(c.message?.kind).toBe("error");
+    expect(c.addControl(0, 1)).toBe(true); // the fix goes through
+    expect(c.message?.kind).not.toBe("error");
+    expect(c.setShots(0)).toBe(false);
+    c.selectStep(0);
+    expect(c.message).toBeNull();
+  });
+});

@@ -54,7 +54,7 @@ export function Palette({ calc }: { calc: Calculator }) {
       )}
       <div className="palette-tiles" role="list" aria-label={words.length ? "Matching gates" : "Gates"}>
         {items.map((p, i) => (
-          <button key={p.id} role="listitem" className={`tile tile-${p.group}`}
+          <button key={p.id} role="listitem" className={`tile tile-${p.group}${p.label.length > 5 ? " long" : ""}`}
             // Row-major reading order in three rows that scroll sideways.
             style={{ gridRow: Math.floor(i / cols) + 1, gridColumn: (i % cols) + 1 }} title={`${p.name}${p.note ? ` — ${p.note}` : ""}`}
             aria-label={`${p.name}: drag onto a wire, or tap to place it on q${calc.cursor?.row ?? calc.sel}`}

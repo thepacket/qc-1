@@ -212,7 +212,7 @@ export function App() {
         {(calc.mode === "tape" || calc.busy || calc.noiseOn || calc.symbols.length > 0 || calc.scrub !== null) && <div className="status">
           {calc.mode === "tape" && <>
             <Count value={calc.n} min={1} max={STAB_MAX} set={(k) => calc.setQubitCount(k)} unit="qubit" label="Number of qubits" />
-            <Count value={calc.bits} min={0} max={MAX_CBITS} set={(k) => calc.setClassicalCount(k)} unit="bit" label="Number of classical bits" />
+            <Count value={calc.bits} min={calc.usedBits} max={MAX_CBITS} set={(k) => calc.setClassicalCount(k)} unit="bit" label="Number of classical bits" />
           </>}
           <span className="flags">
             {calc.busy && <b className="busy">BUSY</b>}
@@ -241,7 +241,7 @@ export function App() {
         {/* Errors, and small notes (importer warnings, confirmations). Echoes ("info") aren't shown. */}
         {calc.message && calc.message.kind !== "info" && (
           <div className={`msg${calc.message.kind === "error" ? " err" : ""}`} role={calc.message.kind === "error" ? "alert" : "status"}>
-            {calc.message.kind === "error" ? `E: ${calc.message.text}` : calc.message.text}
+            {calc.message.text}
           </div>
         )}
       </section>

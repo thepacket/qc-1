@@ -27,6 +27,9 @@ export type { Mode };
 /** Classical bits at most (the classical register, like the stabilizer register's qubits). */
 export const MAX_CBITS = 1024;
 
+/** Core commands that change the circuit: sending one clears an error message. */
+const EDITS = new Set<Cmd["t"]>(["push", "insert", "replace", "delete", "undo", "redo", "clear", "resize", "repeat"]);
+
 /** How a gate is placed (editing API). */
 export type GateOpts = {
   targets: number[]; controls?: number[]; controlStates?: boolean[]; params?: string[];
@@ -239,6 +242,8 @@ export class Calculator {
 
   /** Send a command; `report` runs with its reply unless the reply is an error. */
   private send(cmd: Cmd, report?: (r: Result) => void) {
+    // An edit that goes through ends what an earlier refusal was about: its error goes.
+    if (EDITS.has(cmd.t)) this.clearError();
     let fail: (() => void) | null = null;
     if (this.scrub !== null && (cmd.t === "push" || cmd.t === "repeat")) {
       // While scrubbed, a gate goes in at the scrub point and the views follow it.
@@ -578,12 +583,17 @@ export class Calculator {
     return bitCount(this.n, this.tape, this.nc);
   }
 
-  /** Set the number of classical bits (0–1024); not below a bit the circuit uses. */
+  /** The fewest classical bits the circuit allows: every bit it writes or reads. */
+  get usedBits(): number {
+    return bitCount(this.n, this.tape, 0);
+  }
+
+  /** Set the number of classical bits (up to 1024). Below a bit the circuit uses, nothing happens (no error: the count just stays). */
   setClassicalCount(k: number): boolean {
-    if (!Number.isInteger(k) || k < 0 || k > MAX_CBITS) return this.refuse(`0–${MAX_CBITS} classical bits`);
-    const used = bitCount(this.n, this.tape, 0);
-    if (k < used) return this.refuse(`c[${used - 1}] is in use`);
+    if (!Number.isInteger(k) || k > MAX_CBITS) return this.refuse(`0–${MAX_CBITS} classical bits`);
+    if (k < this.usedBits) return false;
     this.nc = k;
+    this.clearError();
     this.changed();
     return true;
   }
@@ -714,6 +724,7 @@ export class Calculator {
 
   /** A tap on an empty cell of the diagram (null: none). */
   tapCell(cell: { row: number; col: number } | null) {
+    this.clearError();
     this.diagSel = null;
     this.diagSet = new Set();
     this.cursor = cell;
@@ -1043,6 +1054,7 @@ export class Calculator {
   setShots(n: number): boolean {
     if (!Number.isInteger(n) || n < 1 || n > 1_000_000) return this.refuse("shots 1–1000000");
     this.shots = n;
+    this.clearError();
     this.shotSeed++;
     this.send({ t: "view", req: this.viewReq() });
     this.requestNoisyView();
@@ -1069,6 +1081,7 @@ export class Calculator {
 
   /** Select a gate in the diagram. Its wire becomes the selected qubit too: one selection, not two. */
   selectStep(i: number | null) {
+    this.clearError();
     this.diagSel = i !== null && i >= 0 && i < this.tape.length ? i : null;
     this.diagSet = new Set();
     this.cursor = null;
@@ -1080,6 +1093,7 @@ export class Calculator {
   /** Select the gates drawn in columns c0..c1 on rows r0..r1 (a rectangle dragged on the diagram). */
   selectBox(c0: number, c1: number, r0: number, r1: number) {
     const set = entriesIn(layoutTape(this.n, this.tape), Math.min(c0, c1), Math.max(c0, c1), Math.min(r0, r1), Math.max(r0, r1));
+    this.clearError();
     this.diagSel = null;
     this.cursor = null;
     this.diagSet = set;
@@ -1392,6 +1406,11 @@ export class Calculator {
   notify(text: string, kind: Message["kind"] = "note") {
     this.message = { text, kind };
     this.changed();
+  }
+
+  /** An error stays until the next thing the user does succeeds (an edit, a selection, a setting). */
+  private clearError() {
+    if (this.message?.kind === "error") this.message = null;
   }
 
   private error(text: string) {
