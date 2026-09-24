@@ -4,7 +4,7 @@ import { layoutTape, usedQubits, type Placed } from "../calc/diagram";
 import { gateLabel, MEASURE_IDS, type Entry } from "../calc/steps";
 import { elementToSvg, saveSvg } from "./svgExport";
 
-/** Diagram limits: beyond these the LIST pane is the readable form. */
+/** Diagram limits: beyond these the STEP pane is the readable form. */
 export const DIAGRAM_MAX_QUBITS = 1024; // wires; the pane scrolls both ways
 const MAX_STEPS = 20000;
 
@@ -56,7 +56,7 @@ export function CircuitDiagram({ n, tape, scrub, onTap }: { n: number; tape: Ent
 
   if (tape.length === 0) return <div className="rows dim">empty: key some gates</div>;
   if (!lay || !geo) {
-    return <div className="rows dim">{tooWide ? `the diagram shows up to ${DIAGRAM_MAX_QUBITS} wires (the circuit uses ${wires!.length})` : `the diagram shows up to ${MAX_STEPS} steps`}: see LIST</div>;
+    return <div className="rows dim">{tooWide ? `the diagram shows up to ${DIAGRAM_MAX_QUBITS} wires (the circuit uses ${wires!.length})` : `the diagram shows up to ${MAX_STEPS} steps`}: see STEP</div>;
   }
   const rows = lay.wires.length;
   const H = TOP + rows * ROW;

@@ -157,7 +157,7 @@ async function shareQasm(calc: Calculator, text: string, name = "qc1-circuit.qas
 type TapePane = "list" | "circ" | "qasm" | "menu" | "examples" | "import" | "qr";
 
 export function TapeView({ calc }: { calc: Calculator }) {
-  const [pane, setPane] = useState<TapePane>("list");
+  const [pane, setPane] = useState<TapePane>("circ");
   const end = useRef<HTMLDivElement>(null);
   const tape = calc.tape;
   const text = useMemo(() => (pane === "qasm" ? exportQasm3(calc.n, tape) : ""), [pane, calc.n, tape]);
@@ -168,23 +168,23 @@ export function TapeView({ calc }: { calc: Calculator }) {
     (calc.scrub === null ? end : cur).current?.scrollIntoView({ block: calc.scrub === null ? "end" : "nearest" });
   }, [tape, pane, calc.scrub]);
   const tab = (p: TapePane, label: string) => (
-    <button className={pane === p ? "on" : ""} onClick={() => setPane(pane === p && p === "menu" ? "list" : p)}>{label}</button>
+    <button className={pane === p ? "on" : ""} onClick={() => setPane(pane === p && p === "menu" ? "circ" : p)}>{label}</button>
   );
   return (
     <div className="view">
       <div className="view-head tape-head">
         <span>{tape.length} steps</span>
         <span className="lcd-btns">
-          {tab("list", "LIST")}
-          {tab("circ", "DRAW")}
+          {tab("circ", "DIAG")}
+          {tab("list", "STEP")}
           {tab("qasm", "QASM")}
           {tab("menu", "≡")}
         </span>
       </div>
       {pane === "menu" && <TapeMenu calc={calc} go={setPane} />}
       {pane === "qr" && <QrPane calc={calc} done={() => setPane("menu")} />}
-      {pane === "examples" && <ExamplesPane calc={calc} done={() => setPane("list")} />}
-      {pane === "import" && <ImportPane calc={calc} done={() => setPane("list")} />}
+      {pane === "examples" && <ExamplesPane calc={calc} done={() => setPane("circ")} />}
+      {pane === "import" && <ImportPane calc={calc} done={() => setPane("circ")} />}
       {(pane === "list" || pane === "circ") && tape.length > 0 && (
         <div className="scrubber">
           <button onClick={() => calc.setScrub(at - 1)} disabled={at === 0} aria-label="Step back">◀</button>
@@ -268,13 +268,13 @@ function TapeMenu({ calc, go }: { calc: Calculator; go: (p: TapePane) => void })
   const rows: [string, string, () => void][] = [
     ["Examples…", `${EXAMPLE_COUNT} programs in ${EXAMPLE_CATEGORIES.length} topics`, () => go("examples")],
     ["Import QASM…", "paste OpenQASM 2/3 or open a file", () => go("import")],
-    ["Copy QASM", "OpenQASM 3 of the circuit (Qiskit loads it)", () => { void copyText(calc, qasm()); go("list"); }],
-    ["Share QASM file", "qc1-circuit.qasm", () => { void shareQasm(calc, qasm()); go("list"); }],
-    ["Copy Qiskit (Python)", "a script that builds the QuantumCircuit", () => { void copyText(calc, qiskitPython(calc.n, calc.tape), "Qiskit script copied"); go("list"); }],
-    ["Share Qiskit file", "qc1_tape.py", () => { void shareQasm(calc, qiskitPython(calc.n, calc.tape), "qc1_tape.py"); go("list"); }],
-    ["Share link", "the circuit and symbol values in a URL", () => { void shareLink(); go("list"); }],
+    ["Copy QASM", "OpenQASM 3 of the circuit (Qiskit loads it)", () => { void copyText(calc, qasm()); go("circ"); }],
+    ["Share QASM file", "qc1-circuit.qasm", () => { void shareQasm(calc, qasm()); go("circ"); }],
+    ["Copy Qiskit (Python)", "a script that builds the QuantumCircuit", () => { void copyText(calc, qiskitPython(calc.n, calc.tape), "Qiskit script copied"); go("circ"); }],
+    ["Share Qiskit file", "qc1_tape.py", () => { void shareQasm(calc, qiskitPython(calc.n, calc.tape), "qc1_tape.py"); go("circ"); }],
+    ["Share link", "the circuit and symbol values in a URL", () => { void shareLink(); go("circ"); }],
     ["QR code", "the share link, for phones pointed at this screen", () => go("qr")],
-    ["Report", `circuit, state${calc.pins.length ? `, ${calc.pins.length} pinned LAB result${calc.pins.length > 1 ? "s" : ""}` : ""}: print or save as PDF`, () => { calc.toggleReport(); go("list"); }],
+    ["Report", `circuit, state${calc.pins.length ? `, ${calc.pins.length} pinned LAB result${calc.pins.length > 1 ? "s" : ""}` : ""}: print or save as PDF`, () => { calc.toggleReport(); go("circ"); }],
   ];
   return (
     <div className="rows">
