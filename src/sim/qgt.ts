@@ -19,6 +19,8 @@
 import type { Circuit } from "./types";
 type CustomGate = unknown; // QC-1: custom gates arrive in Phase 6
 import { simulate, type ParameterValues } from "./simulate";
+import { customOf, expandCustom } from "../calc/custom";
+import { evalParam, symbolsOf, type Step } from "../calc/steps";
 
 export type QgtResult = {
   symbols: string[];
@@ -41,8 +43,8 @@ export type QgtResult = {
  * g = sin²(aε/2)/ε² for RY(aθ): 3.7% of the true a²/4 at a = 10⁵, silently.
  * Instead: central differences D(h) at h = h₀, h₀/2, … (h₀ = epsilon, default 0.05), Richardson
  * R(h) = (4D(h/2) − D(h))/3, accepted once three successive R agree to 1e-9
- * of ‖∂ψ‖ (garbage from a step longer than the parameter's period can't
- * agree three times); otherwise the best-agreeing R, flagged unresolved.
+ * of ‖∂ψ‖; otherwise the best-agreeing R, flagged unresolved. Agreement is a
+ * heuristic (see #41 for the aliasing it can't see on its own).
  */
 function adaptiveDerivative(f: (x: number) => Float64Array, x0: number, h0 = 0.05): { d: Float64Array; err: number } {
   const D = (h: number) => { const p = f(x0 + h), m = f(x0 - h); return p.map((v, j) => (v - m[j]) / (2 * h)); };
@@ -63,6 +65,54 @@ function adaptiveDerivative(f: (x: number) => Float64Array, x0: number, h0 = 0.0
     prev = R; Dh = Dh2;
   }
   return best;
+}
+
+/**
+ * QC-1 fix (docs/quantiom-bugs.md #41): how fast the gate angles move with
+ * `sym` near x0, Σ over every angle of max |∂angle/∂sym| on [x0 − h, x0 + h]
+ * (custom gates expanded). ψ(sym) is a trigonometric polynomial whose
+ * frequencies are at most that sum (a rotation e^{−iφG/2} contributes |∂φ|/2,
+ * a phase p(λ) |∂λ|), so a first step h ≤ 0.1/rate can't alias. Nonlinear
+ * angle expressions are sampled at 9 points, a heuristic the cross-check backs.
+ */
+function angleRate(circuit: Circuit, params: ParameterValues, sym: string, x0: number, h: number): number {
+  const steps: Step[] = [];
+  const add = (st: Step, depth: number) => {
+    const def = depth < 8 ? customOf(st.gateId) : undefined;
+    if (def) for (const e of expandCustom(st, def)) add(e, depth + 1);
+    else steps.push(st);
+  };
+  for (const g of circuit.gates) add(g as Step, 0);
+  const scope: ParameterValues = { ...params };
+  for (const st of steps) for (const p of st.params) for (const v of symbolsOf(p)) if (!(v in scope)) scope[v] = 0;
+  let rate = 0;
+  for (const st of steps) for (const p of st.params) {
+    if (!symbolsOf(p).includes(sym)) continue;
+    let r = 0;
+    for (let k = -4; k <= 4; k++) {
+      const x = x0 + (h * k) / 4, dx = 1e-6 * Math.max(1, Math.abs(x));
+      const v = (evalParam(p, { ...scope, [sym]: x + dx }) - evalParam(p, { ...scope, [sym]: x - dx })) / (2 * dx);
+      if (Number.isFinite(v)) r = Math.max(r, Math.abs(v));
+    }
+    rate += r;
+  }
+  return rate;
+}
+
+/**
+ * QC-1 fix (docs/quantiom-bugs.md #41): agreement along one dyadic sequence
+ * h₀, h₀/2, … can be exact aliasing (RY(640π·θ) from h₀ = 0.05: every central
+ * difference is sin(2^k π)/h = 0). The step starts below the angle-rate bound,
+ * and a second, non-dyadic sequence (h₀·0.646…) must agree to 1e-7, else the
+ * symbol is unresolved.
+ */
+export function checkedDerivative(f: (x: number) => Float64Array, x0: number, h0: number): { d: Float64Array; err: number } {
+  const a = adaptiveDerivative(f, x0, h0);
+  const b = adaptiveDerivative(f, x0, h0 * 0.6460969734420495);
+  let diff = 0, scale = 1e-6;
+  a.d.forEach((v, j) => { diff = Math.max(diff, Math.abs(v - b.d[j])); scale = Math.max(scale, Math.abs(v)); });
+  const rel = diff / scale;
+  return { d: a.err <= b.err ? a.d : b.d, err: rel <= 1e-7 ? Math.max(a.err, b.err, rel) : Math.max(rel, 1) };
 }
 
 /** QC-1 fix (docs/quantiom-bugs.md #40): eigenvalues and determinant of M/s (s = max |Mᵢⱼ|), mapped back, so a parameter rescaling can't cross an absolute threshold. */
@@ -164,7 +214,8 @@ export function quantumGeometricTensor(
     const sym = symbols[i];
     const original = work[sym] ?? 0;
     const at = (x: number) => simulate(circuit, { ...work, [sym]: x }, customGates).state;
-    const { d, err } = adaptiveDerivative(at, original, epsilon);
+    const rate = angleRate(circuit, params, sym, original, epsilon);
+    const { d, err } = checkedDerivative(at, original, rate > 0 ? Math.min(epsilon, 0.1 / rate) : epsilon);
     dpsi.push(d); derivativeError.push(err);
   }
 

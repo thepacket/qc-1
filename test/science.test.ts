@@ -16,7 +16,7 @@ import { tSweepSpectrum } from "../src/sim/tsweep";
 import { temporalAutocorrelation } from "../src/sim/autocorrelation";
 import { chernNumber } from "../src/sim/chernNumber";
 import { berryPhase } from "../src/sim/berryPhase";
-import { quantumGeometricTensor } from "../src/sim/qgt";
+import { checkedDerivative, quantumGeometricTensor } from "../src/sim/qgt";
 import { entanglementContour } from "../src/sim/entanglementContour";
 import { diagonalEnsemble } from "../src/sim/diagonalEnsemble";
 import { effectiveTemperature, energyMatchedBeta } from "../src/sim/effectiveTemperature";
@@ -363,5 +363,28 @@ describe("QGT: adaptive derivatives and scale-free eigenvalues", () => {
   test("a dependence too fast to resolve at any step is flagged, not reported as a number silently", () => {
     const r = qgtOf("ry(1000000000000*theta) q[0];", { theta: 0.3 }, ["theta"]);
     expect(r.unresolved).toEqual(["theta"]);
+  });
+});
+
+// Adaptive-QGT review: dyadic steps can alias exactly (RY(640π·θ) from h₀ = 0.05 read 0 with error 0).
+describe("QGT derivatives can't be fooled by aliasing", () => {
+  test.each([320, 640, 1280, 2560])("RY(%sπ·θ) at θ = 0: g = a²/4, through the solver and the LAB", async (k) => {
+    const a = k * Math.PI, want = (a * a) / 4;
+    const { circ, ctx } = make(1, `ry(${k}*pi*theta) q[0];`, { theta: 0 });
+    for (const eps of [undefined, 0.05, 0.047]) {
+      const r = quantumGeometricTensor(circ, [], { theta: 0 }, ["theta"], eps)!;
+      expect(r.metric[0][0] / want).toBeCloseTo(1, 7);
+      expect(r.unresolved).toEqual([]);
+    }
+    const ui = await runAnalysis("qgt", ctx, {});
+    expect(Math.abs(Number(ui.scalars?.[1].value) / want - 1)).toBeLessThan(1e-3); // the LAB shows g's eigenvalue, rounded
+    expect(ui.notes ?? []).toEqual([]);
+  });
+
+  test("without the step bound, the non-dyadic cross-check flags an aliased dyadic sequence", () => {
+    const a = 640 * Math.PI; // ψ(x) = (cos(ax/2), sin(ax/2)): every dyadic step from 0.05 is a multiple of its period
+    const f = (x: number) => Float64Array.from([Math.cos((a * x) / 2), 0, Math.sin((a * x) / 2), 0]);
+    const r = checkedDerivative(f, 0, 0.05);
+    expect(r.err).toBeGreaterThan(1e-6); // not certified
   });
 });
