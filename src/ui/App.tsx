@@ -36,11 +36,11 @@ function load(): Saved | null {
 }
 
 const MODES: { id: Mode; label: string }[] = [
+  { id: "tape", label: "CIRC" },
   { id: "ket", label: "KET" },
   { id: "prob", label: "PROB" },
   { id: "bloch", label: "BLOCH" },
   { id: "shots", label: "SHOTS" },
-  { id: "tape", label: "CIRC" },
   { id: "lab", label: "LAB" },
 ];
 
