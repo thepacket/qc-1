@@ -21,6 +21,10 @@ import { entanglementContour } from "../src/sim/entanglementContour";
 import { diagonalEnsemble } from "../src/sim/diagonalEnsemble";
 import { effectiveTemperature, energyMatchedBeta } from "../src/sim/effectiveTemperature";
 import { lyapunovExponent } from "../src/sim/lyapunov";
+import { matrixGate } from "../src/calc/typed";
+import { correlationLength } from "../src/sim/correlationLength";
+import { krylovComplexity } from "../src/sim/krylov";
+import { randomUnitary, rng, withSpectrum } from "./unitaries";
 
 function make(n: number, body: string, scope: Record<string, number> = {}) {
   const parsed = importQasm(`OPENQASM 3.0; include "stdgates.inc"; qubit[${n}] q; ${body}`);
@@ -161,5 +165,72 @@ describe("OTOC growth rate", () => {
     for (let i = 1; i < idx.length; i++) expect(r.C[idx[i]]).toBeGreaterThan(r.C[idx[i - 1]]);
     expect(r.r2).toBeGreaterThanOrEqual(0);
     expect(r.r2).toBeLessThanOrEqual(1);
+  });
+});
+
+// Follow-up review: clustered spectra, energy offsets, absent correlations, energy scale.
+
+describe("follow-up: Floquet on a clustered spectrum, through matrix synthesis", () => {
+  test("phases 1e-10 apart survive MATRIX → circuit → Floquet: ⟨r⟩ matches the designed spectrum, residuals tiny", () => {
+    const r = rng(20260924);
+    const th = Array.from({ length: 8 }, () => (r() < 0.5 ? -0.9 : 0.8) + (2 * r() - 1) * 1e-10);
+    const W = withSpectrum(randomUnitary(8, r), th);
+    const def = matrixGate("CL", { k: 3, U: W });
+    const res = floquetSpectrum(lowerTape(3, def.tape), {}, [])!;
+    expect(res.residual).toBeLessThan(1e-12);
+    expect(res.orthogonality).toBeLessThan(1e-12);
+    const ps = sorted(th);
+    const gaps = ps.map((v, i) => (i + 1 < ps.length ? ps[i + 1] - v : 2 * Math.PI + ps[0] - v));
+    const want = gaps.reduce((s, g, i) => s + Math.min(g, gaps[(i + 1) % 8]) / Math.max(g, gaps[(i + 1) % 8]), 0) / 8;
+    expect(res.meanR).toBeCloseTo(want, 3);
+    expect(res.degenerateGaps).toBe(0);
+  });
+});
+
+describe("follow-up: energy-matched β", () => {
+  test("⟨H⟩ at the levels' average is β = 0 exactly (T = ∞), through the solver and the LAB screen", async () => {
+    expect(Object.is(energyMatchedBeta([-1, 1], 0), 0)).toBe(true);
+    const state = new Float64Array([Math.SQRT1_2, 0, Math.SQRT1_2, 0]);
+    const ui = await runAnalysis("efftemp", { n: 1, state, tape: [], scope: {} }, { obs: "Z" });
+    expect(ui.scalars?.find((x) => x.label === "T matching ⟨H⟩")?.value).toBe("∞");
+  });
+
+  test("an energy offset or a rescaling of H changes nothing but β's units", () => {
+    const E = [-1.3, -0.2, 0.4, 1.7], mean = -0.35;
+    const base = energyMatchedBeta(E, mean);
+    expect(energyMatchedBeta(E.map((e) => e + 1e12), mean + 1e12)).toBeCloseTo(base, 3); // offset rounding ~1e-4 of the gaps
+    expect(energyMatchedBeta(E.map((e) => e + 37), mean + 37)).toBeCloseTo(base, 10);
+    expect(energyMatchedBeta([1e12 - 1, 1e12 + 1], 1e12)).toBe(0);
+    expect(energyMatchedBeta(E.map((e) => 1e-9 * e), 1e-9 * mean) * 1e-9).toBeCloseTo(base, 8);
+  });
+});
+
+describe("follow-up: correlation length", () => {
+  test("a product state has no correlations, not an infinite correlation length", async () => {
+    const reg = new Register(3);
+    const res = correlationLength(reg.state, 3)!;
+    expect(res.status).toBe("uncorrelated");
+    expect(res.xi).toBeNaN();
+    const ui = await runAnalysis("corrlength", { n: 3, state: reg.state, tape: [], scope: {} }, {});
+    expect(String(ui.scalars?.[0].value)).toMatch(/no connected ZZ correlations/);
+  });
+
+  test("GHZ correlations don't decay: ξ = ∞ is kept for that case", () => {
+    const res = correlationLength(make(4, "h q[0]; cx q[0],q[1]; cx q[1],q[2]; cx q[2],q[3];").ctx.state, 4)!;
+    expect(res.status).toBe("flat");
+    expect(res.xi).toBe(Infinity);
+  });
+});
+
+describe("follow-up: Krylov complexity is independent of H's scale", () => {
+  test.each([1e-10, 1e-3, 1, 1e6])("H = %s·(X + 0.4 Z) on |0⟩ …, and a 3-qubit chain", (scale) => {
+    const one = (c: number) => [{ coefficient: c, paulis: "X" }, { coefficient: 0.4 * c, paulis: "Z" }];
+    const base = krylovComplexity(one(1), new Float64Array([1, 0, 0, 0]), 1)!;
+    const scaled = krylovComplexity(one(scale), new Float64Array([1, 0, 0, 0]), 1)!;
+    expect(scaled.krylovDim).toBe(base.krylovDim);
+    expect(scaled.complexity).toEqual(base.complexity.map((x) => expect.closeTo(x, 8)));
+    const chain = (c: number) => [{ coefficient: c, paulis: "XXI" }, { coefficient: c, paulis: "IXX" }, { coefficient: 0.7 * c, paulis: "ZII" }];
+    const psi = make(3, "h q[0]; ry(0.4) q[2];").ctx.state;
+    expect(krylovComplexity(chain(scale), psi, 3)!.krylovDim).toBe(krylovComplexity(chain(1), psi, 3)!.krylovDim);
   });
 });

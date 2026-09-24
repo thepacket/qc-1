@@ -37,25 +37,32 @@ export type EffectiveTempResult = {
  * it; a state at the lowest (highest) level has β = +∞ (−∞).
  */
 export function energyMatchedBeta(energies: number[], meanEnergy: number): number {
+  // Work in x = (E − mid)/w ∈ [−½, ½]: the answer can't depend on an energy
+  // offset, and tolerances follow the spectrum's width, not its position.
   const lo = Math.min(...energies), hi = Math.max(...energies);
-  const tol = 1e-12 * Math.max(1, Math.abs(lo), Math.abs(hi));
-  if (hi - lo < tol) return NaN;
-  if (meanEnergy <= lo + tol) return Infinity;
-  if (meanEnergy >= hi - tol) return -Infinity;
+  const w = hi - lo, mid = lo + w / 2;
+  if (!(w > 64 * Number.EPSILON * Math.max(Math.abs(lo), Math.abs(hi)))) return NaN; // H ∝ I: every β gives the same state
+  const xs = energies.map((e) => (e - mid) / w);
+  const m = (meanEnergy - mid) / w;
+  const tol = 1e-12;
+  if (m <= -0.5 + tol) return Infinity;
+  if (m >= 0.5 - tol) return -Infinity;
   const mean = (b: number) => {
-    const x = energies.map((e) => -b * e), m = Math.max(...x);
-    let z = 0, ez = 0;
-    energies.forEach((e, k) => { const w = Math.exp(x[k] - m); z += w; ez += w * e; });
-    return ez / z;
+    const ex = xs.map((x) => -b * x), top = Math.max(...ex);
+    let z = 0, xz = 0;
+    xs.forEach((x, k) => { const q = Math.exp(ex[k] - top); z += q; xz += q * x; });
+    return xz / z;
   };
+  // β = 0 (infinite temperature) exactly when ⟨H⟩ is the plain average of the levels.
+  if (Math.abs(mean(0) - m) <= tol) return 0;
   let a = -1, b = 1;
-  while (mean(a) < meanEnergy && a > -1e12) a *= 2;
-  while (mean(b) > meanEnergy && b < 1e12) b *= 2;
+  while (mean(a) < m && a > -1e15) a *= 2;
+  while (mean(b) > m && b < 1e15) b *= 2;
   for (let i = 0; i < 200 && b - a > 1e-15 * Math.max(1, Math.abs(a), Math.abs(b)); i++) {
     const c = (a + b) / 2;
-    if (mean(c) > meanEnergy) a = c; else b = c;
+    if (mean(c) > m) a = c; else b = c;
   }
-  return (a + b) / 2;
+  return (a + b) / 2 / w;
 }
 
 export function effectiveTemperature(diag: DiagonalEnsembleResult, threshold = 1e-9): EffectiveTempResult {

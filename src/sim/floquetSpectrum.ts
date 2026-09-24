@@ -27,7 +27,14 @@ export type FloquetResult = {
   meanR: number;
   /** QC-1: largest eigenpair residual ‖U v − e^{iθ} v‖. */
   residual: number;
+  /** QC-1: largest deviation of the eigenvectors' Gram matrix from I. */
+  orthogonality: number;
+  /** QC-1: gaps below GAP_RESOLUTION, counted as exact degeneracies (0). */
+  degenerateGaps: number;
 };
+
+/** QC-1: phase gaps below this are treated as degeneracies. */
+export const GAP_RESOLUTION = 1e-12;
 
 export function floquetSpectrum(
   circuit: Circuit,
@@ -54,7 +61,7 @@ export function floquetSpectrum(
   // (cluster by cluster, see calc/normalEig.ts) and keep the residual.
   const U: Complex[][] = Ure.map((row, i) => row.map((re, j) => ({ re, im: Uim[i][j] })));
   const eig = normalEig(U);
-  const residual = eig.residual;
+  const residual = eig.residual, orthogonality = eig.orthogonality;
   const quasiEnergies: number[] = eig.values.map(({ re, im }) => {
     // QC-1 fix (docs/quantiom-bugs.md #15): quasi-energies live on a circle;
     // report them in (−π, π] (atan2 gives −π for a −0 imaginary part).
@@ -68,6 +75,10 @@ export function floquetSpectrum(
   // …and the spacing statistics are circular: include the gap that wraps
   // across ±π, otherwise the result depends on where the branch cut falls.
   if (sorted.length > 1) gaps.push(2 * Math.PI - (sorted[sorted.length - 1] - sorted[0]));
+  // QC-1: a gap below GAP_RESOLUTION can't be told from an exact degeneracy
+  // (U itself carries ~1e-15 rounding from the gates); count it as one (0) and say how many.
+  let degenerateGaps = 0;
+  for (let i = 0; i < gaps.length; i++) if (gaps[i] < GAP_RESOLUTION) { gaps[i] = 0; degenerateGaps++; }
   const meanGap = gaps.length > 0 ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 1;
   const spacings = gaps.map((g) => g / (meanGap || 1));
   const ratios: number[] = [];
@@ -79,5 +90,5 @@ export function floquetSpectrum(
     if (mx > 1e-15) ratios.push(Math.min(a, b) / mx);
   }
   const meanR = ratios.length > 0 ? ratios.reduce((a, b) => a + b, 0) / ratios.length : 0;
-  return { quasiEnergies, spacings, meanR, residual };
+  return { quasiEnergies, spacings, meanR, residual, orthogonality, degenerateGaps };
 }

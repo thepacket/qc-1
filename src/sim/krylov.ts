@@ -77,6 +77,7 @@ export function krylovComplexity(
   if (n < 1 || n > maxQubits || terms.length === 0) return null;
   const dim = 1 << n;
 
+  const hScale = terms.reduce((acc, t) => acc + Math.abs(t.coefficient), 0);
   // Dense Hermitian H = Σ h_k P_k.
   const Hre: number[][] = Array.from({ length: dim }, () => new Array<number>(dim).fill(0));
   const Him: number[][] = Array.from({ length: dim }, () => new Array<number>(dim).fill(0));
@@ -134,7 +135,10 @@ export function krylovComplexity(
       }
     }
     const bn = Math.sqrt(Math.max(0, dot(w, w)[0]));
-    if (bn < 1e-9) break;
+    // QC-1 fix (docs/quantiom-bugs.md #33): the breakdown test was absolute
+    // (b < 1e-9), so H = 1e-10·X "ended" the basis after one vector; the
+    // Krylov span doesn't depend on H's scale, so compare with ‖H‖ ≤ Σ|h_k|.
+    if (bn < 1e-9 * hScale) break;
     b.push(bn);
     prevB = bn;
     for (let i = 0; i < dim; i++) { w.re[i] /= bn; w.im[i] /= bn; }

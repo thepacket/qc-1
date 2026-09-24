@@ -18,8 +18,14 @@ export type CorrelationLengthResult = {
   r: number[];
   /** g(r) = mean_{|i−j|=r} |C(i,j)|. */
   g: number[];
-  /** Fitted correlation length ξ (Infinity if no decay / too few points). */
+  /** Fitted correlation length ξ: Infinity only for a fit that doesn't decay; QC-1: NaN when there is no fit (see `status`). */
   xi: number;
+  /**
+   * QC-1: "uncorrelated" (no connected correlation above 1e-6: a product-like
+   * profile, ξ → 0), "single" (only one separation above it: no fit), "flat"
+   * (a fit that doesn't decay: ξ = ∞), "decaying" (finite ξ).
+   */
+  status: "uncorrelated" | "single" | "flat" | "decaying";
   /** Fit intercept (ln g at r=0). */
   intercept: number;
   /** Number of points that entered the fit. */
@@ -56,7 +62,10 @@ export function correlationLength(
   for (let k = 0; k < r.length; k++) {
     if (g[k] > 1e-6) { xs.push(r[k]); ys.push(Math.log(g[k])); }
   }
-  let xi = Infinity;
+  // QC-1 fix (docs/quantiom-bugs.md #32): upstream reported ξ = ∞ ("no
+  // decay") when nothing could be fitted, so a product state, with no
+  // correlations at all, read as infinitely correlated. No fit is NaN.
+  let xi = NaN;
   let intercept = ys.length > 0 ? ys[0] : 0;
   if (xs.length >= 2) {
     const N = xs.length;
@@ -69,5 +78,6 @@ export function correlationLength(
       xi = slope < -1e-9 ? -1 / slope : Infinity;
     }
   }
-  return { r, g, xi, intercept, fitPoints: xs.length, numQubits: n };
+  const status = xs.length === 0 ? "uncorrelated" : xs.length === 1 ? "single" : Number.isFinite(xi) ? "decaying" : "flat";
+  return { r, g, xi, intercept, fitPoints: xs.length, numQubits: n, status };
 }

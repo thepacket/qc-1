@@ -249,11 +249,12 @@ def corr_length(conn, n):
     g = [float(np.mean([abs(C[i, i + d]) for i in range(n - d)])) for d in rr]
     xs = [d for d, gg in zip(rr, g) if gg > 1e-6]
     ys = [math.log(gg) for gg in g if gg > 1e-6]
-    xi, icpt = None, (ys[0] if ys else 0.0)  # None = infinite correlation length
+    xi, icpt = None, (ys[0] if ys else 0.0)  # None: no fit, or (status "flat") infinite
     if len(xs) >= 2:
         slope, icpt = np.polyfit(xs, ys, 1)
         xi = float(-1 / slope) if slope < -1e-9 else None
-    return {"r": rr, "g": g, "xi": xi, "intercept": float(icpt), "fitPoints": len(xs), "numQubits": n}
+    status = "uncorrelated" if not xs else "single" if len(xs) == 1 else "decaying" if xi is not None else "flat"
+    return {"r": rr, "g": g, "xi": xi, "intercept": float(icpt), "fitPoints": len(xs), "numQubits": n, "status": status}
 
 
 def ent_stats(sv, n):

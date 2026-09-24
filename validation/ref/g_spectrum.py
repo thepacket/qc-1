@@ -30,25 +30,30 @@ PAULI = {"I": np.eye(2), "X": np.array([[0, 1], [1, 0]]), "Y": np.array([[0, -1j
 
 
 def matched_beta(E, mean):
-    """β of the Gibbs state with Tr(ρ_β H) = mean (scipy brentq on the log-sum-exp mean)."""
+    """β of the Gibbs state with Tr(ρ_β H) = mean, in centred, scaled energies (scipy brentq)."""
     from scipy.optimize import brentq
     from scipy.special import logsumexp
     E = np.asarray(E, dtype=float)
     lo, hi = E.min(), E.max()
-    tol = 1e-12 * max(1.0, abs(lo), abs(hi))
-    if hi - lo < tol:
+    w = hi - lo
+    if not w > 64 * np.finfo(float).eps * max(abs(lo), abs(hi)):
         return None
-    if mean <= lo + tol:
+    x = (E - (lo + w / 2)) / w
+    m = (mean - (lo + w / 2)) / w
+    if m <= -0.5 + 1e-12:
         return math.inf
-    if mean >= hi - tol:
+    if m >= 0.5 - 1e-12:
         return -math.inf
-    avg = lambda b: float(np.exp(logsumexp(-b * E, b=E - lo + 1) - logsumexp(-b * E)) + lo - 1)
+    avg = lambda b: float(np.exp(logsumexp(-b * x, b=x + 1) - logsumexp(-b * x)) - 1)
+    if abs(avg(0) - m) <= 1e-12:
+        return 0.0
     a, b = -1.0, 1.0
-    while avg(a) < mean:
+    while avg(a) < m:
         a *= 2
-    while avg(b) > mean:
+    while avg(b) > m:
         b *= 2
-    return float(brentq(lambda x: avg(x) - mean, a, b, xtol=1e-14, rtol=1e-14))
+    return float(brentq(lambda y: avg(y) - m, a, b, xtol=1e-15, rtol=1e-15)) / w
+
 
 def label_mat(s):
     m = np.array([[1.0 + 0j]])
@@ -61,7 +66,16 @@ def be_unitary(qasm):
     return Operator(qasm3.loads(qasm)).reverse_qargs().data
 
 
+def ham_scale(text):
+    """Σ|h_k| ≥ ‖H‖, the scale of QC-1's Lanczos breakdown test."""
+    return float(sum(abs(c) for _, c in ham_terms(text)))
+
+
 def ham(text):
+    return qi.SparsePauliOp.from_list(ham_terms(text)).to_matrix()
+
+
+def ham_terms(text):
     import re
     s = text.replace(" ", "")
     terms, pos = [], 0
@@ -70,7 +84,7 @@ def ham(text):
         m = pat.match(s, pos)
         terms.append((m.group(3), (-1.0) ** m.group(1).count("-") * (float(m.group(2)) if m.group(2) else 1.0)))
         pos = m.end()
-    return qi.SparsePauliOp.from_list(terms).to_matrix()
+    return terms
 
 
 def circ_ref(c):
@@ -95,6 +109,7 @@ def circ_ref(c):
     th = np.angle(np.linalg.eigvals(U))
     th = np.sort(np.where(th <= -math.pi + 1e-12, math.pi, th))  # (−π, π]
     gaps = np.append(np.diff(th), 2 * math.pi - (th[-1] - th[0])) if len(th) > 1 else np.diff(th)  # circular
+    gaps = np.where(gaps < 1e-12, 0.0, gaps)  # below resolution: a degeneracy (as QC-1)
     mg = gaps.mean() if len(gaps) else 1.0
     ratios = [min(x, y) / max(x, y) for x, y in zip(gaps, np.roll(gaps, -1)) if max(x, y) > 1e-15] if len(gaps) > 1 else []  # every cyclic pair
     out["floquet"] = {"quasiEnergies": th.tolist(), "spacings": (gaps / (mg or 1)).tolist(), "meanR": float(np.mean(ratios)) if ratios else 0.0}
@@ -144,7 +159,7 @@ def sff(E, samples):
     return {"t": ts.tolist(), "sff": [float(v) for v in vals], "plateau": deg / D ** 2, "heisenbergTime": tH}
 
 
-def lanczos(H, psi):
+def lanczos(H, psi, scale):
     K = [psi / np.linalg.norm(psi)]
     a, b = [], []
     for step in range(len(psi)):
@@ -153,15 +168,15 @@ def lanczos(H, psi):
         for v in K:  # full re-orthogonalisation (covers the a/b recursion terms)
             w = w - np.vdot(v, w) * v
         bn = float(np.linalg.norm(w))
-        if bn < 1e-9:
+        if bn < 1e-9 * scale:  # relative to ‖H‖, as QC-1
             break
         b.append(bn)
         K.append(w / bn)
     return a, b, K[: len(a)]
 
 
-def krylov(H, psi, samples):
-    a, b, K = lanczos(H, psi)
+def krylov(H, psi, samples, scale):
+    a, b, K = lanczos(H, psi, scale)
     T = np.diag(a) + np.diag(b[: len(a) - 1], 1) + np.diag(b[: len(a) - 1], -1)
     th = np.linalg.eigvalsh(T)
     rng_ = (th.max() - th.min()) or 1
@@ -197,7 +212,7 @@ def ham_ref(h, state_qasm, state_n):
     out = {
         "spectrum": {"energies": E.tolist(), "ground": float(E[0]), "gap": gap, "numQubits": n},
         "dos": dos(E), "levels": level_stats(E), "sff": sff(E, 24),
-        "krylov": krylov(Hm, psi, 24),
+        "krylov": krylov(Hm, psi, 24, ham_scale(h["text"])),
         "ensemble": {"perLevel": per_level(E, pops), "meanEnergy": float(np.sum(pops * E)),
                      "energySpread": float(math.sqrt(max(0.0, np.sum(pops * E * E) - np.sum(pops * E) ** 2)))},
     }

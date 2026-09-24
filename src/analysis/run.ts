@@ -56,7 +56,7 @@ import { lowerTape, namedCircuit } from "../calc/lower";
 import { buildUnitary } from "../sim/unitary";
 import { pauliTransferMatrix } from "../sim/ptm";
 import { operatorEntanglement } from "../sim/operatorEntanglement";
-import { floquetSpectrum } from "../sim/floquetSpectrum";
+import { floquetSpectrum, GAP_RESOLUTION } from "../sim/floquetSpectrum";
 import { hamiltonianSpectrum } from "../sim/hamSpectrum";
 import { densityOfStates } from "../sim/densityOfStates";
 import { levelStatistics, POISSON_R, GOE_R } from "../sim/levelStatistics";
@@ -422,7 +422,11 @@ Object.assign(RUNS, {
     const res = correlationLength(ctx.state, ctx.n)!;
     const pts = res.r.map((r, i) => [r, res.g[i]] as const).filter(([, g]) => g > 1e-6);
     return {
-      scalars: [{ label: "ξ", value: Number.isFinite(res.xi) ? r3(res.xi) : "∞ (no decay)", unit: Number.isFinite(res.xi) ? "sites" : undefined }],
+      scalars: [{
+        label: "ξ", unit: res.status === "decaying" ? "sites" : undefined,
+        value: res.status === "decaying" ? r3(res.xi) : res.status === "flat" ? "∞ (no decay)"
+          : res.status === "uncorrelated" ? "— (no connected ZZ correlations)" : "— (one distance above 10⁻⁶: no fit)",
+      }],
       charts: [{
         kind: "scatter", x: pts.map((p) => p[0]), y: pts.map((p) => Math.log(p[1])), xLabel: "distance r", yLabel: "ln g(r)",
         fit: Number.isFinite(res.xi) ? { a: res.intercept, b: -1 / res.xi, label: `ξ = ${r3(res.xi)}` } : undefined,
@@ -778,9 +782,16 @@ Object.assign(RUNS, {
   floquet(ctx) {
     requireUnitary(ctx);
     const res = floquetSpectrum(lowerTape(ctx.n, ctx.tape), ctx.scope, [])!;
+    if (!(res.residual < 1e-8 && res.orthogonality < 1e-8)) {
+      return { error: `the eigen-decomposition didn't converge (residual ${res.residual.toExponential(1)}, orthogonality ${res.orthogonality.toExponential(1)})` };
+    }
     return {
-      scalars: [{ label: "⟨r⟩ (circular)", value: r3(res.meanR) }, { label: "Poisson", value: 0.386 }, { label: "COE", value: 0.527 }],
+      scalars: [
+        { label: "⟨r⟩ (circular)", value: r3(res.meanR) }, { label: "Poisson", value: 0.386 }, { label: "COE", value: 0.527 },
+        { label: "eigenpair residual", value: res.residual.toExponential(1) },
+      ],
       charts: [{ kind: "phases", phases: res.quasiEnergies }],
+      notes: res.degenerateGaps ? [`${res.degenerateGaps} of ${res.quasiEnergies.length} phase gaps are below ${GAP_RESOLUTION} rad and count as degeneracies (ratio 0), since rounding in U can't separate them.`] : [],
     };
   },
 
