@@ -182,7 +182,7 @@ export function TapeView({ calc }: { calc: Calculator }) {
   const [pane, setPane] = useState<TapePane>("circ");
   const end = useRef<HTMLDivElement>(null);
   const tape = calc.tape;
-  const text = useMemo(() => (pane === "qasm" ? exportQasm3(calc.n, tape) : ""), [pane, calc.n, tape]);
+  const text = useMemo(() => (pane === "qasm" ? exportQasm3(calc.n, tape, calc.bits) : ""), [pane, calc.n, tape, calc.bits]);
   const at = calc.scrub ?? tape.length;
   const cur = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -238,7 +238,7 @@ export function TapeView({ calc }: { calc: Calculator }) {
 }
 
 /** The share link of the current tape (compressed, see qasm/share.ts). */
-const shareUrl = async (calc: Calculator) => `${location.origin}${location.pathname}${await shareHash(calc.n, calc.tape, calc.scope)}`;
+const shareUrl = async (calc: Calculator) => `${location.origin}${location.pathname}${await shareHash(calc.n, calc.tape, calc.scope, calc.bits)}`;
 
 /**
  * TAPE ≡ → QR code: the share link as a QR code, full screen (it's for the
@@ -270,7 +270,7 @@ function QrPane({ calc, done }: { calc: Calculator; done: () => void }) {
 }
 
 function TapeMenu({ calc, go }: { calc: Calculator; go: (p: TapePane) => void }) {
-  const qasm = () => exportQasm3(calc.n, calc.tape);
+  const qasm = () => exportQasm3(calc.n, calc.tape, calc.bits);
   const shareLink = async () => {
     const url = await shareUrl(calc);
     try {
@@ -293,8 +293,8 @@ function TapeMenu({ calc, go }: { calc: Calculator; go: (p: TapePane) => void })
     ["Import QASM…", "paste OpenQASM 2/3 or open a file", () => go("import")],
     ["Copy QASM", "OpenQASM 3 of the circuit (Qiskit loads it)", () => { void copyText(calc, qasm()); go("circ"); }],
     ["Share QASM file", "qc1-circuit.qasm", () => { void shareQasm(calc, qasm()); go("circ"); }],
-    ["Copy Qiskit (Python)", "a script that builds the QuantumCircuit", () => { void copyText(calc, qiskitPython(calc.n, calc.tape), "Qiskit script copied"); go("circ"); }],
-    ["Share Qiskit file", "qc1-circuit.py", () => { void shareQasm(calc, qiskitPython(calc.n, calc.tape), "qc1-circuit.py"); go("circ"); }],
+    ["Copy Qiskit (Python)", "a script that builds the QuantumCircuit", () => { void copyText(calc, qiskitPython(calc.n, calc.tape, calc.bits), "Qiskit script copied"); go("circ"); }],
+    ["Share Qiskit file", "qc1-circuit.py", () => { void shareQasm(calc, qiskitPython(calc.n, calc.tape, calc.bits), "qc1-circuit.py"); go("circ"); }],
     ["Share link", "the circuit and symbol values in a URL", () => { void shareLink(); go("circ"); }],
     ["QR code", "the share link, for phones pointed at this screen", () => go("qr")],
     ["Report", `circuit, state${calc.pins.length ? `, ${calc.pins.length} pinned LAB result${calc.pins.length > 1 ? "s" : ""}` : ""}: print or save as PDF`, () => { calc.toggleReport(); go("circ"); }],
@@ -496,11 +496,10 @@ function Sphere({ v, r, labels, className }: { v: Vec3; r: number; labels?: bool
 
 export function BlochView({ calc, data }: ViewProps<"bloch">) {
   const all = data.vectors;
+  if (!all.length) return <div className="view"><p className="dim note">no Bloch vectors</p></div>;
   // A wide stabilizer register computes the first vectors only (work budget): never show a made-up one.
-  if (calc.sel >= all.length) {
-    return <div className="view"><p className="dim note">q{calc.sel}: Bloch vectors are computed for the first {all.length} of {data.n} qubits here (each costs O(n²) on the tableau). Select q0–q{all.length - 1}.</p></div>;
-  }
-  const v = all[calc.sel];
+  const sel = calc.sel < all.length ? calc.sel : 0;
+  const v = all[sel];
   const len = Math.hypot(v.x, v.y, v.z);
   const theta = Math.acos(Math.max(-1, Math.min(1, len > 1e-9 ? v.z / len : 1)));
   const phi = Math.atan2(v.y, v.x);
@@ -509,7 +508,7 @@ export function BlochView({ calc, data }: ViewProps<"bloch">) {
       <div className="bloch-main">
         <Sphere v={v} r={62} labels className="sphere-main" />
         <div className="bloch-read">
-          <div className="big">q{calc.sel}</div>
+          <div className="big">q{sel}</div>
           <div>x {num(v.x)}</div>
           <div>y {num(v.y)}</div>
           <div>z {num(v.z)}</div>
@@ -517,9 +516,10 @@ export function BlochView({ calc, data }: ViewProps<"bloch">) {
           {len > 1e-3 && <div className="dim">θ {num(theta / Math.PI)}π φ {num(phi / Math.PI)}π</div>}
         </div>
       </div>
+      {all.length < data.n && <p className="dim note">Bloch vectors for the first {all.length} of {data.n} qubits (each costs O(n²) on the tableau).</p>}
       <div className="minis">
         {all.map((b, q) => (
-          <button key={q} className={`mini${q === calc.sel ? " on" : ""}`} onClick={() => calc.select(q)} aria-label={`Select q${q}`}>
+          <button key={q} className={`mini${q === sel ? " on" : ""}`} onClick={() => calc.select(q)} aria-label={`Select q${q}`}>
             <Sphere v={b} r={13} />
             <span>q{q}</span>
           </button>

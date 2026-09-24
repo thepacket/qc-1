@@ -6,7 +6,7 @@ The same help is in the app (the **?** button in the display's header).
 - Keys: select a qubit with ◀ ▶, press a gate key. Angles are typed first (`3 π ÷ 4 RX`), several arguments separated by `,`. **CTRL** marks controls (2ND: anti-controls); two-qubit gates take the last mark as their partner. **ALL** applies the next one-qubit gate to every qubit; **=** repeats the last entry; **UNDO / REDO**; **AC** clears the entry, then resets the register (undoable).
 - 2ND functions are printed above each key: N− / N+ / N (register size), REDO, ○CTRL, CAT (catalog, custom gates, DEFINE), iSWAP, RST, √Y, MX, MY, IF, √X†, S†, T†, RXX, RYY, RZZ, sin / cos / exp, parentheses, U, +, √, RCL, t, VAR, STO.
 - Symbols: `t` and the VAR letters (θ φ λ α β γ δ τ ω) in angles; the symbol badge opens sliders and t playback. STO / RCL with a digit 1–9 store whole circuits.
-- Classical control: measuring qubit q writes bit c[q]; IF (2ND Z) with `k` or `k,v` makes the next gate conditional on c[k] = v.
+- Classical control: a classical register of its own (− k + at the top); a measurement writes a bit (its qubit's by default, any other from its long-press menu); "only if c[k] = v" in a gate's long-press menu makes it conditional.
 - Views: KET, PROB, BLOCH, SHOTS, CIRC (gate list and diagram, scrubber, ≡ menu: examples, OpenQASM import/export, Qiskit Python export, share links), LAB.
 - Up to 20 qubits the register is a statevector; above 20 (to 1024) a stabilizer tableau that takes Clifford gates only.
 - Noise: LAB → Noise & error → Noise model (Qiskit Aer conventions; presets and device calibration files).

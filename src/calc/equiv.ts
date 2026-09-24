@@ -1,5 +1,5 @@
 import { mulberry32 } from "../sim/measure";
-import { applyStep, type Entry, type Scope } from "./steps";
+import { applyStep, bitCount, type Entry, type Scope } from "./steps";
 
 /**
  * Are two unitary tapes the same operator, up to a global phase?
@@ -25,7 +25,7 @@ export type EquivResult = {
 };
 
 function run(n: number, tape: Entry[], state: Float64Array, scope: Scope) {
-  const cbits = new Uint8Array(n);
+  const cbits = new Uint8Array(bitCount(n, tape));
   for (const e of tape) for (const s of e) applyStep(state, n, s, Math.random, scope, cbits);
 }
 

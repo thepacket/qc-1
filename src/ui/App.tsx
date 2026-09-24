@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Calculator, type Mode, type Saved } from "../calc/calculator";
+import { Calculator, MAX_CBITS, type Mode, type Saved } from "../calc/calculator";
 import { formatEntry } from "../calc/steps";
 import { BlochView, KetView, Pending, ProbView, ShotsView, TapeView } from "./views";
 import { createEngine } from "../calc/engine";
@@ -50,22 +50,22 @@ function useMedia(query: string): boolean {
   return on;
 }
 
-/** The qubit count: − n +, or tap the number and type it. */
-function QubitCount({ calc }: { calc: Calculator }) {
+/** A count at the top of CIRCUIT: − k +, or tap the number and type it. */
+function Count({ value, min, max, set, unit, label }: { value: number; min: number; max: number; set: (k: number) => void; unit: string; label: string }) {
   const [draft, setDraft] = useState<string | null>(null);
   const commit = () => {
-    if (draft !== null && draft.trim() !== "") calc.setQubitCount(Number(draft));
+    if (draft !== null && draft.trim() !== "") set(Number(draft));
     setDraft(null);
   };
   return (
-    <span className="qcount" role="group" aria-label="Number of qubits">
-      <button onClick={() => calc.setQubitCount(calc.n - 1)} disabled={calc.n <= 1} aria-label="One qubit fewer">−</button>
-      <input type="number" inputMode="numeric" min={1} max={STAB_MAX} aria-label={`Qubits (1–${STAB_MAX})`}
-        value={draft ?? String(calc.n)} onFocus={(e) => { setDraft(String(calc.n)); e.target.select(); }}
+    <span className="qcount" role="group" aria-label={label}>
+      <button onClick={() => set(value - 1)} disabled={value <= min} aria-label={`One ${unit} fewer`}>−</button>
+      <input type="number" inputMode="numeric" min={min} max={max} aria-label={`${label} (${min}–${max})`}
+        value={draft ?? String(value)} onFocus={(e) => { setDraft(String(value)); e.target.select(); }}
         onChange={(e) => setDraft(e.target.value)} onBlur={commit}
         onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { setDraft(null); (e.target as HTMLInputElement).blur(); } }} />
-      <span className="dim">qubit{calc.n === 1 ? "" : "s"}</span>
-      <button onClick={() => calc.setQubitCount(calc.n + 1)} disabled={calc.n >= STAB_MAX} aria-label="One qubit more">+</button>
+      <span className="dim">{unit}{value === 1 ? "" : "s"}</span>
+      <button onClick={() => set(value + 1)} disabled={value >= max} aria-label={`One ${unit} more`}>+</button>
     </span>
   );
 }
@@ -171,8 +171,6 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [calc]);
 
-  const n = calc.n;
-
   // A view summary is shown only once it matches the selected mode. Under
   // noise, PROB/BLOCH/SHOTS come from the analysis worker (ρ or trajectories).
   const noisy = calc.noiseOn && ["prob", "bloch", "shots"].includes(calc.mode);
@@ -205,12 +203,17 @@ export function App() {
             {m.label}
           </button>
         ))}
-        <button className={calc.chatOpen ? "on" : ""} aria-label="AI chat" aria-pressed={calc.chatOpen} onClick={() => calc.toggleChat()}>AI</button>
+        <button className={`extra${calc.chatOpen ? " on" : ""}`} aria-label="AI chat" aria-pressed={calc.chatOpen} onClick={() => calc.toggleChat()}>AI</button>
+        <button className={`extra${calc.helpOpen ? " on" : ""}`} aria-label="Help" aria-pressed={calc.helpOpen} onClick={() => calc.toggleHelp()}>?</button>
       </nav>
 
       <section className="lcd" aria-live="polite">
-        <div className="status">
-          <QubitCount calc={calc} />
+        {/* The status row: the qubit count and undo/redo on CIRCUIT; flags and badges when there are any. */}
+        {(calc.mode === "tape" || calc.busy || calc.noiseOn || calc.symbols.length > 0 || calc.scrub !== null) && <div className="status">
+          {calc.mode === "tape" && <>
+            <Count value={calc.n} min={1} max={STAB_MAX} set={(k) => calc.setQubitCount(k)} unit="qubit" label="Number of qubits" />
+            <Count value={calc.bits} min={0} max={MAX_CBITS} set={(k) => calc.setClassicalCount(k)} unit="bit" label="Number of classical bits" />
+          </>}
           <span className="flags">
             {calc.busy && <b className="busy">BUSY</b>}
             {calc.noiseOn && <b className="noise-flag" title={noisy && nv?.view ? `noisy view: ${nv.view.method}` : "noise on"}>NOISE{noisy && nv?.view ? ` · ${nv.view.method}` : ""}</b>}
@@ -225,20 +228,12 @@ export function App() {
           {calc.scrub !== null && (
             <button className="scrub-badge" onClick={() => calc.setScrub(null)} aria-label="Stop scrubbing">@{calc.scrub}/{calc.tape.length} ✕</button>
           )}
-          <button className="icon-btn" onClick={() => calc.undo()} aria-label="Undo" title="Undo (Ctrl+Z)">↶</button>
-          <button className="icon-btn" onClick={() => calc.redo()} aria-label="Redo" title="Redo (Ctrl+Shift+Z)">↷</button>
-          <button className="icon-btn" aria-label="Help" aria-pressed={calc.helpOpen} onClick={() => calc.toggleHelp()}>?</button>
-        </div>
+          {calc.mode === "tape" && <span className="undo-redo">
+            <button className="icon-btn" onClick={() => calc.undo()} aria-label="Undo" title="Undo (Ctrl+Z)">↶</button>
+            <button className="icon-btn" onClick={() => calc.redo()} aria-label="Redo" title="Redo (Ctrl+Shift+Z)">↷</button>
+          </span>}
+        </div>}
 
-        {calc.mode !== "tape" && (
-          <div className="qubits" role="listbox" aria-label="Qubits">
-            {n > 64 && calc.sel > 16 && <span className="dim qb-more">q0…</span>}
-            {(n > 64 ? [...Array(33).keys()].map((k) => calc.sel - 16 + k).filter((q) => q >= 0 && q < n) : [...Array(n).keys()]).map((q) => (
-              <button key={q} role="option" aria-selected={q === calc.sel} className={`qb${q === calc.sel ? " sel" : ""}`} onClick={() => calc.select(q)}>q{q}</button>
-            ))}
-            {n > 64 && calc.sel < n - 17 && <span className="dim qb-more">…q{n - 1}</span>}
-          </div>
-        )}
 
         {view}
 

@@ -1,4 +1,4 @@
-import { MEASURE_IDS, NONUNITARY, applyStep, exportedSteps as exported, stepSymbols, type Entry, type Scope, type Step } from "./steps";
+import { MEASURE_IDS, NONUNITARY, applyStep, bitCount, measuredBit, exportedSteps as exported, stepSymbols, type Entry, type Scope, type Step } from "./steps";
 
 /**
  * Circuit resources of a tape, with Qiskit's definitions (validated against
@@ -120,16 +120,17 @@ export function circuitResources(n: number, tape: Entry[], scope: Scope = {}): C
   };
   const level = new Array<number>(n).fill(0);
   const tLevel = new Array<number>(n).fill(0);
-  // Classical wires c[q] (measurements write them, IF reads them) join the depth, as in Qiskit.
-  const cLevel = new Array<number>(n).fill(0);
-  const cTLevel = new Array<number>(n).fill(0);
+  // Classical wires (measurements write them, IF reads them) join the depth, as in Qiskit.
+  const nb = bitCount(n, tape);
+  const cLevel = new Array<number>(nb).fill(0);
+  const cTLevel = new Array<number>(nb).fill(0);
   const perQubit = new Array<number>(n).fill(0);
   const symbols = new Set<string>();
   const cache = new Map<string, boolean>();
   for (const s of tape.flat().flatMap(exported)) {
     const qs = [...s.controls, ...s.targets];
     const measures = MEASURE_IDS.has(s.gateId) && s.gateId !== "reset";
-    const cs = [...(s.condition ? [s.condition.clbit] : []), ...(measures ? [s.targets[0]] : [])];
+    const cs = [...(s.condition ? [s.condition.clbit] : []), ...(measures ? [measuredBit(s)] : [])];
     r.gates++;
     // A conditional step is one `if_else` instruction on its qubits: counted by size only.
     if (s.condition) {

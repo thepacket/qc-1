@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Calculator } from "../calc/calculator";
 import { layoutTape, usedQubits, type Placed } from "../calc/diagram";
 import { freeColumn, shape, shiftEntry } from "../calc/grid";
-import { gateLabel, MEASURE_IDS, NONUNITARY, type Entry } from "../calc/steps";
+import { gateLabel, measuredBit, MEASURE_IDS, NONUNITARY, writesBit, type Entry } from "../calc/steps";
 import { groupOf, itemWidth, spanFrom } from "../calc/gateSpecs";
 import { elementToSvg, saveSvg } from "./svgExport";
 import { LONG_PRESS, pressToDrag, setDropHandler, setDropZone, useDrag, type DragPayload, type Hover } from "./dnd";
@@ -21,6 +21,7 @@ const CELL = 28; // an empty column's width while editing (a drop target)
 const EXTRA_W = 380; // while editing, empty columns fill at least this width
 const FOLD_W = 34; // a folded range of columns
 const LABEL_W = 30; // the wire labels, pinned at the left of the scroller
+const LANE = 20; // classical lanes (one per bit) under the qubit wires
 
 /** Width a step needs in its column. */
 function need(s: Placed["step"]): number {
@@ -53,7 +54,7 @@ export function CircuitView({ calc }: { calc: Calculator }) {
   const sel = calc.diagSel;
   return (
     <>
-      <CircuitDiagram n={calc.n} tape={calc.tape} scrub={calc.scrub}
+      <CircuitDiagram n={calc.n} tape={calc.tape} scrub={calc.scrub} bits={calc.bits}
         edit={{
           sel, set: calc.diagSet, cursor: calc.cursor, folds: calc.folds, onUnfold: (from) => calc.unfold(from),
           onGate: (i) => calc.selectStep(sel === i ? null : i),
@@ -74,6 +75,14 @@ export function CircuitView({ calc }: { calc: Calculator }) {
                 return void calc.reassignQubit(payload.entry, payload.role, payload.index, cell.row);
               }
               case "addctl": return void calc.addControl(payload.entry, cell.row);
+              case "bit": {
+                // Dropped on classical lane k: the measurement writes c[k], or the IF step reads it.
+                const k = cell.row - calc.n;
+                if (k < 0) return;
+                if (payload.role === "write") return void calc.setMeasureBit(payload.entry, k);
+                const cond = calc.tape[payload.entry]?.[0].condition;
+                return void calc.setGateCondition(payload.entry, { clbit: k, value: (cond?.value ?? 1) as 0 | 1 });
+              }
             }
           },
           onTrash: (p) => {
@@ -107,8 +116,14 @@ type Edit = {
   onTrash: (payload: DragPayload) => void;
 };
 
-/** The diagram (also the session report's read-only figure): `scrub` dims what lies ahead. */
-export function CircuitDiagram({ n, tape, scrub, edit }: { n: number; tape: Entry[]; scrub: number | null; edit?: Edit }) {
+/**
+ * The diagram (also the session report's read-only figure): `scrub` dims what
+ * lies ahead. With `bits` classical bits, one classical lane per bit runs
+ * under the wires (c0, c1, …): each measurement's link comes down to the lane
+ * of the bit it writes, and each step under IF hangs (dotted) from the lane
+ * of the bit it reads. Editing, their dots drag to another lane.
+ */
+export function CircuitDiagram({ n, tape, scrub, edit, bits = 0 }: { n: number; tape: Entry[]; scrub: number | null; edit?: Edit; bits?: number }) {
   const at = scrub ?? tape.length;
   const folds = edit?.folds ?? NO_FOLDS;
   const folded = (c: number) => folds.some((f) => c >= f.from && c <= f.to);
@@ -177,8 +192,9 @@ export function CircuitDiagram({ n, tape, scrub, edit }: { n: number; tape: Entr
   };
 
   // The drop zone (the grid) and what a drop does: registered while this diagram edits.
-  const latest = useRef({ edit, rows, colAt });
-  latest.current = { edit, rows, colAt };
+  const lanesTopRef = TOP + rows * ROW + 6;
+  const latest = useRef({ edit, rows, colAt, bits, lanesTop: lanesTopRef });
+  latest.current = { edit, rows, colAt, bits, lanesTop: lanesTopRef };
   useEffect(() => {
     if (!edit) return;
     setDropZone({
@@ -187,7 +203,11 @@ export function CircuitDiagram({ n, tape, scrub, edit }: { n: number; tape: Entr
         if (!svg) return null;
         const r = svg.getBoundingClientRect();
         if (x < r.left - 24 || x > r.right + 60 || yy < r.top - ROW / 2 || yy > r.bottom + ROW / 2) return null;
-        const row = Math.max(0, Math.min(L.rows - 1, Math.floor((yy - r.top - TOP) / ROW)));
+        const py = yy - r.top;
+        // Below the wires: classical lane k is row rows + k (only a bit's dot drops there; the rest clamp to the last wire).
+        const row = py >= L.lanesTop && L.bits > 0
+          ? L.rows + Math.max(0, Math.min(L.bits - 1, Math.floor((py - L.lanesTop) / LANE)))
+          : Math.max(0, Math.min(L.rows - 1, Math.floor((py - TOP) / ROW)));
         return { row, col: L.colAt(x - r.left) };
       },
     });
@@ -195,7 +215,9 @@ export function CircuitDiagram({ n, tape, scrub, edit }: { n: number; tape: Entr
       const L = latest.current;
       if (!L.edit || !hover) return;
       if ("trash" in hover) return L.edit.onTrash(payload);
-      L.edit.onDrop(payload, hover.spot);
+      const { row, col } = hover.spot;
+      if (payload.kind === "bit") return row >= L.rows ? L.edit.onDrop(payload, { row, col }) : undefined;
+      L.edit.onDrop(payload, { row: Math.min(row, L.rows - 1), col });
     });
     return () => { setDropZone(null); setDropHandler(null); };
   }, [edit !== undefined]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -204,8 +226,11 @@ export function CircuitDiagram({ n, tape, scrub, edit }: { n: number; tape: Entr
     return <div className="rows dim">{tooWide ? `the diagram shows up to ${DIAGRAM_MAX_QUBITS} wires (the circuit uses ${wires!.length})` : `the diagram shows up to ${MAX_STEPS} steps`}: see STEP</div>;
   }
   if (!edit && tape.length === 0) return <div className="rows dim">empty</div>;
-  // Editing: room under the last wire for the selected gate's "● +" handle.
-  const H = TOP + rows * ROW + (edit ? 16 : 0);
+  // The classical lanes, then (editing) room for the selected gate's "● +" handle.
+  const bus = bits > 0;
+  const lanesTop = TOP + rows * ROW + 6;
+  const laneY = (k: number) => lanesTop + k * LANE + LANE / 2;
+  const H = lanesTop + bits * LANE + (edit ? 16 : 0);
   const W = geo.x[geo.cols];
   const y = (r: number) => TOP + r * ROW + ROW / 2;
   const rowOf = new Map(lay.wires.map((q, r) => [q, r]));
@@ -258,17 +283,24 @@ export function CircuitDiagram({ n, tape, scrub, edit }: { n: number; tape: Entr
   };
 
   // The drop preview: the cells the dragged thing would take (the first free column at or right of the pointer's).
-  const spot = drag?.hover && "spot" in drag.hover ? drag.hover.spot : null;
+  const raw = drag?.hover && "spot" in drag.hover ? drag.hover.spot : null;
+  const spot = raw && drag!.payload.kind !== "bit" ? { row: Math.min(raw.row, rows - 1), col: raw.col } : raw;
   const preview = (() => {
     if (!edit || !drag || !spot) return null;
     const p = drag.payload;
+    if (p.kind === "bit") {
+      const it = lay.items.find((x) => x.entry === p.entry);
+      if (!it || spot.row < rows) return null;
+      const gx = colX(it.col) + colW(it.col) / 2;
+      return <g className="drop-preview"><circle cx={gx} cy={laneY(spot.row - rows)} r={6} /></g>;
+    }
     const rect = (c: number, lo: number, hi: number, k: number, bad = false) => (
       <rect key={k} className={bad ? "bad" : undefined} x={colX(c) - 2} y={y(lo) - BOX_H / 2 - 3} width={colW(c) + 4} height={y(hi) - y(lo) + BOX_H + 6} rx={4} />
     );
     if (p.kind === "new") {
       const span = spanFrom(spot.row, Math.max(1, itemWidth(p.item)), rows);
-      const fake: Entry = [{ id: "", gateId: "x", column: 0, controls: [], targets: span, clbits: [], params: [] }];
-      const c = freeColumn(lay.items, fake, [0], spot.col);
+      const fake: Entry = [{ id: "", gateId: p.item.kind === "gate" ? p.item.gate : "x", column: 0, controls: [], targets: span, clbits: [], params: [] }];
+      const c = freeColumn(lay.items, fake, [0], spot.col, -1, rows);
       return <g className="drop-preview">{rect(c, span[0], span[span.length - 1], 0)}</g>;
     }
     const s0 = p.kind === "dot" ? tape[p.entry]?.[0] : undefined;
@@ -277,7 +309,7 @@ export function CircuitDiagram({ n, tape, scrub, edit }: { n: number; tape: Entr
       const moved = p.kind === "move" ? shiftEntry(tape[p.entry], spot.row - p.grabRow, rows) : tape[p.entry];
       if (!moved) return <g className="drop-preview">{rect(spot.col, spot.row, spot.row, 0, true)}</g>;
       const rel = shape(n, moved);
-      const c = freeColumn(lay.items, moved, rel, spot.col, p.entry);
+      const c = freeColumn(lay.items, moved, rel, spot.col, p.entry, rows);
       return <g className="drop-preview">{moved.map((s, k) => {
         const qs = [...s.controls, ...s.targets].map((q) => rowOf.get(q)!);
         return rect(c + rel[k], Math.min(...qs), Math.max(...qs), k);
@@ -305,10 +337,32 @@ export function CircuitDiagram({ n, tape, scrub, edit }: { n: number; tape: Entr
             {lay.wires.map((q, r) => (
               <text key={q} x={26} y={y(r) + 4} textAnchor="end" className={edit?.cursor?.row === r ? "cursor" : ""}>q{q}</text>
             ))}
+            {Array.from({ length: bits }, (_, k) => <text key={`c${k}`} x={26} y={laneY(k) + 3.5} textAnchor="end" className="clabel">c{k}</text>)}
           </svg>
           <svg ref={main} width={W} height={H} role="group" aria-label={`Circuit: ${tape.length} steps on ${n} qubits`} className={drag ? "dragging" : undefined}>
             {edit && <rect className="grid-hit" x={0} y={0} width={W} height={H} />}
             {lay.wires.map((q, r) => <line key={q} className="wire" x1={0} x2={W} y1={y(r)} y2={y(r)} />)}
+            {Array.from({ length: bits }, (_, k) => (
+              <g key={`l${k}`} className="cbus"><line x1={0} x2={W} y1={laneY(k)} y2={laneY(k)} /></g>
+            ))}
+            {bus && lay.items.filter((it) => !folded(it.col) && (writesBit(it.step) || it.step.condition)).map((it, k) => {
+              const cx = colX(it.col) + colW(it.col) / 2, top = y(it.hi) + BOX_H / 2;
+              const w = writesBit(it.step);
+              const bit = w ? measuredBit(it.step) : it.step.condition!.clbit;
+              const by = laneY(Math.min(bit, bits - 1));
+              const role = w ? "write" as const : "read" as const;
+              return (
+                <g key={`b${k}`} className={w ? "clink" : "cread"}>
+                  <line x1={cx} x2={cx} y1={top} y2={by} />
+                  <circle cx={cx} cy={by} r={3} />
+                  {edit && (
+                    // drag the dot to another lane: another bit
+                    <circle className="bit-hit" cx={cx} cy={by} r={10} role="button" aria-label={`${w ? "Writes" : "Reads"} c${bit}: drag to another bit`}
+                      onPointerDown={(ev) => { ev.stopPropagation(); pressToDrag(ev, { kind: "bit", entry: it.entry, role }, `c${bit}`); }} />
+                  )}
+                </g>
+              );
+            })}
             {edit?.cursor && edit.cursor.row < rows && (
               <rect className="cursor-cell" x={colX(edit.cursor.col) - 2} y={y(edit.cursor.row) - BOX_H / 2 - 3} width={colW(edit.cursor.col) + 4} height={BOX_H + 6} rx={4} />
             )}

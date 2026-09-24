@@ -162,7 +162,14 @@ def aer_check(qc, n, leaves, cid):
     from qiskit import transpile
     sim = AerSimulator(seed_simulator=1234)
     # Aer needs its own basis inside if_else bodies.
-    counts = sim.run(transpile(prog, sim, optimization_level=0), shots=shots).result().get_counts()
+    result = sim.run(transpile(prog, sim, optimization_level=0), shots=shots).result()
+    if not result.success:
+        # qiskit-aer 0.17.2 fails to load some valid dynamic circuits ("unordered_map::at: key not
+        # found", every method, with or without transpile). The case is still checked against the
+        # interpreter and the branch enumerator above; a disagreement with Aer, when it runs, fails.
+        print(f"  classical {cid}: Aer could not load the program (Aer bug); checked by the interpreter and branches only")
+        return None
+    counts = result.get_counts()
     dist = {}
     for p, bits in leaves.values():
         dist[bits] = dist.get(bits, 0) + p
@@ -195,7 +202,7 @@ def main():
         if (bits or [0] * n) != qc1["cbits"]:
             fail(f"classical {c['id']}: classical bits {qc1['cbits']} vs {bits}")
         res = check_resources(f"classical {c['id']}", qc, qc1["resources"])
-        tree = None
+        tree, aer = None, 0.0
         if qc1["branches"] is not None:
             ref = branches(qc, n)
             mine = {b["path"]: (b["p"], b["cbits"]) for b in qc1["branches"]}
@@ -204,9 +211,12 @@ def main():
             for k, (p, bits) in ref.items():
                 if abs(mine[k][0] - p) > 1e-9 or mine[k][1] != bits:
                     fail(f"classical {c['id']}: branch {k}: QC-1 {mine[k]} vs {(p, bits)}")
-            aer_check(qc, n, ref, c["id"])
+            aer = aer_check(qc, n, ref, c["id"])
             tree = [{"path": k, "p": r(p), "cbits": bits} for k, (p, bits) in sorted(ref.items())]
-        out.append({"id": c["id"], "n": n, "tape": c["tape"], "cbits": qc1["cbits"], "resources": res, "branches": tree})
+        case = {"id": c["id"], "n": n, "tape": c["tape"], "cbits": qc1["cbits"], "resources": res, "branches": tree}
+        if tree is not None and aer is None:
+            case["aer"] = "not loadable by qiskit-aer (its bug): interpreter and branch enumerator only"
+        out.append(case)
     print(f"  classical: {len(out)} cases")
     write_fixture("classical", "qiskit qasm3 import (if_else) + interpreter forcing recorded outcomes; branch enumerator; Aer counts (5σ); count_ops/depth", out, {"abs": 1e-9})
 

@@ -1,5 +1,5 @@
 import type { Circuit, PlacedGate } from "../sim/types";
-import { evalParam, initAngles, MACROS, MEASURE_IDS, stepSymbols, symbolsOf, type Entry } from "../calc/steps";
+import { bitCount, evalParam, initAngles, MACROS, measuredBit, MEASURE_IDS, stepSymbols, symbolsOf, type Entry } from "../calc/steps";
 import { customOf, type CustomGate } from "../calc/custom";
 import { emitQasm3 } from "./emit";
 import { NAMED } from "../calc/lower";
@@ -192,10 +192,12 @@ function uarbDefinitions(tape: Entry[]): Map<string, { name: string; def: string
 const customParams = (def: CustomGate) => [...new Set(def.tape.flat().flatMap(stepSymbols))].sort();
 
 /**
- * The tape as an emitter Circuit. Measuring qubit q writes c[q] (the IF key
- * reads the same bits); a conditional step becomes `if (c[k] == v) …`.
+ * The tape as an emitter Circuit. A measurement writes its bit (`c[k] =
+ * measure q[i]`, k = `measuredBit`: its own, else c[i]); a conditional step
+ * becomes `if (c[k] == v) …`. With any classical step, `bit[m] c` declares
+ * `nc` bits, or more if the tape names more.
  */
-export function tapeToCircuit(n: number, tape: Entry[], uarb = uarbDefinitions(tape)): Circuit {
+export function tapeToCircuit(n: number, tape: Entry[], uarb = uarbDefinitions(tape), nc = n): Circuit {
   const gates: PlacedGate[] = [];
   let classical = false;
   tape.forEach((entry, column) => {
@@ -235,7 +237,7 @@ export function tapeToCircuit(n: number, tape: Entry[], uarb = uarbDefinitions(t
         column,
         controls: s.controls,
         targets: s.targets,
-        clbits: measures ? [s.targets[0]] : [],
+        clbits: measures ? [measuredBit(s)] : [],
         params: s.params.map(qasmParam),
         ...(s.controlStates ? { controlStates: s.controlStates } : {}), ...cond,
       };
@@ -244,7 +246,7 @@ export function tapeToCircuit(n: number, tape: Entry[], uarb = uarbDefinitions(t
       gates.push(g);
     }
   });
-  return { numQubits: n, numClbits: classical ? n : 0, gates };
+  return { numQubits: n, numClbits: classical ? bitCount(n, tape, nc) : 0, gates };
 }
 
 /** Custom gates a tape uses, dependencies first. */
@@ -268,11 +270,12 @@ function gateBody(def: CustomGate, uarb: ReturnType<typeof uarbDefinitions>): st
     .join(" ");
 }
 
-export function exportQasm3(n: number, tape: Entry[]): string {
+/** OpenQASM 3 of the tape; `nc` classical bits are declared (default: one per qubit) when it measures or reads any. */
+export function exportQasm3(n: number, tape: Entry[], nc = n): string {
   const customs = customsUsed(tape);
   const all = [...tape, ...customs.flatMap((d) => d.tape)];
   const uarb = uarbDefinitions(all);
-  const circuit = tapeToCircuit(n, tape, uarb);
+  const circuit = tapeToCircuit(n, tape, uarb, nc);
   const inner = customs.flatMap((d) => tapeToCircuit(d.k, d.tape, uarb).gates.map((g) => g.gateId));
   const defs = [
     ...definitionsFor(new Set([...circuit.gates.map((g) => g.gateId), ...inner])),

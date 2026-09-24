@@ -21,7 +21,10 @@ function roundTrip(c: Case, scope: Record<string, number> = {}) {
   let err = 0;
   for (let i = 0; i < a.state.length; i++) err = Math.max(err, Math.abs(a.state[i] - b.state[i]));
   expect(err, q).toBeLessThan(1e-10);
-  expect(Array.from(b.cbits)).toEqual(Array.from(a.cbits));
+  // A bit only a condition names (never written, so 0) is resolved at import: compare the registers padded with zeros.
+  const k = Math.max(a.cbits.length, b.cbits.length);
+  const pad = (c: Uint8Array) => [...Array.from(c), ...Array(k - c.length).fill(0)];
+  expect(pad(b.cbits)).toEqual(pad(a.cbits));
   expect(b.notes).toEqual([]); // no measurement had to be re-sampled
 }
 
@@ -54,8 +57,11 @@ if (m[0] == 1) { x b; } else z b;`);
     expect(r.tape[1][0]).toMatchObject({ gateId: "x", controls: [0, 1], targets: [2], controlStates: [false, true] });
     expect(r.tape[2][0].gateId).toBe("sdg");
     expect(r.tape.slice(3, 5).map((e) => e[0].gateId)).toEqual(["t", "t"]);
-    expect(r.tape[6][0].condition).toEqual({ clbit: 1, value: 1 });
-    expect(r.tape[7][0]).toMatchObject({ gateId: "z", condition: { clbit: 1, value: 0 } });
+    // m[0] is classical bit 0 (its own register, not the measured qubit's): the measurement names it.
+    expect(r.nc).toBe(1);
+    expect(r.tape[5][0]).toMatchObject({ gateId: "measure", targets: [1], clbits: [0] });
+    expect(r.tape[6][0].condition).toEqual({ clbit: 0, value: 1 });
+    expect(r.tape[7][0]).toMatchObject({ gateId: "z", condition: { clbit: 0, value: 0 } });
   });
 
   test("a gate definition becomes a custom gate; a mismatched native name is kept as defined", () => {

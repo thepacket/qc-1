@@ -1,4 +1,4 @@
-import { applyStep, MEASURE_IDS, type Entry, type Scope, type Step } from "./steps";
+import { applyStep, bitCount, MEASURE_IDS, type Entry, type Scope, type Step } from "./steps";
 
 /**
  * Every measurement history of a tape: each executed measurement or reset
@@ -75,6 +75,6 @@ export function branchTree(n: number, tape: Entry[], scope: Scope = {}, maxEvent
   };
   const ground = new Float64Array(2 << n);
   ground[0] = 1;
-  walk(0, ground, new Uint8Array(n), nodes[0], "");
+  walk(0, ground, new Uint8Array(bitCount(n, tape)), nodes[0], "");
   return { nodes, leaves, events };
 }

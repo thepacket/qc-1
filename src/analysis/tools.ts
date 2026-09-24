@@ -12,7 +12,7 @@ import { equivalent, FULL_MAX } from "../calc/equiv";
 import { circuitResources, type CircuitResources } from "../calc/resources";
 import { lowerTape, namedCircuit } from "../calc/lower";
 import { Register } from "../calc/register";
-import { applyStep, NONUNITARY, stepSymbols, type Entry, type Scope } from "../calc/steps";
+import { applyStep, bitCount, NONUNITARY, stepSymbols, type Entry, type Scope } from "../calc/steps";
 import { optimiseCircuit } from "../sim/optimisePasses";
 import { transpile, type TranspileTarget } from "../sim/transpile";
 import { routeCircuit, countConnectivityViolations } from "../sim/router";
@@ -264,7 +264,7 @@ export const TOOL_RUNS: Record<string, Run> = {
         exact.push(col);
         const psi = new Float64Array(2 * d);
         psi[2 * j] = 1;
-        const cbits = new Uint8Array(n);
+        const cbits = new Uint8Array(bitCount(n, tape));
         for (const s of tape.flat()) applyStep(psi, n, s, Math.random, { ...ctx.scope, t }, cbits);
         trot.push(psi);
       }
@@ -329,7 +329,7 @@ export const TOOL_RUNS: Record<string, Run> = {
     for (let j = 0; j < d; j++) {
       const psi = new Float64Array(2 * d);
       psi[2 * j] = 1;
-      const cbits = new Uint8Array(ctx.n);
+      const cbits = new Uint8Array(bitCount(ctx.n, ctx.tape));
       for (const s of ctx.tape.flat()) applyStep(psi, ctx.n, s, Math.random, ctx.scope, cbits);
       for (let i = 0; i < d; i++) U[i][j] = { re: psi[2 * i], im: psi[2 * i + 1] };
     }

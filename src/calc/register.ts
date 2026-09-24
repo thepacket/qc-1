@@ -1,4 +1,4 @@
-import { applyStep, classicalBits, stepSymbols, type Entry, type Scope } from "./steps";
+import { applyStep, bitCount, classicalBits, fitBits, stepSymbols, type Entry, type Scope } from "./steps";
 
 export const MAX_QUBITS = 20;
 
@@ -88,6 +88,7 @@ export class Register {
 
   private apply(entry: Entry, rng: () => number): Entry {
     this.defineSymbols([entry]);
+    this.cbits = fitBits(this.cbits, bitCount(this.n, [entry], this.cbits.length));
     const done = entry.map((s) => applyStep(this.state, this.n, s, rng, this.scope, this.cbits));
     done.forEach((s, i) => {
       const was = entry[i].outcome;

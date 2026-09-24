@@ -49,8 +49,8 @@ async function inflate(bytes: Uint8Array<ArrayBuffer>): Promise<Uint8Array> {
   return out;
 }
 
-export async function shareHash(n: number, tape: Entry[], scope: Scope): Promise<string> {
-  const z = b64url(await deflate(new TextEncoder().encode(exportQasm3(n, tape))));
+export async function shareHash(n: number, tape: Entry[], scope: Scope, nc = n): Promise<string> {
+  const z = b64url(await deflate(new TextEncoder().encode(exportQasm3(n, tape, nc))));
   const vals = Object.entries(scope).map(([k, v]) => `${k}:${+v.toPrecision(12)}`).join(",");
   return `#z=${z}${vals ? `&v=${encodeURIComponent(vals)}` : ""}`;
 }

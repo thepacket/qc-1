@@ -11,7 +11,7 @@
  * Both follow the exported program instruction by instruction, so they match
  * Qiskit Aer on QC-1's QASM export (fixture `noise`).
  */
-import { applyStep, exportedSteps, MEASURE_IDS, NONUNITARY, type Entry, type Scope, type Step } from "../calc/steps";
+import { applyStep, bitCount, exportedSteps, measuredBit, MEASURE_IDS, NONUNITARY, type Entry, type Scope, type Step } from "../calc/steps";
 import { applyKQubit } from "../sim/apply";
 import { mulberry32 } from "../sim/measure";
 import type { Matrix } from "../sim/matrices";
@@ -144,18 +144,19 @@ export function runTrajectories(n: number, tape: Entry[], scope: Scope, m: Noise
   const list = steps(tape);
   const chans = new Map<Step, Channel[]>(list.map((s) => [s, NONUNITARY.has(s.gateId) ? [] : channelsAfter(m, s)]));
   const dim = 1 << n;
+  const nbits = bitCount(n, tape);
   for (let t = 0; t < T; t++) {
     const state = new Float64Array(2 * dim);
     state[0] = 1;
-    const bits = new Uint8Array(n);
+    const bits = new Uint8Array(nbits);
     for (const s of list) {
       if (s.condition && bits[s.condition.clbit] !== s.condition.value) continue;
       if (MEASURE_IDS.has(s.gateId)) {
         const fresh: Step = { ...s, condition: undefined, outcome: undefined };
         const done = applyStep(state, n, fresh, rng, scope);
         if (s.gateId !== "reset") {
-          const q = s.targets[0];
-          bits[q] = (done.outcome ?? 0) ^ (rng() < rate(m, "readout", q) ? 1 : 0);
+          const q = s.targets[0]; // the readout error is the measured qubit's; the bit is the measurement's own
+          bits[measuredBit(s)] = (done.outcome ?? 0) ^ (rng() < rate(m, "readout", q) ? 1 : 0);
         }
         continue;
       }

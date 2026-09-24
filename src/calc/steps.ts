@@ -144,15 +144,43 @@ export function exprOk(src: string): boolean {
 /** An RNG that makes measureZ return `o` (it tests `rng() < p1`). */
 const forced = (o: 0 | 1) => () => (o === 1 ? -1 : 2);
 
+/** Does the step write a classical bit? (measure, measure_x, measure_y; reset and preps don't.) */
+export const writesBit = (s: Step) => MEASURE_IDS.has(s.gateId) && s.gateId !== "reset";
+
 /**
- * Classical bits after the first `len` entries: measuring qubit q writes c[q]
+ * The classical bit a measurement writes: its own (`clbits[0]`), else c[q]
+ * for qubit q (QC-1's first convention, kept for every tape that doesn't
+ * name one). The classical register is its own: a bit needn't match a qubit.
+ */
+export const measuredBit = (s: Step) => (s.clbits?.length ? s.clbits[0] : s.targets[0]);
+
+/** Classical bits a tape needs: at least `declared` (default: one per qubit), and every bit it writes or reads. */
+export function bitCount(n: number, tape: Entry[], declared = n): number {
+  let k = declared;
+  for (const e of tape) for (const s of e) {
+    if (writesBit(s)) k = Math.max(k, measuredBit(s) + 1);
+    if (s.condition) k = Math.max(k, s.condition.clbit + 1);
+  }
+  return k;
+}
+
+/** Bits `c` grown to `k` (a push may name a new bit). */
+export function fitBits(c: Uint8Array, k: number): Uint8Array {
+  if (c.length >= k) return c;
+  const out = new Uint8Array(k);
+  out.set(c);
+  return out;
+}
+
+/**
+ * Classical bits after the first `len` entries: a measurement writes its bit
  * (its recorded outcome); a conditional step runs only when its bit matches.
  */
 export function classicalBits(n: number, tape: Entry[], len = tape.length): Uint8Array {
-  const c = new Uint8Array(n);
+  const c = new Uint8Array(bitCount(n, tape));
   for (const e of tape.slice(0, len)) for (const s of e) {
     if (s.condition && c[s.condition.clbit] !== s.condition.value) continue;
-    if (MEASURE_IDS.has(s.gateId) && s.gateId !== "reset" && s.outcome !== undefined) c[s.targets[0]] = s.outcome;
+    if (writesBit(s) && s.outcome !== undefined) c[measuredBit(s)] = s.outcome;
   }
   return c;
 }
@@ -160,9 +188,10 @@ export function classicalBits(n: number, tape: Entry[], len = tape.length): Uint
 /**
  * Apply one step to the state in place. Measurements sample with `rng` the
  * first time and record the outcome; later replays force that outcome.
- * `cbits` is the classical register (c[q] ← measurement of q): conditional
- * steps (`if (c[k] == v)`) read it, measurements write it. Without it every
- * bit reads 0, as in a fresh OpenQASM program.
+ * `cbits` is the classical register (a measurement writes its bit,
+ * `measuredBit`): conditional steps (`if (c[k] == v)`) read it. It must hold
+ * every bit the step names (`bitCount`). Without it every bit reads 0, as in
+ * a fresh OpenQASM program.
  */
 export function applyStep(state: Float64Array, n: number, s: Step, rng: () => number, scope: Scope = {}, cbits?: Uint8Array): Step {
   if (s.condition && (cbits?.[s.condition.clbit] ?? 0) !== s.condition.value) return s;
@@ -221,7 +250,7 @@ export function applyStep(state: Float64Array, n: number, s: Step, rng: () => nu
       }
     }
     if (s.gateId === "reset" && o === 1) applyKQubit(state, n, [q], M_X);
-    if (s.gateId !== "reset" && cbits) cbits[q] = o;
+    if (s.gateId !== "reset" && cbits) cbits[measuredBit(s)] = o;
     return o === s.outcome ? s : { ...s, outcome: o as 0 | 1 };
   }
 
@@ -333,7 +362,9 @@ export function formatStep(s: Step): string {
   const tgt = s.targets.map((q) => `q${q}`).join(",");
   const out = s.outcome !== undefined && MEASURE_IDS.has(s.gateId) && s.gateId !== "reset" ? `=${s.outcome}` : "";
   const cond = s.condition ? `IF c${s.condition.clbit}=${s.condition.value}: ` : "";
-  return `${cond}${cs}${gateLabel(s)} ${ctrl}${tgt}${out}`;
+  // A measurement into a bit other than its qubit's names it: M q0→c2.
+  const bit = writesBit(s) && measuredBit(s) !== s.targets[0] ? `→c${measuredBit(s)}` : "";
+  return `${cond}${cs}${gateLabel(s)} ${ctrl}${tgt}${bit}${out}`;
 }
 
 export function formatEntry(e: Entry): string {

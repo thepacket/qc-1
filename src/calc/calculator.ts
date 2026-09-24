@@ -1,6 +1,6 @@
 import { MAX_QUBITS } from "./register";
 import { STAB_MAX } from "../stab/register";
-import { evalParam, exprOk, formatEntry, NONUNITARY, type Entry, type Scope, type Step } from "./steps";
+import { bitCount, evalParam, exprOk, formatEntry, NONUNITARY, writesBit, type Entry, type Scope, type Step } from "./steps";
 import { CUSTOM_PREFIX, defineGate, setCustomGates, type CustomGate } from "./custom";
 import { blockGate, qaoaLayer, type BlockKind } from "./blocks";
 import { layoutTape } from "./diagram";
@@ -23,6 +23,9 @@ import type { Cmd, Mode, Result, ViewData } from "./core";
 import type { Engine } from "./engine";
 
 export type { Mode };
+
+/** Classical bits at most (the classical register, like the stabilizer register's qubits). */
+export const MAX_CBITS = 1024;
 
 /** How a gate is placed (editing API). */
 export type GateOpts = {
@@ -63,6 +66,8 @@ export type Saved = {
   gates?: CustomGate[];
   /** The noise model (LAB → Noise). */
   noise?: NoiseModel;
+  /** Classical bits declared (default: one per qubit). */
+  nc?: number;
 };
 
 /** t playback on the PARAM screen: pull-based (next frame after the last view). */
@@ -193,6 +198,8 @@ export class Calculator {
       if (saved.memory) this.memory = saved.memory;
       if (Array.isArray(saved.gates)) this.customGates = saved.gates;
       if (saved.noise) this.noise = sanitiseNoise(saved.noise);
+      // Sessions from before the classical register had one bit per qubit.
+      this.nc = Number.isInteger(saved.nc) && saved.nc! >= 0 && saved.nc! <= MAX_CBITS ? saved.nc! : saved.n;
     }
     this.send({ t: "view", req: this.viewReq() });
     // Definitions go first: the saved tape may use them.
@@ -222,7 +229,7 @@ export class Calculator {
   save(): Saved {
     return {
       v: 1, n: this.n, sel: this.sel, mode: this.mode, shots: this.shots, tape: this.tape,
-      lab: this.lab, scope: this.scope, memory: this.memory, gates: this.customGates, noise: this.noise,
+      lab: this.lab, scope: this.scope, memory: this.memory, gates: this.customGates, noise: this.noise, nc: this.nc,
     };
   }
 
@@ -559,6 +566,36 @@ export class Calculator {
   // Every method validates, reports a refusal as an error message (and returns
   // false), and edits through the core's commands, so each is one UNDO.
 
+  /**
+   * Classical bits declared (Quantiom's classical register): measurements
+   * write them, IF reads them, and they needn't match the qubits. `bits`
+   * is at least this, and every bit the circuit names.
+   */
+  nc = 2;
+
+  /** The classical register's size: `nc`, or more if the circuit names more. */
+  get bits(): number {
+    return bitCount(this.n, this.tape, this.nc);
+  }
+
+  /** Set the number of classical bits (0–1024); not below a bit the circuit uses. */
+  setClassicalCount(k: number): boolean {
+    if (!Number.isInteger(k) || k < 0 || k > MAX_CBITS) return this.refuse(`0–${MAX_CBITS} classical bits`);
+    const used = bitCount(this.n, this.tape, 0);
+    if (k < used) return this.refuse(`c[${used - 1}] is in use`);
+    this.nc = k;
+    this.changed();
+    return true;
+  }
+
+  /** The classical bit measurement i writes (c[k]; its own qubit's bit is the default). */
+  setMeasureBit(i: number, k: number): boolean {
+    const e = this.entryAt(i);
+    if (!e || !e.some(writesBit)) return false;
+    if (!Number.isInteger(k) || k < 0 || k >= Math.max(this.bits, 1)) return this.refuse(`c0–c${this.bits - 1} only`);
+    return this.editEntry(i, e.map((s) => (writesBit(s) ? { ...s, clbits: k === s.targets[0] ? [] : [k] } : s)), `→ c[${k}]`);
+  }
+
   /** Where a gate added without a position goes: the scrub point, else the end. */
   get insertPoint(): number {
     return this.scrub ?? this.tape.length;
@@ -646,7 +683,7 @@ export class Calculator {
     }
     if (o.condition) {
       const { clbit, value } = o.condition;
-      if (!Number.isInteger(clbit) || clbit < 0 || clbit >= this.n || (value !== 0 && value !== 1)) throw new Error("condition: c[k] with k a qubit, value 0 or 1");
+      if (!Number.isInteger(clbit) || clbit < 0 || clbit >= Math.max(this.bits, this.n) || (value !== 0 && value !== 1)) throw new Error(`condition: c[k] with k < ${Math.max(this.bits, this.n)}, value 0 or 1`);
     }
     return {
       id: newId(), gateId: gate, column: this.tape.length, targets: [...o.targets], controls: [...controls], clbits: [], params,
@@ -700,6 +737,12 @@ export class Calculator {
       const controls = item.kind === "gate" ? item.controls : 0;
       let step: Step;
       try { step = this.buildStep(item.gate, { controls: qs.slice(0, controls), targets: qs.slice(controls) }); } catch (e) { return this.refuse((e as Error).message); }
+      if (writesBit(step)) {
+        // A measurement writes its own qubit's bit when the register has it, else the last bit (Quantiom: i mod the bits).
+        if (this.nc === 0) this.nc = 1;
+        const q = step.targets[0], k = q < this.bits ? q : this.bits - 1;
+        if (k !== q) step = { ...step, clbits: [k] };
+      }
       const next = this.placeEntries([[step]], at, item.label);
       // Tapping tiles fills the row left to right from the chosen cell.
       if (tapped && this.cursor) this.cursor = { row: this.cursor.row, col: next };
@@ -894,7 +937,7 @@ export class Calculator {
   setGateCondition(i: number, cond: { clbit: number; value: 0 | 1 } | null): boolean {
     const e = this.entryAt(i);
     if (!e) return false;
-    if (cond && (!Number.isInteger(cond.clbit) || cond.clbit < 0 || cond.clbit >= this.n)) return this.refuse(`c0–c${this.n - 1} only`);
+    if (cond && (!Number.isInteger(cond.clbit) || cond.clbit < 0 || cond.clbit >= this.bits)) return this.refuse(this.bits ? `c0–c${this.bits - 1} only` : "no classical bits: add one at the top");
     return this.editEntry(i, e.map((s) => {
       const { condition: _, ...rest } = s;
       return cond ? { ...rest, condition: { ...cond } } : rest;
@@ -908,7 +951,10 @@ export class Calculator {
     const s = e[0];
     if (on) {
       if (s.targets.length !== 1 || s.controls.length) return this.refuse("only 1-qubit gates without controls go on every qubit");
-      return this.editEntry(i, [...Array(this.n).keys()].map((q) => ({ ...s, id: q === s.targets[0] ? s.id : newId(), targets: [q], outcome: undefined })), "on every qubit");
+      // A measurement on every qubit: each writes its own qubit's bit (one bit for all would keep only the last).
+      return this.editEntry(i, [...Array(this.n).keys()].map((q) => ({
+        ...s, id: q === s.targets[0] ? s.id : newId(), targets: [q], outcome: undefined, ...(writesBit(s) ? { clbits: [] } : {}),
+      })), "on every qubit");
     }
     const one = e.find((x) => x.targets[0] === keep) ?? s;
     return this.editEntry(i, [one], "on one qubit");
@@ -1203,7 +1249,7 @@ export class Calculator {
     const own = Math.min(...lay.items.filter((it) => it.entry === i).map((it) => it.col));
     if (dcol < 0) {
       const e = this.tape[i], rel = shape(this.n, e);
-      for (let c = own - 1; c >= 0; c--) if (freeColumn(lay.items, e, rel, c, i) === c) return this.moveGate(i, c, 0);
+      for (let c = own - 1; c >= 0; c--) if (freeColumn(lay.items, e, rel, c, i, this.n) === c) return this.moveGate(i, c, 0);
       return this.refuse("no free column to the left");
     }
     return this.moveGate(i, own + dcol, dq);
@@ -1267,6 +1313,7 @@ export class Calculator {
       this.send({ t: "gates", defs: this.customGates });
     }
     this.sel = Math.min(this.sel, r.n - 1);
+    this.nc = Math.max(r.nc, bitCount(r.n, r.tape, 0));
     // No confirmation message: the loaded tape speaks for itself (and the entry line stays clear).
     this.send({ t: "replace", n: r.n, tape: r.tape, scope: { ...scope }, label });
     if (guide && r.tape.length) {

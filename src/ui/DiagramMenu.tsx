@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Calculator } from "../calc/calculator";
-import { formatEntry, NONUNITARY, prettyExpr } from "../calc/steps";
+import { formatEntry, measuredBit, NONUNITARY, prettyExpr, writesBit } from "../calc/steps";
 import { paramDefs } from "../calc/gateSpecs";
 import { CUSTOM_PREFIX } from "../calc/custom";
 import { SNIPPETS } from "../calc/snippets";
@@ -78,7 +78,7 @@ export function DiagramMenu({ calc, menu, close }: { calc: Calculator; menu: Men
     const broadcast = e.length > 1;
     const states = s.controlStates ?? s.controls.map(() => true);
     const last = s.controls.length - 1;
-    const qubits = [...Array(calc.n).keys()];
+    const bitList = [...Array(calc.bits).keys()];
     body = <>
       <div className="menu-head">{i + 1}: {formatEntry(e)}</div>
       {s.gateId === "initialize" ? (() => {
@@ -93,6 +93,14 @@ export function DiagramMenu({ calc, menu, close }: { calc: Calculator; menu: Men
             <Field key={j} label={defs[j]?.name ?? `p${j}`} value={prettyExpr(p)} hint={defs[j]?.default}
               onCommit={(v) => calc.setGateParams(i, s.params.map((x, k) => (k === j ? v : x)))} />
           ))}
+        </div>
+      )}
+      {writesBit(s) && (
+        <div className="menu-row">
+          <span>writes</span>
+          <select value={measuredBit(s)} aria-label="Classical bit the measurement writes" onChange={(ev) => calc.setMeasureBit(i, Number(ev.target.value))}>
+            {bitList.map((k) => <option key={k} value={k}>c[{k}]</option>)}
+          </select>
         </div>
       )}
       <button role="menuitem" onClick={act(() => calc.duplicateGate(i))}>Duplicate</button>
@@ -111,7 +119,7 @@ export function DiagramMenu({ calc, menu, close }: { calc: Calculator; menu: Men
         <select value={s.condition ? s.condition.clbit : ""} aria-label="Classical bit"
           onChange={(ev) => calc.setGateCondition(i, ev.target.value === "" ? null : { clbit: Number(ev.target.value), value: (s.condition?.value ?? 1) as 0 | 1 })}>
           <option value="">always</option>
-          {qubits.map((q) => <option key={q} value={q}>c[{q}]</option>)}
+          {bitList.map((k) => <option key={k} value={k}>c[{k}]</option>)}
         </select>
         {s.condition && <>
           <span>=</span>
@@ -178,7 +186,7 @@ function EditTransform({ calc, act }: { calc: Calculator; act: (f: () => unknown
         <div className="menu-cat">Clipboard</div>
         <Item label="Copy circuit" hint="the circuit as OpenQASM 3 → clipboard" disabled={empty}
           onClick={act(async () => {
-            try { await navigator.clipboard.writeText(exportQasm3(calc.n, calc.tape)); calc.notify("circuit copied (OpenQASM 3)"); }
+            try { await navigator.clipboard.writeText(exportQasm3(calc.n, calc.tape, calc.bits)); calc.notify("circuit copied (OpenQASM 3)"); }
             catch { calc.notify("copy blocked", "error"); }
           })} />
         <Item label="Paste circuit" hint="OpenQASM in the clipboard → the circuit (UNDO restores)"

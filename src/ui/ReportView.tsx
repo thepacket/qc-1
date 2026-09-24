@@ -38,7 +38,7 @@ export function ReportView({ calc }: { calc: Calculator }) {
         <h2>Circuit</h2>
         {tape.length === 0 ? <p>The circuit is empty.</p> : (
           <figure className="report-figure">
-            <CircuitDiagram n={n} tape={tape} scrub={null} />
+            <CircuitDiagram n={n} tape={tape} scrub={null} bits={calc.bits} />
           </figure>
         )}
 
@@ -91,7 +91,7 @@ export function ReportView({ calc }: { calc: Calculator }) {
         )}
 
         <h2>OpenQASM 3</h2>
-        <pre className="report-pre">{exportQasm3(n, tape)}</pre>
+        <pre className="report-pre">{exportQasm3(n, tape, calc.bits)}</pre>
       </article>
     </div>,
     document.body,

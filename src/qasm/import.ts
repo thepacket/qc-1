@@ -14,9 +14,9 @@
  *     custom gate when every call passes the same arguments, else each call
  *     is expanded in place;
  *   - `gphase(α)` becomes e^{iα}·I on a qubit (exact, also when controlled);
- *   - QC-1 measures q into its own bit c[q]; `if` on a program bit reads the
- *     qubit that last wrote it (an error if that qubit was measured again
- *     in between);
+ *   - bit registers become QC-1's classical bits (flattened in declaration
+ *     order): `c[j] = measure q[i]` writes bit j, `if` reads it; a bit that
+ *     nothing wrote reads 0, so its `if` is resolved at import;
  *   - symbols keep QC-1's names (θ φ λ α β γ δ τ ω, t — `t_` too); others
  *     get free Greek letters, with a note.
  */
@@ -27,7 +27,11 @@ import { buildMatrix } from "../sim/matrices";
 import { isSafeExpr } from "../sim/expr";
 
 /** `lines[i]` is the source line of the statement that made tape entry i (step-through captions). */
-export type ImportResult = { n: number; tape: Entry[]; gates: CustomGate[]; notes: string[]; lines: number[] };
+export type ImportResult = {
+  n: number; tape: Entry[]; gates: CustomGate[]; notes: string[]; lines: number[];
+  /** Classical bits the program declares (0 without a bit register). */
+  nc: number;
+};
 
 export class QasmImportError extends Error {
   constructor(message: string, readonly line: number) {
@@ -424,6 +428,7 @@ export function importQasm(src: string, existing: CustomGate[] = []): ImportResu
   const cbase = new Map<string, { at: number; size: number }>();
   let nc = 0;
   for (const r of p.cregs) { cbase.set(r.name, { at: nc, size: r.size }); nc += r.size; }
+  if (nc > 1024) throw new QasmImportError(`${nc} classical bits (QC-1 goes up to 1024)`, 1);
 
   // Symbols keep their names (Greek ASCII names show as glyphs; `t_`, the
   // export's name for the t clock, is t). Names used without a declaration
@@ -660,8 +665,7 @@ export function importQasm(src: string, existing: CustomGate[] = []): ImportResu
   // The program.
   const tape: Entry[] = [];
   const lines: number[] = [];
-  const writer = new Map<number, { q: number; gen: number }>(); // program bit → qubit that wrote it
-  const gen = new Array<number>(n).fill(0); // measurements of each qubit so far
+  const written = new Set<number>(); // program bits a measurement has written so far
   const run = (ss: Stmt[], cond: { clbit: number; value: number } | null) => {
     for (const s of ss) {
       if (s.k === "if") {
@@ -669,17 +673,15 @@ export function importQasm(src: string, existing: CustomGate[] = []): ImportResu
         if (bits.length !== 1) {
           if (s.value > 1 || bits.length > 1) throw new QasmImportError("conditions on a whole bit register aren't supported (use one bit)", s.line);
         }
-        const w = writer.get(bits[0]);
-        if (!w) {
+        if (!written.has(bits[0])) {
           // Never written: the bit is 0.
           notes.push(`line ${s.line}: condition on a bit never measured (always ${s.value === 0 ? "true" : "false"})`);
           run(s.value === 0 ? s.then : s.else, cond);
           continue;
         }
-        if (w.gen !== gen[w.q]) throw new QasmImportError(`the bit was written by q${w.q}, measured again since (QC-1 keeps one bit per qubit)`, s.line);
         if (cond) throw new QasmImportError("nested if isn't supported", s.line);
-        run(s.then, { clbit: w.q, value: s.value });
-        if (s.else.length) run(s.else, { clbit: w.q, value: s.value ? 0 : 1 });
+        run(s.then, { clbit: bits[0], value: s.value });
+        if (s.else.length) run(s.else, { clbit: bits[0], value: s.value ? 0 : 1 });
         continue;
       }
       if (s.k === "measure" || s.k === "reset") {
@@ -688,14 +690,13 @@ export function importQasm(src: string, existing: CustomGate[] = []): ImportResu
         if (s.k === "measure" && s.c && cs.length !== qs.length) throw new QasmImportError("measure: register sizes differ", s.line);
         qs.forEach((q, i) => {
           const st: Step = mkStep(s.k === "measure" ? "measure" : "reset", [q], [], [], []);
+          // Its bit: c[q] is QC-1's default (clbits empty); any other is named.
+          if (cs.length && cs[i] !== q) st.clbits = [cs[i]];
           const o = qs.length === 1 ? noted(s.line) : undefined;
           if (o !== undefined) st.outcome = o;
           tape.push([cond ? { ...st, condition: cond } : st]);
           lines.push(s.line);
-          if (s.k === "measure") {
-            gen[q]++;
-            if (cs.length) writer.set(cs[i], { q, gen: gen[q] });
-          }
+          if (s.k === "measure") written.add(cs.length ? cs[i] : q);
         });
         continue;
       }
@@ -712,7 +713,7 @@ export function importQasm(src: string, existing: CustomGate[] = []): ImportResu
   for (const s of tape.flat().concat(created.flatMap((d) => d.tape.flat()))) {
     for (const x of s.params) if (Number.isNaN(evalParam(x, scope))) throw new QasmImportError(`can't evaluate ${x}`, 1);
   }
-  return { n, tape, gates: created, notes, lines };
+  return { n, tape, gates: created, notes, lines, nc };
 
   function matchesNative(def: GateDef, body: (qs: number[], pm: Map<string, string>) => Step[]): boolean {
     const k = def.qubits.length;

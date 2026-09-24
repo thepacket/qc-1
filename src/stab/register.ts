@@ -7,7 +7,7 @@
  * decides whether a gate is Clifford).
  */
 import { Stabilizer } from "../sim/stabilizer";
-import { classicalBits, exportedSteps, MEASURE_IDS, stepSymbols, type Entry, type Scope, type Step } from "../calc/steps";
+import { bitCount, classicalBits, exportedSteps, fitBits, measuredBit, MEASURE_IDS, stepSymbols, type Entry, type Scope, type Step } from "../calc/steps";
 import type { Contents, Op } from "../calc/register";
 import { cliffordPrims } from "./clifford";
 
@@ -32,7 +32,7 @@ function applyTab(tab: Stabilizer, s: Step, rng: () => number, cbits: Uint8Array
         if (o !== outcome) notes.push(`measurement at step ${where} changed ${outcome}→${o}`);
       }
       if (x.gateId === "reset") { if (o === 1) tab.x(q); }
-      else cbits[q] = o;
+      else cbits[measuredBit(s)] = o;
       outcome = o as 0 | 1;
       continue;
     }
@@ -74,6 +74,7 @@ export class StabilizerRegister {
 
   private apply(entry: Entry, rng: () => number): Entry {
     const where = this.tape.length + 1;
+    this.cbits = fitBits(this.cbits, bitCount(this.n, [entry], this.cbits.length));
     const done = entry.map((s) => applyTab(this.tab, s, rng, this.cbits, this.notes, where));
     this.tape.push(done);
     return done;
@@ -83,7 +84,7 @@ export class StabilizerRegister {
     this.notes = [];
     this.redoOps = [];
     // Check first: a refused gate must leave the tableau untouched.
-    const probe = this.tab.clone(), cb = this.cbits.slice();
+    const probe = this.tab.clone(), cb = fitBits(this.cbits.slice(), bitCount(this.n, [entry], this.cbits.length));
     entry.forEach((s) => applyTab(probe, s, () => 0.5, cb, [], 0));
     const done = this.apply(entry, rng);
     this.ops.push({ k: "entry", entry: done });

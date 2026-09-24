@@ -75,8 +75,8 @@ function gateLine(stmt: string, target: string, ctx: Ctx): string[] {
   return [`${ctx.indent}${target}.append(${g}, [${qs.join(", ")}])`];
 }
 
-export function qiskitPython(n: number, tape: Entry[]): string {
-  const qasm = exportQasm3(n, tape);
+export function qiskitPython(n: number, tape: Entry[], nc = n): string {
+  const qasm = exportQasm3(n, tape, nc);
   const symbols = new Set([...qasm.matchAll(/^input float (\w+);$/gm)].map((m) => m[1]));
   const out: string[] = [
     "# Quantum Calculator One (QC-1) circuit for Qiskit (qiskit >= 1.0).",

@@ -13,15 +13,15 @@ export type PaletteGroup =
   | "pauli" | "rotation" | "controlled" | "two" | "multi" | "measure" | "prep" | "blocks" | "typed" | "custom";
 
 export const PALETTE_GROUPS: { id: PaletteGroup; label: string }[] = [
+  { id: "prep", label: "State Init" },
   { id: "pauli", label: "Pauli & Clifford" },
-  { id: "rotation", label: "Rotations & phase" },
+  { id: "rotation", label: "Rotations & Phases" },
   { id: "controlled", label: "Controlled" },
   { id: "two", label: "Two-qubit" },
   { id: "multi", label: "Multi-qubit" },
-  { id: "measure", label: "Measure & reset" },
-  { id: "prep", label: "State init" },
+  { id: "measure", label: "Measure & Reset" },
   { id: "blocks", label: "Blocks" },
-  { id: "typed", label: "Type it" },
+  { id: "typed", label: "Custom" },
   { id: "custom", label: "Your gates" },
 ];
 

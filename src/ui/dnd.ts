@@ -17,7 +17,9 @@ export type DragPayload =
   /** One of a gate's dots: target or control `index`. */
   | { kind: "dot"; entry: number; role: "target" | "control"; index: number }
   /** The selected gate's "● +" handle: drop on a wire to add a control there. */
-  | { kind: "addctl"; entry: number };
+  | { kind: "addctl"; entry: number }
+  /** A measurement's (write) or an IF step's (read) dot on a classical lane: drop on another lane to change the bit. */
+  | { kind: "bit"; entry: number; role: "write" | "read" };
 
 /** Where a point falls on the diagram: a wire (row) and the column it's before. */
 export type Spot = { row: number; col: number };

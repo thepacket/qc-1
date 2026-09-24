@@ -11,21 +11,26 @@
  * matter; when it has to, the tape is reordered without breaking any wire's
  * order). Rows are qubits (the editor draws every wire).
  */
-import { layoutTape, type Layout, type Placed } from "./diagram";
-import type { Entry, Step } from "./steps";
+import { layoutTape, reachesBus, type Layout, type Placed } from "./diagram";
+import { measuredBit, writesBit, type Entry, type Step } from "./steps";
 
-const span = (s: Step): [number, number] => {
+/** The rows a step keeps free in its column on `n` wires: its qubits, and down to the bus if it writes or reads a bit. */
+const span = (s: Step, n: number): [number, number] => {
   const q = [...s.controls, ...s.targets];
-  return [Math.min(...q), Math.max(...q)];
+  return [Math.min(...q), reachesBus(s) ? Math.max(n - 1, ...q) : Math.max(...q)];
 };
 
-/** The rows an entry's steps touch for ordering: their spans and the wires of the bits they read. */
-function touches(e: Entry, cols: number[]): { row: number; col: number }[] {
+/** Classical bit k as an ordering row (qubit rows are 0…n−1; bits sit below zero). */
+const bitRow = (k: number) => -1 - k;
+
+/** The rows an entry's steps touch for ordering: their spans, and the classical bits they read or write. */
+function touches(e: Entry, cols: number[], n: number): { row: number; col: number }[] {
   const out: { row: number; col: number }[] = [];
   e.forEach((s, k) => {
-    const [lo, hi] = span(s);
+    const [lo, hi] = span(s, n);
     for (let r = lo; r <= hi; r++) out.push({ row: r, col: cols[k] });
-    if (s.condition && (s.condition.clbit < lo || s.condition.clbit > hi)) out.push({ row: s.condition.clbit, col: cols[k] });
+    if (s.condition) out.push({ row: bitRow(s.condition.clbit), col: cols[k] });
+    if (writesBit(s)) out.push({ row: bitRow(measuredBit(s)), col: cols[k] });
   });
   return out;
 }
@@ -59,16 +64,17 @@ export function shape(n: number, e: Entry): number[] {
  * The first column at or right of `col` where an entry of this shape fits:
  * no other step drawn in the same column on an overlapping span.
  */
-export function freeColumn(items: Placed[], e: Entry, rel: number[], col: number, skip = -1): number {
+export function freeColumn(items: Placed[], e: Entry, rel: number[], col: number, skip = -1, n = Infinity): number {
   const byCol = new Map<number, [number, number][]>();
   for (const it of items) {
     if (it.entry === skip) continue;
     const l = byCol.get(it.col);
-    if (l) l.push([it.lo, it.hi]);
-    else byCol.set(it.col, [[it.lo, it.hi]]);
+    if (l) l.push([it.lo, it.bottom]);
+    else byCol.set(it.col, [[it.lo, it.bottom]]);
   }
+  const rows = n === Infinity ? Math.max(0, ...items.map((it) => it.bottom)) + 1 : n;
   const clash = (c: number) => e.some((s, k) => {
-    const [lo, hi] = span(s);
+    const [lo, hi] = span(s, rows);
     return (byCol.get(c + rel[k]) ?? []).some(([a, b]) => a <= hi && lo <= b);
   });
   let c = Math.max(0, col);
@@ -125,7 +131,7 @@ export function insertPinned(tape: Entry[], lay: Layout, e: Entry): { tape: Entr
   const rows = new Map<number, { entry: number; col: number }[]>();
   tape.forEach((x, i) => {
     const seen = new Set<number>();
-    for (const t of touches(x, colsOf[i])) {
+    for (const t of touches(x, colsOf[i], lay.wires.length)) {
       if (seen.has(t.row)) continue;
       seen.add(t.row);
       const l = rows.get(t.row);
@@ -133,7 +139,7 @@ export function insertPinned(tape: Entry[], lay: Layout, e: Entry): { tape: Entr
       else rows.set(t.row, [{ entry: i, col: t.col }]);
     }
   });
-  const mine = touches(e, e.map((s) => s.pin ?? 0));
+  const mine = touches(e, e.map((s) => s.pin ?? 0), lay.wires.length);
   // Where e goes on each of its rows: after the entries at or left of its column there.
   let before = -1, after = m;
   const cuts = new Map<number, number>();
@@ -186,7 +192,7 @@ export function insertPinned(tape: Entry[], lay: Layout, e: Entry): { tape: Entr
 export function placeEntry(n: number, tape: Entry[], e: Entry, col: number): { tape: Entry[]; at: number; col: number } {
   const lay = layoutTape(n, tape);
   const rel = shape(n, e);
-  const c = freeColumn(lay.items, e, rel, col);
+  const c = freeColumn(lay.items, e, rel, col, -1, n);
   const pinned = e.map((s, k) => ({ ...s, pin: c + rel[k] }));
   return { ...insertPinned(tape, lay, pinned), col: c };
 }
@@ -210,7 +216,7 @@ export function repositionEntry(n: number, tape: Entry[], i: number, next: Entry
   const rest = pinned.filter((_, k) => k !== i);
   const restLay = layoutTape(n, rest);
   const rel = shape(n, next);
-  const c = freeColumn(restLay.items, next, rel, col ?? own);
+  const c = freeColumn(restLay.items, next, rel, col ?? own, -1, n);
   return insertPinned(rest, restLay, next.map((s, k) => ({ ...s, pin: c + rel[k] })));
 }
 
@@ -254,7 +260,7 @@ export function copyEntries(n: number, tape: Entry[], set: Set<number>): Clip {
 export function pasteClip(n: number, tape: Entry[], clip: Clip, newId: () => string): { tape: Entry[]; added: number } {
   const lay = layoutTape(n, tape);
   const base = lay.cols;
-  const fits = (e: Entry) => e.every((s) => [...s.controls, ...s.targets].every((q) => q < n) && (!s.condition || s.condition.clbit < n));
+  const fits = (e: Entry) => e.every((s) => [...s.controls, ...s.targets].every((q) => q < n));
   const add = clip.entries.filter(fits).map((e) => e.map((s) => ({ ...s, id: newId(), pin: base + (s.pin ?? 0) })));
   return { tape: [...tape, ...add], added: add.length };
 }
