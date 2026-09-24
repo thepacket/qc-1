@@ -192,25 +192,29 @@ export function App() {
       default: return <Pending />;
     }
   })();
+  const overlay = calc.chatOpen || calc.helpOpen;
+  // The CIRCUIT tab itself (not AI, help or PARAM over it): its qubit and bit counts, undo and redo.
+  const onCircuit = calc.mode === "tape" && !overlay && !calc.param.open;
   const docked = calc.mode === "tape" && !calc.helpOpen && !calc.chatOpen && !calc.param.open;
 
   return (
     <div className={`calc${landscape ? " landscape" : ""}${docked ? " docked" : ""}`}>
 
+      {/* One choice, like tabs: a view, or AI / ? over it. */}
       <nav className="modes" aria-label="Views">
         {MODES.map((m) => (
-          <button key={m.id} className={calc.mode === m.id ? "on" : ""} aria-pressed={calc.mode === m.id} onClick={() => calc.setMode(m.id)}>
+          <button key={m.id} className={calc.mode === m.id && !overlay ? "on" : ""} aria-pressed={calc.mode === m.id && !overlay} onClick={() => calc.setMode(m.id)}>
             {m.label}
           </button>
         ))}
-        <button className={`extra${calc.chatOpen ? " on" : ""}`} aria-label="AI chat" aria-pressed={calc.chatOpen} onClick={() => calc.toggleChat()}>AI</button>
-        <button className={`extra${calc.helpOpen ? " on" : ""}`} aria-label="Help" aria-pressed={calc.helpOpen} onClick={() => calc.toggleHelp()}>?</button>
+        <button className={`extra${calc.chatOpen ? " on" : ""}`} aria-label="AI chat" aria-pressed={calc.chatOpen} onClick={() => calc.openChat()}>AI</button>
+        <button className={`extra${calc.helpOpen ? " on" : ""}`} aria-label="Help" aria-pressed={calc.helpOpen} onClick={() => calc.openHelp()}>?</button>
       </nav>
 
       <section className="lcd" aria-live="polite">
         {/* The status row: the qubit count and undo/redo on CIRCUIT; flags and badges when there are any. */}
-        {(calc.mode === "tape" || calc.busy || calc.noiseOn || calc.symbols.length > 0 || calc.scrub !== null) && <div className="status">
-          {calc.mode === "tape" && <>
+        {(onCircuit || calc.busy || calc.noiseOn || calc.symbols.length > 0 || calc.scrub !== null) && <div className="status">
+          {onCircuit && <>
             <Count value={calc.n} min={1} max={STAB_MAX} set={(k) => calc.setQubitCount(k)} unit="qubit" label="Number of qubits" />
             <Count value={calc.bits} min={calc.usedBits} max={MAX_CBITS} set={(k) => calc.setClassicalCount(k)} unit="bit" label="Number of classical bits" />
           </>}
@@ -228,7 +232,7 @@ export function App() {
           {calc.scrub !== null && (
             <button className="scrub-badge" onClick={() => calc.setScrub(null)} aria-label="Stop scrubbing">@{calc.scrub}/{calc.tape.length} ✕</button>
           )}
-          {calc.mode === "tape" && <span className="undo-redo">
+          {onCircuit && <span className="undo-redo">
             <button className="icon-btn" onClick={() => calc.undo()} aria-label="Undo" title="Undo (Ctrl+Z)">↶</button>
             <button className="icon-btn" onClick={() => calc.redo()} aria-label="Redo" title="Redo (Ctrl+Shift+Z)">↷</button>
           </span>}

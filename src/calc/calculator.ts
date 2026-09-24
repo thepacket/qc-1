@@ -381,6 +381,9 @@ export class Calculator {
 
   setMode(m: Mode) {
     this.message = null;
+    this.chatOpen = false;
+    this.helpOpen = false;
+    this.param = { ...this.param, open: false };
     this.diagSel = null;
     if (m === "shots" && this.mode === "shots") this.shotSeed++;
     this.mode = m;
@@ -1492,11 +1495,31 @@ export class Calculator {
 
   toggleChat() {
     this.chatOpen = !this.chatOpen;
+    if (this.chatOpen) this.helpOpen = false;
     this.changed();
   }
 
   toggleHelp() {
     this.helpOpen = !this.helpOpen;
+    if (this.helpOpen) this.chatOpen = false;
+    this.changed();
+  }
+
+  /**
+   * The top row is one choice, like tabs: a view, AI (the chat) or ? (help).
+   * AI and ? open over the current view and close each other; a view closes them.
+   */
+  openChat() {
+    this.chatOpen = true;
+    this.helpOpen = false;
+    this.param = { ...this.param, open: false };
+    this.changed();
+  }
+
+  openHelp() {
+    this.helpOpen = true;
+    this.chatOpen = false;
+    this.param = { ...this.param, open: false };
     this.changed();
   }
 
