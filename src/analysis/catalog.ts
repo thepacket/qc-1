@@ -1,20 +1,31 @@
 import type { AnalysisMeta, Category, InputSpec, Opts } from "./types";
 import { defaultObservable } from "./pauliPresets";
 
-/** LAB categories, in display order (Quantiom's grouping, phone-sized labels). */
+/**
+ * LAB groups, in display order. A panel has one home group and may be listed
+ * in others too (`also`), so a subject-focused group never duplicates code.
+ */
 export const CATEGORIES: { id: Category; label: string }[] = [
   { id: "state", label: "State" },
   { id: "measurement", label: "Measurement" },
   { id: "phase", label: "Phase space & magic" },
+  { id: "entanglement", label: "Entanglement: bipartite" },
+  { id: "correlations", label: "Multipartite & correlations" },
+  { id: "entspectrum", label: "Entanglement spectrum" },
   { id: "metrology", label: "Expectation & metrology" },
-  { id: "entanglement", label: "Entanglement & correlations" },
+  { id: "geometry", label: "Geometry & topology" },
+  { id: "variational", label: "Variational optimisation" },
   { id: "dynamics", label: "Dynamics" },
+  { id: "chaos", label: "Chaos & scrambling" },
   { id: "operator", label: "Operator & spectrum" },
+  { id: "thermal", label: "Thermalisation & thermodynamics" },
   { id: "structure", label: "Circuit structure" },
   { id: "tools", label: "Circuit tools" },
   { id: "noise", label: "Noise & error" },
   { id: "bench", label: "Characterization & benchmarking" },
+  { id: "estimation", label: "Tomography & estimation" },
   { id: "qec", label: "Error correction" },
+  { id: "plotting", label: "Visualisation & plotting" },
   { id: "verify", label: "Verification & export" },
 ];
 
@@ -43,7 +54,7 @@ export const ANALYSES: AnalysisMeta[] = [
     summary: "Pairwise log-negativity E_N: > 0 exactly when a pair is entangled (PPT test)." },
   { id: "concurrence", title: "Concurrence", category: "entanglement", mode: "live", maxQubits: 10, minQubits: 2, inputs: [],
     summary: "Pairwise Wootters concurrence: 0 separable … 1 Bell pair." },
-  { id: "schmidt", title: "Schmidt spectrum", category: "entanglement", mode: "live", maxQubits: 20, minQubits: 2,
+  { id: "schmidt", title: "Schmidt spectrum", category: "entanglement", also: ["entspectrum"], mode: "live", maxQubits: 20, minQubits: 2,
     inputs: [{ ...cut, max: 6 }],
     summary: "Squared Schmidt coefficients across the cut A | rest, with entanglement entropy and rank." },
   { id: "profile", title: "Entropy profile", category: "entanglement", mode: "live", maxQubits: 20, minQubits: 2, inputs: [],
@@ -74,55 +85,55 @@ ANALYSES.push(
   { id: "majorana", title: "Majorana stars", category: "phase", mode: "live", maxQubits: 6, inputs: [],
     summary: "The symmetric part of the state as n stars on the sphere." },
   // Entanglement & correlations
-  { id: "tripartite", title: "Tripartite information", category: "entanglement", mode: "live", maxQubits: 14, minQubits: 4,
+  { id: "tripartite", title: "Tripartite information", category: "correlations", mode: "live", maxQubits: 14, minQubits: 4,
     inputs: [
       { kind: "qubit", key: "a", label: "A", fallback: "first" },
       { kind: "qubit", key: "b", label: "B", fallback: "second" },
       { kind: "qubit", key: "c", label: "C", fallback: "last" },
     ],
     summary: "I₃ = I(A:B) + I(A:C) − I(A:BC); negative means information about A is scrambled into BC." },
-  { id: "totalcorr", title: "Total correlation", category: "entanglement", mode: "live", maxQubits: 14, minQubits: 2, inputs: [],
+  { id: "totalcorr", title: "Total correlation", category: "correlations", mode: "live", maxQubits: 14, minQubits: 2, inputs: [],
     summary: "Multi-information Σ S(qᵢ) − S(all): every qubit's entanglement with the rest, added up." },
-  { id: "chsh", title: "CHSH nonlocality", category: "entanglement", mode: "live", maxQubits: 12, minQubits: 2, inputs: [],
+  { id: "chsh", title: "CHSH nonlocality", category: "correlations", mode: "live", maxQubits: 12, minQubits: 2, inputs: [],
     summary: "Maximal CHSH value per pair (Horodecki); above 2 the pair violates a Bell inequality." },
-  { id: "discord", title: "Quantum discord", category: "entanglement", mode: "live", maxQubits: 8, minQubits: 2, inputs: [],
+  { id: "discord", title: "Quantum discord", category: "correlations", mode: "live", maxQubits: 8, minQubits: 2, inputs: [],
     summary: "D(A|B): correlation beyond what a measurement on B can reveal; can be non-zero without entanglement." },
-  { id: "zz", title: "ZZ correlations", category: "entanglement", mode: "live", maxQubits: 16, minQubits: 2, inputs: [],
+  { id: "zz", title: "ZZ correlations", category: "correlations", mode: "live", maxQubits: 16, minQubits: 2, inputs: [],
     summary: "Connected ⟨ZᵢZⱼ⟩ − ⟨Zᵢ⟩⟨Zⱼ⟩: aligned (+) or anti-aligned (−) spins." },
-  { id: "corrlength", title: "Correlation length", category: "entanglement", mode: "live", maxQubits: 16, minQubits: 3, inputs: [],
+  { id: "corrlength", title: "Correlation length", category: "correlations", mode: "live", maxQubits: 16, minQubits: 3, inputs: [],
     summary: "ξ from an exponential fit to the average |ZZ| correlation versus distance." },
-  { id: "structure", title: "Structure factor", category: "entanglement", mode: "live", maxQubits: 16, minQubits: 2, inputs: [],
+  { id: "structure", title: "Structure factor", category: "correlations", mode: "live", maxQubits: 16, minQubits: 2, inputs: [],
     summary: "S(k): Fourier transform of the ZZ correlations; k = 0 ferromagnetic, k = π Néel order." },
-  { id: "symmetry", title: "Symmetry sectors", category: "entanglement", mode: "live", maxQubits: 20, inputs: [],
+  { id: "symmetry", title: "Symmetry sectors", category: "correlations", mode: "live", maxQubits: 20, inputs: [],
     summary: "Weight in each excitation-number sector and the Z₂ parity ⟨ΠZ⟩." },
-  { id: "counting", title: "Counting statistics", category: "entanglement", mode: "live", maxQubits: 20, inputs: [{ ...cut, max: 20 }],
+  { id: "counting", title: "Counting statistics", category: "correlations", mode: "live", maxQubits: 20, inputs: [{ ...cut, max: 20 }],
     summary: "Distribution of the number of 1s in region A; its variance is the charge fluctuation." },
   { id: "contour", title: "Prefix conditional entropy", category: "entanglement", mode: "live", maxQubits: 20, minQubits: 2,
     inputs: [{ kind: "int", key: "size", label: "region size", min: 1, max: -1, fallback: 0 }],
     summary: "S(qⱼ | q₀…qⱼ₋₁) = S(q₀…qⱼ) − S(q₀…qⱼ₋₁) for each site of the region q₀…: it sums to S(region) but depends on the order and can be negative, so it is not an entanglement contour." },
-  { id: "schmidtgap", title: "Schmidt gap", category: "entanglement", mode: "live", maxQubits: 20, minQubits: 2, inputs: [],
+  { id: "schmidtgap", title: "Schmidt gap", category: "entspectrum", mode: "live", maxQubits: 20, minQubits: 2, inputs: [],
     summary: "λ₁ − λ₂ across every cut; it closes at a critical point." },
-  { id: "entham", title: "Entanglement Hamiltonian", category: "entanglement", mode: "live", maxQubits: 20, minQubits: 2,
+  { id: "entham", title: "Entanglement Hamiltonian", category: "entspectrum", mode: "live", maxQubits: 20, minQubits: 2,
     inputs: [{ ...cut, max: 6 }],
     summary: "Entanglement energies ξᵢ = −ln λᵢ (Li–Haldane spectrum) across the cut." },
-  { id: "entstats", title: "Entanglement-spectrum statistics", category: "entanglement", mode: "live", maxQubits: 20, minQubits: 3,
+  { id: "entstats", title: "Entanglement-spectrum statistics", category: "entspectrum", mode: "live", maxQubits: 20, minQubits: 3,
     inputs: [{ ...cut, max: 8 }],
     summary: "Gap ratios of the entanglement spectrum: ⟨r⟩ ≈ 0.386 Poisson (localized), 0.536 GOE (ergodic)." },
-  { id: "mps", title: "MPS bond dimension", category: "entanglement", mode: "live", maxQubits: 20, minQubits: 2,
+  { id: "mps", title: "MPS bond dimension", category: "entspectrum", mode: "live", maxQubits: 20, minQubits: 2,
     inputs: [{ kind: "choice", key: "target", label: "error", fallback: 0.01, options: [
       { label: "10⁻¹", value: 0.1 }, { label: "10⁻²", value: 0.01 }, { label: "10⁻³", value: 0.001 }, { label: "10⁻⁶", value: 1e-6 },
     ] }],
     summary: "Bond dimension χ a matrix-product state needs at each cut for the chosen truncation error." },
-  { id: "negspectrum", title: "Negativity spectrum", category: "entanglement", mode: "live", maxQubits: 6, minQubits: 2, inputs: [cut],
+  { id: "negspectrum", title: "Negativity spectrum", category: "entanglement", also: ["entspectrum"], mode: "live", maxQubits: 6, minQubits: 2, inputs: [cut],
     summary: "Eigenvalues of the partial transpose across the cut; the negative ones are the entanglement." },
   { id: "ptmoments", title: "PT moments", category: "entanglement", mode: "live", maxQubits: 6, minQubits: 2, inputs: [cut],
     summary: "Moments Tr[(ρ^T_A)ⁿ]; p₃ < p₂² certifies entanglement from low moments alone." },
-  { id: "threetangle", title: "Three-tangle", category: "entanglement", mode: "live", maxQubits: 3, minQubits: 3,
+  { id: "threetangle", title: "Three-tangle", category: "correlations", mode: "live", maxQubits: 3, minQubits: 3,
     inputs: [{ kind: "qubit", key: "a", label: "focal", fallback: "first" }],
     summary: "Genuine tripartite entanglement τ₃ (CKW): 1 for GHZ, 0 for W." },
-  { id: "multifractal", title: "Multifractal dimensions", category: "entanglement", mode: "live", maxQubits: 16, inputs: [],
+  { id: "multifractal", title: "Multifractal dimensions", category: "state", mode: "live", maxQubits: 16, inputs: [],
     summary: "Generalized fractal dimensions D_q of the basis distribution: 1 delocalized, 0 localized." },
-  { id: "coherence", title: "Coherence", category: "entanglement", mode: "live", maxQubits: 20, inputs: [],
+  { id: "coherence", title: "Coherence", category: "state", mode: "live", maxQubits: 20, inputs: [],
     summary: "l₁-norm and relative-entropy coherence in the computational basis." },
 );
 
@@ -136,20 +147,20 @@ ANALYSES.push(
       ] },
     ],
     summary: "⟨H⟩ for a Pauli string or Pauli sum, with its variance and the shot-noise error σ/√N." },
-  { id: "optimise", title: "Optimise ⟨H⟩ (VQE)", category: "metrology", mode: "run", maxQubits: 12, inputs: [
+  { id: "optimise", title: "Optimise ⟨H⟩ (VQE)", category: "variational", also: ["metrology"], mode: "run", maxQubits: 12, inputs: [
       obs,
       { kind: "choice", key: "goal", label: "goal", fallback: 0, options: [{ label: "min", value: 0 }, { label: "max", value: 1 }] },
       { kind: "choice", key: "method", label: "method", fallback: 0, options: [{ label: "Adam", value: 0 }, { label: "SGD", value: 1 }, { label: "QNG", value: 2 }] },
       { kind: "choice", key: "steps", label: "steps", fallback: 60, options: [{ label: "20", value: 20 }, { label: "60", value: 60 }, { label: "200", value: 200 }] },
     ],
     summary: "Gradient descent on ⟨H⟩ over the circuit's symbols (finite differences); apply the result to the sliders." },
-  { id: "landscape", title: "Landscape", category: "metrology", mode: "run", maxQubits: 12, inputs: [
+  { id: "landscape", title: "Landscape", category: "variational", also: ["metrology"], mode: "run", maxQubits: 12, inputs: [
       obs,
       { kind: "symbol", key: "s1", label: "x", fallback: "first" },
       { kind: "symbol", key: "s2", label: "y", fallback: "second", optional: true },
     ],
     summary: "⟨H⟩ as one or two symbols sweep [−π, π]: a curve or a heatmap." },
-  { id: "plateau", title: "Barren-plateau check", category: "metrology", mode: "run", maxQubits: 12, inputs: [
+  { id: "plateau", title: "Barren-plateau check", category: "variational", also: ["metrology"], mode: "run", maxQubits: 12, inputs: [
       obs,
       { kind: "choice", key: "samples", label: "samples", fallback: 50, options: [{ label: "20", value: 20 }, { label: "50", value: 50 }, { label: "200", value: 200 }] },
     ],
@@ -162,12 +173,12 @@ ANALYSES.push(
     summary: "3×3 QFI matrix over Jx, Jy, Jz; its top eigenvalue is the best single-axis QFI." },
   { id: "squeezing", title: "Spin squeezing", category: "metrology", mode: "live", maxQubits: 14, minQubits: 2, inputs: [],
     summary: "Wineland ξ² = N·min ΔJ⊥² / |⟨J⟩|²; below 1 is squeezed (and entangled)." },
-  { id: "qgt", title: "Quantum geometric tensor", category: "metrology", mode: "live", maxQubits: 12, inputs: [],
+  { id: "qgt", title: "Quantum geometric tensor", category: "geometry", also: ["metrology"], mode: "live", maxQubits: 12, inputs: [],
     summary: "Fubini–Study metric and Berry curvature over the circuit's symbols (finite differences)." },
   { id: "blochpath", title: "Bloch trajectory", category: "state", mode: "run", maxQubits: 12,
     inputs: [{ kind: "qubit", key: "q", label: "qubit", fallback: "first" }],
     summary: "Each qubit's Bloch vector as t sweeps [0, 2π]: the path it traces on its sphere." },
-  { id: "participation", title: "Participation", category: "entanglement", mode: "live", maxQubits: 16, inputs: [],
+  { id: "participation", title: "Participation", category: "state", mode: "live", maxQubits: 16, inputs: [],
     summary: "Inverse participation ratio, participation ratio and entropies of the basis distribution; plus its growth along the circuit." },
 );
 
@@ -190,32 +201,32 @@ ANALYSES.push(
     summary: "Exact energy levels of a Pauli-sum H, the ground energy and gap, with ⟨H⟩ of the current state." },
   { id: "dos", title: "Density of states", category: "operator", mode: "live", maxQubits: 6, inputs: [H],
     summary: "Histogram of H's energy levels." },
-  { id: "levelstats", title: "Level statistics", category: "operator", mode: "live", maxQubits: 6, minQubits: 2, inputs: [H],
+  { id: "levelstats", title: "Level statistics", category: "chaos", also: ["operator"], mode: "live", maxQubits: 6, minQubits: 2, inputs: [H],
     summary: "Gap ratio ⟨r⟩ of H's spectrum: 0.386 Poisson (integrable), 0.531 GOE (chaotic)." },
-  { id: "sff", title: "Spectral form factor", category: "operator", mode: "live", maxQubits: 6, inputs: [H],
+  { id: "sff", title: "Spectral form factor", category: "chaos", also: ["operator"], mode: "live", maxQubits: 6, inputs: [H],
     summary: "|Σ e^(−iEt)|²/D² on log-log axes: dip, ramp, plateau." },
-  { id: "krylov", title: "Krylov complexity", category: "operator", mode: "live", maxQubits: 6, inputs: [H],
+  { id: "krylov", title: "Krylov complexity", category: "chaos", also: ["operator"], mode: "live", maxQubits: 6, inputs: [H],
     summary: "Lanczos coefficients bₙ of H from the current state, and the spread complexity C(t)." },
-  { id: "diagens", title: "Diagonal ensemble", category: "operator", mode: "live", maxQubits: 6, inputs: [H],
+  { id: "diagens", title: "Diagonal ensemble", category: "thermal", mode: "live", maxQubits: 6, inputs: [H],
     summary: "The state's weight on each energy level of H, ⟨H⟩, ΔE and the effective dimension." },
-  { id: "efftemp", title: "Effective temperature", category: "operator", mode: "live", maxQubits: 6, inputs: [H],
+  { id: "efftemp", title: "Effective temperature", category: "thermal", mode: "live", maxQubits: 6, inputs: [H],
     summary: "Boltzmann fit ln p = c − βE to the energy populations, and the β of the Gibbs state with the same ⟨H⟩ (non-degenerate H)." },
-  { id: "eth", title: "ETH matrix elements", category: "operator", mode: "run", maxQubits: 5, inputs: [
+  { id: "eth", title: "ETH matrix elements", category: "thermal", mode: "run", maxQubits: 5, inputs: [
       H, { kind: "pauli", key: "o", label: "O" },
     ],
     summary: "|⟨Eₘ|O|Eₙ⟩|² against ω = Eₘ − Eₙ, and the diagonal ⟨Eₙ|O|Eₙ⟩ (non-degenerate H)." },
-  { id: "eigent", title: "Eigenstate entanglement", category: "operator", mode: "run", maxQubits: 6, minQubits: 2, inputs: [H],
+  { id: "eigent", title: "Eigenstate entanglement", category: "thermal", mode: "run", maxQubits: 6, minQubits: 2, inputs: [H],
     summary: "Half-chain entropy of every eigenstate of H against its energy: volume-law arch vs area law." },
-  { id: "workdist", title: "Work distribution", category: "operator", mode: "run", maxQubits: 5, inputs: [H],
+  { id: "workdist", title: "Work distribution", category: "thermal", mode: "run", maxQubits: 5, inputs: [H],
     summary: "Two-point-measurement work W = Eₘ − Eₙ for the circuit as a quench from |0…0⟩ (energy-level projectors)." },
-  { id: "berry", title: "Berry phase", category: "operator", mode: "run", maxQubits: 12, inputs: [
+  { id: "berry", title: "Berry phase", category: "geometry", mode: "run", maxQubits: 12, inputs: [
       ...twoSym,
       { kind: "choice", key: "radius", label: "loop", fallback: 0.5, options: [
         { label: "±0.25", value: 0.25 }, { label: "±0.5", value: 0.5 }, { label: "±π/2", value: Math.PI / 2 },
       ] },
     ],
     summary: "Geometric phase around a square loop in two symbols, centred on their current values (discrete Wilson loop)." },
-  { id: "chern", title: "Chern number", category: "operator", mode: "run", maxQubits: 12, inputs: [
+  { id: "chern", title: "Chern number", category: "geometry", mode: "run", maxQubits: 12, inputs: [
       ...twoSym,
       { kind: "choice", key: "grid", label: "grid", fallback: 12, options: [{ label: "8", value: 8 }, { label: "12", value: 12 }, { label: "24", value: 24 }] },
     ],
@@ -241,15 +252,15 @@ ANALYSES.push(
     summary: "Half-cut entropy S(t) and its steepest slope max dS/dt, in bits per unit of the parameter t." },
   { id: "negdyn", title: "Negativity over t", category: "dynamics", mode: "live", maxQubits: 12, minQubits: 2, inputs: [{ ...cut, max: 6 }],
     summary: "Log-negativity across the cut as t sweeps: growth, oscillation, sudden death and revival." },
-  { id: "otoc", title: "OTOC", category: "dynamics", mode: "run", maxQubits: 6, minQubits: 2, inputs: [qW, qV],
+  { id: "otoc", title: "OTOC", category: "chaos", also: ["dynamics"], mode: "run", maxQubits: 6, minQubits: 2, inputs: [qW, qV],
     summary: "C(t) = 1 − Re⟨W(t)VW(t)V⟩ on |0…0⟩ with Z operators: it rises when the operator front reaches V." },
-  { id: "otoccone", title: "OTOC light cone", category: "dynamics", mode: "run", maxQubits: 5, minQubits: 2, inputs: [qW],
+  { id: "otoccone", title: "OTOC light cone", category: "chaos", also: ["dynamics"], mode: "run", maxQubits: 5, minQubits: 2, inputs: [qW],
     summary: "OTOC over every qubit and t: the operator light cone." },
-  { id: "butterfly", title: "Butterfly velocity", category: "dynamics", mode: "run", maxQubits: 5, minQubits: 2, inputs: [qW],
+  { id: "butterfly", title: "Butterfly velocity", category: "chaos", also: ["dynamics"], mode: "run", maxQubits: 5, minQubits: 2, inputs: [qW],
     summary: "Arrival time of the OTOC front at each distance, and the fitted speed v_B." },
-  { id: "lyapunov", title: "OTOC growth rate", category: "dynamics", mode: "run", maxQubits: 6, minQubits: 2, inputs: [qW, qV],
+  { id: "lyapunov", title: "OTOC growth rate", category: "chaos", also: ["dynamics"], mode: "run", maxQubits: 6, minQubits: 2, inputs: [qW, qV],
     summary: "Slope of ln C(t) over the OTOC's first rising window, with the fit's R²: an empirical rate, a Lyapunov exponent only for chaotic dynamics." },
-  { id: "opweight", title: "Operator weight", category: "dynamics", mode: "run", maxQubits: 4, inputs: [
+  { id: "opweight", title: "Operator weight", category: "chaos", also: ["dynamics"], mode: "run", maxQubits: 4, inputs: [
       { kind: "qubit", key: "w", label: "Z on", fallback: "first" },
     ],
     summary: "How Z on one qubit spreads under W(t) = U†WU: weight by Pauli support size, over t." },
@@ -381,12 +392,12 @@ ANALYSES.push(
       { kind: "choice", key: "shots", label: "shots", fallback: 2000, options: [{ label: "500", value: 500 }, { label: "2k", value: 2000 }, { label: "10k", value: 10000 }] },
     ],
     summary: "Logical error rate of the bit-flip code for d = 3, 5, 7 against the physical flip rate: exact and decoded." },
-  { id: "shadows", title: "Classical shadows", category: "bench", mode: "run", maxQubits: 12, inputs: [
+  { id: "shadows", title: "Classical shadows", category: "estimation", also: ["bench"], mode: "run", maxQubits: 12, inputs: [
       obs,
       { kind: "choice", key: "snapshots", label: "snapshots", fallback: 2000, options: [{ label: "500", value: 500 }, { label: "2k", value: 2000 }, { label: "10k", value: 10000 }] },
     ],
     summary: "Estimate ⟨H⟩ from random-Pauli measurement snapshots of the current state, against the exact value." },
-  { id: "tomography", title: "Process tomography", category: "bench", mode: "run", maxQubits: 2, inputs: [
+  { id: "tomography", title: "Process tomography", category: "estimation", also: ["bench"], mode: "run", maxQubits: 2, inputs: [
       { kind: "choice", key: "channel", label: "", fallback: 0, options: [{ label: "ideal", value: 0 }, { label: "noisy", value: 1 }] },
     ],
     summary: "The circuit's Pauli transfer matrix reconstructed from prepared inputs and Pauli readouts; process and gate fidelity." },
@@ -402,7 +413,7 @@ ANALYSES.push(
       { kind: "int", key: "slot", label: "M", min: 1, max: 9, fallback: 1 },
     ],
     summary: "The circuit against a stored circuit (STO): same operator?, process and average gate fidelity, state fidelity, resources." },
-  { id: "plot", title: "Custom plot", category: "verify", mode: "run", maxQubits: 14, inputs: [
+  { id: "plot", title: "Custom plot", category: "plotting", also: ["verify"], mode: "run", maxQubits: 14, inputs: [
       { kind: "choice", key: "quantity", label: "plot", fallback: 0, options: [
         { label: "⟨Z⟩", value: 0 }, { label: "⟨X⟩", value: 1 }, { label: "⟨Y⟩", value: 2 }, { label: "purity", value: 3 }, { label: "S(q)", value: 4 },
         { label: "mid S", value: 5 }, { label: "Q", value: 6 }, { label: "M₂", value: 7 }, { label: "⟨H⟩", value: 8 },
@@ -411,7 +422,7 @@ ANALYSES.push(
       obs,
     ],
     summary: "Any of these quantities along the circuit (after each step), over one period of t, or over another symbol." },
-  { id: "plotprogram", title: "Plot program (JavaScript)", category: "verify", mode: "run", maxQubits: 14, inputs: [
+  { id: "plotprogram", title: "Plot program (JavaScript)", category: "plotting", also: ["verify"], mode: "run", maxQubits: 14, inputs: [
     { kind: "code", key: "code", label: "program" },
   ], summary: "Draw anything from the state with a few lines of JavaScript: the program gets data (amplitudes, probabilities, per-qubit ρ, symbols) and returns shapes. It runs sandboxed: its own worker, no network or storage, a time limit." },
   { id: "selftest", title: "Self-test", category: "verify", mode: "run", maxQubits: 1024, inputs: [],
@@ -461,6 +472,27 @@ export function symbolValue(spec: Extract<InputSpec, { kind: "symbol" }>, opts: 
   return symbols[0] ?? "";
 }
 
+/** The panels a group lists: those at home there, then those listed there too. */
 export function analysesIn(cat: Category): AnalysisMeta[] {
-  return ANALYSES.filter((a) => a.category === cat);
+  return [...ANALYSES.filter((a) => a.category === cat), ...ANALYSES.filter((a) => a.also?.includes(cat))];
+}
+
+const GROUP_LABEL = Object.fromEntries(CATEGORIES.map((c) => [c.id, c.label])) as Record<Category, string>;
+/** The labels of every group a panel appears in, home first. */
+export const groupsOf = (a: AnalysisMeta) => [a.category, ...(a.also ?? [])].map((g) => GROUP_LABEL[g]);
+
+const fold = (x: string) => x.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+/**
+ * Panels matching a search: every word of the query must appear in the id,
+ * title, summary or group names. Title matches first, then summary-only ones.
+ */
+export function searchAnalyses(query: string): AnalysisMeta[] {
+  const words = fold(query).split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  const hits = ANALYSES.filter((a) => {
+    const hay = fold(`${a.id} ${a.title} ${a.summary} ${groupsOf(a).join(" ")}`);
+    return words.every((w) => hay.includes(w));
+  });
+  const inTitle = (a: AnalysisMeta) => words.every((w) => fold(`${a.title} ${a.id}`).includes(w));
+  return [...hits.filter(inTitle), ...hits.filter((a) => !inTitle(a))];
 }

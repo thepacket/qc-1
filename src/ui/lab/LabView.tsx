@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { Calculator } from "../../calc/calculator";
-import { ANALYSIS_BY_ID, CATEGORIES, analysesIn, cutDefault, inputValue, pauliValue, symbolValue } from "../../analysis/catalog";
+import { ANALYSIS_BY_ID, cutDefault, groupsOf, inputValue, pauliValue, symbolValue } from "../../analysis/catalog";
 import { pauliPresets } from "../../analysis/pauliPresets";
 import { PLOT_PRESETS } from "../../analysis/plotProgram";
 import { symbolGlyph } from "../../calc/entry";
@@ -26,19 +26,33 @@ function useLitRow(index: number) {
   return lit;
 }
 
+/** LAB search: a phone-keyboard field; typing lists the matches, clearing it goes back. */
+function SearchField({ calc }: { calc: Calculator }) {
+  return (
+    <input className="lab-search" type="search" placeholder="Search analyses (e.g. entropy, OTOC, Berry)" aria-label="Search analyses"
+      value={calc.lab.query} autoFocus={calc.lab.group === "search"} autoCapitalize="none" autoCorrect="off" spellCheck={false} enterKeyHint="search"
+      onChange={(e) => calc.labSearch(e.target.value)}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") (e.target as HTMLInputElement).blur(); e.stopPropagation(); }} />
+  );
+}
+
 function Categories({ calc }: { calc: Calculator }) {
   const lit = useLitRow(calc.lab.index);
+  const groups = calc.labGroups();
   return (
     <div className="view">
-      <div className="view-head">LAB · choose a category (◀ ▶ =, or tap)</div>
+      <div className="view-head">LAB · choose a group (◀ ▶ =, or tap)</div>
+      <SearchField calc={calc} />
       <div className="rows">
-        {CATEGORIES.map((c, i) => {
-          const count = analysesIn(c.id).length;
+        {groups.map((g, i) => {
+          const count = g.items.length;
+          // Favourites and Recent only show once they have something in them.
+          if (!count && (g.id === "fav" || g.id === "recent")) return null;
           return (
-            <button key={c.id} ref={i === calc.lab.index ? lit : undefined}
-              className={`cat-row${i === calc.lab.index ? " on" : ""}`} disabled={count === 0}
+            <button key={g.id} ref={i === calc.lab.index ? lit : undefined}
+              className={`cat-row${i === calc.lab.index ? " on" : ""}${g.id === "fav" || g.id === "recent" ? " pinned" : ""}`} disabled={count === 0}
               onClick={() => calc.labPick("cats", i)}>
-              <span>{c.label}</span>
+              <span>{g.label}</span>
               <span className="dim">{count || "soon"}</span>
             </button>
           );
@@ -51,22 +65,26 @@ function Categories({ calc }: { calc: Calculator }) {
 const fits = (m: AnalysisMeta, n: number) => n <= m.maxQubits && n >= (m.minQubits ?? 1);
 
 function List({ calc }: { calc: Calculator }) {
-  const cat = CATEGORIES[calc.lab.cat];
-  const items = analysesIn(cat.id);
+  const group = calc.labGroup();
+  const items = group.items;
+  const search = group.id === "search";
   const lit = useLitRow(calc.lab.index);
   return (
     <div className="view">
       <div className="view-head lab-head">
-        <button className="back" onClick={() => calc.labBack()} aria-label="Back to categories">‹</button>
-        <span>{cat.label}</span>
+        <button className="back" onClick={() => calc.labBack()} aria-label="Back to groups">‹</button>
+        <span>{search ? `${items.length} match${items.length === 1 ? "" : "es"}` : group.label}</span>
       </div>
+      {search && <SearchField calc={calc} />}
+      {search && !items.length && <div className="dim lab-empty">No analysis matches “{calc.lab.query}”.</div>}
+      {!search && !items.length && <div className="dim lab-empty">{group.id === "fav" ? "No favourites: ☆ on an analysis adds it here." : "Nothing here yet."}</div>}
       <div className="rows">
         {items.map((a, i) => (
           <button key={a.id} ref={i === calc.lab.index ? lit : undefined}
             className={`lab-item${i === calc.lab.index ? " on" : ""}`} disabled={!fits(a, calc.n)}
             onClick={() => calc.labPick("list", i)}>
             <span className="t">{a.title}{!fits(a, calc.n) && <span className="dim"> · n {a.minQubits && calc.n < a.minQubits ? `≥ ${a.minQubits}` : `≤ ${a.maxQubits}`}</span>}</span>
-            <span className="s">{a.summary}</span>
+            <span className="s">{a.summary}{search && <span className="dim"> · {groupsOf(a).join(" · ")}</span>}</span>
           </button>
         ))}
       </div>
@@ -95,6 +113,10 @@ function AnalysisScreen({ calc, meta }: { calc: Calculator; meta: AnalysisMeta }
         {a?.status === "done" && res && !res.error && !stale && (
           <button className="lab-status" onClick={() => calc.pinAnalysis()} aria-label="Pin this result to the session report">PIN</button>
         )}
+        <button className={`lab-fav${calc.isFavourite(meta.id) ? " on" : ""}`} onClick={() => calc.toggleFavourite(meta.id)}
+          aria-pressed={calc.isFavourite(meta.id)} aria-label={calc.isFavourite(meta.id) ? "Remove from favourites" : "Add to favourites"}>
+          {calc.isFavourite(meta.id) ? "★" : "☆"}
+        </button>
       </div>
       <div className="rows lab-body">
         {meta.inputs.length > 0 && (

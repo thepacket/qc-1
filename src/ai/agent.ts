@@ -16,7 +16,7 @@ import type { CustomGate } from "../calc/custom";
 import { setCustomGates } from "../calc/custom";
 import type { NoiseModel } from "../noise/model";
 import type { AnalysisResult, Chart } from "../analysis/types";
-import { ANALYSES, ANALYSIS_BY_ID } from "../analysis/catalog";
+import { ANALYSES, ANALYSIS_BY_ID, groupsOf } from "../analysis/catalog";
 import { exportQasm3 } from "../qasm/fromTape";
 import { importQasm } from "../qasm/import";
 import { Register } from "../calc/register";
@@ -105,8 +105,8 @@ export async function executeTool(name: string, rawArgs: string, env: AgentEnv):
       }
       case "list_analyses": {
         const f = typeof args.filter === "string" ? args.filter.toLowerCase() : "";
-        const list = ANALYSES.filter((a) => a.id !== "plotprogram" && (!f || `${a.id} ${a.title} ${a.category} ${a.summary}`.toLowerCase().includes(f))).map((a) => ({
-          id: a.id, title: a.title, category: a.category, maxQubits: a.maxQubits,
+        const list = ANALYSES.filter((a) => a.id !== "plotprogram" && (!f || `${a.id} ${a.title} ${groupsOf(a).join(" ")} ${a.summary}`.toLowerCase().includes(f))).map((a) => ({
+          id: a.id, title: a.title, groups: groupsOf(a), maxQubits: a.maxQubits,
           options: a.inputs.map((s) => ({ name: s.key, kind: s.kind, ...("options" in s ? { values: s.options.map((o) => o.value) } : {}), ...("min" in s ? { min: s.min, max: s.max } : {}) })),
         }));
         return { result: JSON.stringify(list), show: { kind: "tool", text: `looked up analyses${f ? ` (“${f}”)` : ""}` } };

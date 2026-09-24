@@ -9,8 +9,9 @@ import type { NoiseModel } from "../noise/model";
 import type { ViewData } from "../calc/core";
 
 export type Category =
-  | "state" | "measurement" | "phase" | "metrology" | "entanglement" | "dynamics"
-  | "operator" | "structure" | "noise" | "bench" | "qec" | "verify" | "tools";
+  | "state" | "measurement" | "phase" | "entanglement" | "correlations" | "entspectrum"
+  | "metrology" | "geometry" | "variational" | "dynamics" | "chaos" | "operator" | "thermal"
+  | "structure" | "tools" | "noise" | "bench" | "estimation" | "qec" | "plotting" | "verify";
 
 /** Inputs an analysis screen shows. `key` names the field in the options object. */
 export type InputSpec =
@@ -36,7 +37,10 @@ export type Opts = Record<string, unknown>;
 export type AnalysisMeta = {
   id: string;
   title: string;
+  /** Home group (the breadcrumb, the help page). */
   category: Category;
+  /** Other groups that list it too (one implementation, several places). */
+  also?: Category[];
   summary: string;
   inputs: InputSpec[];
   /** Hard cap; above it the analysis is listed but disabled. */

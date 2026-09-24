@@ -10,7 +10,8 @@ import { matrixGate, parseMatrix, parseState, stateGate } from "./typed";
 import { importQasm } from "../qasm/import";
 import { stepCaptions } from "../qasm/captions";
 import { DEFAULT_NOISE, isIdeal, sanitiseNoise, type NoiseModel } from "../noise/model";
-import { ANALYSIS_BY_ID, CATEGORIES, analysesIn } from "../analysis/catalog";
+import { ANALYSIS_BY_ID, CATEGORIES, analysesIn, searchAnalyses } from "../analysis/catalog";
+import type { AnalysisMeta } from "../analysis/types";
 import type { AnalysisReply, AnalysisResult, Opts, Proposal } from "../analysis/types";
 import { splitArgs, TOKENS, toDisplay, VARS, varToken, symbolGlyph, type Token } from "./entry";
 import type { Cmd, Mode, Result, ViewData } from "./core";
@@ -77,7 +78,16 @@ export type Mark = { q: number; anti: boolean };
 export type Message = { text: string; kind: "info" | "note" | "error" };
 
 export type LabLevel = "cats" | "list" | "view";
-export type LabState = { level: LabLevel; cat: number; index: number; id: string | null; opts: Record<string, Opts> };
+/**
+ * LAB navigation. `group` is a category id, or "fav" (★ Favourites), "recent"
+ * or "search" (the query's matches). `index` is the lit row of the current level.
+ */
+export type LabState = {
+  level: LabLevel; group: string; index: number; id: string | null; opts: Record<string, Opts>;
+  favs: string[]; recent: string[]; query: string;
+};
+export type LabGroup = { id: string; label: string; items: AnalysisMeta[] };
+const RECENT_MAX = 8;
 
 export type Saved = {
   v: 1; n: number; sel: number; mode: Mode; shots: number; tape: Entry[];
@@ -177,7 +187,7 @@ export class Calculator {
   noisyView: { view: NonNullable<AnalysisResult["view"]> | null; error?: string; rev: number; seq: number } | null = null;
   private vSeq = 0;
   /** LAB browser position and per-analysis options. */
-  lab: LabState = { level: "cats", cat: 0, index: 0, id: null, opts: {} };
+  lab: LabState = { level: "cats", group: "state", index: 2, id: null, opts: {}, favs: [], recent: [], query: "" };
   analysis: AnalysisView | null = null;
   /** Register revision (from the core); analyses compare against it. */
   rev = 0;
@@ -211,7 +221,16 @@ export class Calculator {
       this.sel = Math.max(0, Math.min(saved.sel, saved.n - 1));
       this.mode = saved.mode;
       this.shots = saved.shots;
-      if (saved.lab && typeof saved.lab === "object") this.lab = { ...this.lab, ...saved.lab, opts: saved.lab.opts ?? {} };
+      if (saved.lab && typeof saved.lab === "object") {
+        const l = saved.lab as Partial<LabState>;
+        const ids = (x: unknown) => (Array.isArray(x) ? x.filter((i): i is string => typeof i === "string" && i in ANALYSIS_BY_ID) : []);
+        this.lab = { ...this.lab, opts: l.opts ?? {}, favs: ids(l.favs), recent: ids(l.recent) };
+        // Sessions from before groups kept a category index: reopen the panel, else start at the list of groups.
+        if (l.level === "view" && l.id && ANALYSIS_BY_ID[l.id]) {
+          const home = ANALYSIS_BY_ID[l.id].category;
+          this.lab = { ...this.lab, level: "view", id: l.id, group: home, index: Math.max(0, analysesIn(home).findIndex((a) => a.id === l.id)) };
+        }
+      }
       if (saved.scope) this.scope = { ...saved.scope };
       if (saved.memory) this.memory = saved.memory;
       if (Array.isArray(saved.gates)) this.customGates = saved.gates;
@@ -418,12 +437,52 @@ export class Calculator {
 
   // ─── LAB ────────────────────────────────────────────────────────────
 
-  /** Open an analysis screen (from a tap or = in the list). */
-  openAnalysis(id: string) {
+  /** Favourites and Recent first, then every category. */
+  labGroups(): LabGroup[] {
+    const pick = (ids: string[]) => ids.map((i) => ANALYSIS_BY_ID[i]).filter(Boolean);
+    return [
+      { id: "fav", label: "★ Favourites", items: pick(this.lab.favs) },
+      { id: "recent", label: "Recent", items: pick(this.lab.recent) },
+      ...CATEGORIES.map((c) => ({ id: c.id, label: c.label, items: analysesIn(c.id) })),
+    ];
+  }
+
+  /** The group being listed (the search results for "search"). */
+  labGroup(): LabGroup {
+    if (this.lab.group === "search") return { id: "search", label: `Search: ${this.lab.query}`, items: searchAnalyses(this.lab.query) };
+    return this.labGroups().find((g) => g.id === this.lab.group) ?? this.labGroups()[2];
+  }
+
+  /** Type into LAB search: the matches become the list; an empty query goes back to the groups. */
+  labSearch(query: string) {
+    if (query.trim()) this.lab = { ...this.lab, query, level: "list", group: "search", index: 0 };
+    else this.lab = { ...this.lab, query: "", level: "cats", index: this.firstGroup() };
+    this.changed();
+  }
+
+  /** The first group with something in it (Favourites when there are any). */
+  private firstGroup() {
+    return Math.max(0, this.labGroups().findIndex((g) => g.items.length > 0));
+  }
+
+  isFavourite(id: string) {
+    return this.lab.favs.includes(id);
+  }
+
+  toggleFavourite(id: string) {
+    const favs = this.isFavourite(id) ? this.lab.favs.filter((x) => x !== id) : [...this.lab.favs, id];
+    this.lab = { ...this.lab, favs };
+    this.changed();
+  }
+
+  /** Open an analysis screen (from a tap or = in a list; `group` is where it was picked, else its home). */
+  openAnalysis(id: string, group?: string) {
     const meta = ANALYSIS_BY_ID[id];
     if (!meta) return;
-    const cat = CATEGORIES.findIndex((c) => c.id === meta.category);
-    this.lab = { ...this.lab, level: "view", id, cat, index: analysesIn(meta.category).findIndex((a) => a.id === id) };
+    const g = group ?? meta.category;
+    const items = g === "search" ? searchAnalyses(this.lab.query) : (this.labGroups().find((x) => x.id === g)?.items ?? analysesIn(meta.category));
+    const recent = [id, ...this.lab.recent.filter((x) => x !== id)].slice(0, RECENT_MAX);
+    this.lab = { ...this.lab, level: "view", id, group: g, index: Math.max(0, items.findIndex((a) => a.id === id)), recent };
     this.analysis = null;
     this.requestAnalysis();
     this.changed();
@@ -441,7 +500,14 @@ export class Calculator {
 
   labBack() {
     const lvl = this.lab.level;
-    this.lab = lvl === "view" ? { ...this.lab, level: "list" } : { ...this.lab, level: "cats", index: this.lab.cat };
+    const groups = this.labGroups(), at = groups.findIndex((g) => g.id === this.lab.group);
+    // A group emptied meanwhile (the last favourite removed) is skipped on the way back.
+    const emptied = this.lab.group !== "search" && !(groups[at]?.items.length);
+    const home = emptied ? this.firstGroup() : Math.max(0, at);
+    this.lab = lvl === "view" && !emptied ? { ...this.lab, level: "list" }
+      : lvl === "view" ? { ...this.lab, level: "cats", index: home }
+      : this.lab.group === "search" ? { ...this.lab, level: "cats", query: "", index: this.firstGroup() }
+      : { ...this.lab, level: "cats", index: home };
     if (lvl === "view") {
       this.analysis = null;
       this.engine.cancelAnalysis();
@@ -452,10 +518,12 @@ export class Calculator {
   }
 
   labPick(level: "cats" | "list", index: number) {
-    if (level === "cats") this.lab = { ...this.lab, level: "list", cat: index, index: 0 };
-    else {
-      const a = analysesIn(CATEGORIES[this.lab.cat].id)[index];
-      if (a) return this.openAnalysis(a.id);
+    if (level === "cats") {
+      const g = this.labGroups()[index];
+      if (g?.items.length) this.lab = { ...this.lab, level: "list", group: g.id, index: 0 };
+    } else {
+      const a = this.labGroup().items[index];
+      if (a) return this.openAnalysis(a.id, this.lab.group);
     }
     this.changed();
   }
@@ -553,9 +621,11 @@ export class Calculator {
       }
       return false;
     }
-    const len = level === "cats" ? CATEGORIES.length : analysesIn(CATEGORIES[this.lab.cat].id).length;
-    // Categories with nothing in them yet are skipped.
-    const usable = (i: number) => level !== "cats" || analysesIn(CATEGORIES[i].id).length > 0;
+    const groups = this.labGroups();
+    const len = level === "cats" ? groups.length : this.labGroup().items.length;
+    if (!len) return id === "left" || id === "right" || id === "eq";
+    // Empty groups (no favourites or recent panels yet) are skipped.
+    const usable = (i: number) => level !== "cats" || groups[i].items.length > 0;
     const step = (d: number) => {
       let i = this.lab.index;
       for (let k = 0; k < len; k++) {

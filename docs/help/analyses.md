@@ -1,6 +1,9 @@
 # LAB analyses
 
-Generated from `src/analysis/catalog.ts` (`npm run docs:help`). Each analysis is
+Generated from `src/analysis/catalog.ts` (`npm run docs:help`). An analysis has one
+home group and may also be listed in related ones ("see …"). In the LAB, search
+matches titles, summaries and group names; ☆ on an analysis adds it to ★ Favourites.
+Each analysis is
 checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 
 ## State
@@ -9,7 +12,10 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 - **Amplitude · phase** (live, n ≤ 20) — One bar per basis state: length |amplitude|, colour = phase. Shows interference at a glance.
 - **Phase disks** (live, n ≤ 20) — Each qubit's coherence ρ₁₀ in the complex plane: angle = relative phase, length ≤ ½.
 - **Q-sphere** (live, n ≤ 8) — Basis states on a sphere by Hamming weight; size = |amplitude|, colour = phase.
+- **Multifractal dimensions** (live, n ≤ 16) — Generalized fractal dimensions D_q of the basis distribution: 1 delocalized, 0 localized.
+- **Coherence** (live, n ≤ 20) — l₁-norm and relative-entropy coherence in the computational basis.
 - **Bloch trajectory** (RUN, n ≤ 12; inputs: qubit) — Each qubit's Bloch vector as t sweeps [0, 2π]: the path it traces on its sphere.
+- **Participation** (live, n ≤ 16) — Inverse participation ratio, participation ratio and entropies of the basis distribution; plus its growth along the circuit.
 
 ## Measurement
 
@@ -25,18 +31,7 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 - **Characteristic function** (live, n ≤ 4) — |χ(u,v)| = |⟨P⟩| on the (X-support, Z-support) lattice; the Fourier dual of Wigner.
 - **Majorana stars** (live, n ≤ 6) — The symmetric part of the state as n stars on the sphere.
 
-## Expectation & metrology
-
-- **Expectation value** (live, n ≤ 20; inputs: observable, shots) — ⟨H⟩ for a Pauli string or Pauli sum, with its variance and the shot-noise error σ/√N.
-- **Optimise ⟨H⟩ (VQE)** (RUN, n ≤ 12; inputs: observable, goal, method, steps) — Gradient descent on ⟨H⟩ over the circuit's symbols (finite differences); apply the result to the sliders.
-- **Landscape** (RUN, n ≤ 12; inputs: observable, x, y) — ⟨H⟩ as one or two symbols sweep [−π, π]: a curve or a heatmap.
-- **Barren-plateau check** (RUN, n ≤ 12; inputs: observable, samples) — Variance of ∂⟨H⟩/∂θ over random parameter points; exponentially small means a barren plateau.
-- **Quantum Fisher information** (live, n ≤ 20; inputs: axis) — F_Q = 4 Var(J) for collective rotations: > N witnesses entanglement, N² is the Heisenberg limit.
-- **QFI matrix** (live, n ≤ 14) — 3×3 QFI matrix over Jx, Jy, Jz; its top eigenvalue is the best single-axis QFI.
-- **Spin squeezing** (live, n ≤ 14, n ≥ 2) — Wineland ξ² = N·min ΔJ⊥² / |⟨J⟩|²; below 1 is squeezed (and entangled).
-- **Quantum geometric tensor** (live, n ≤ 12) — Fubini–Study metric and Berry curvature over the circuit's symbols (finite differences).
-
-## Entanglement & correlations
+## Entanglement: bipartite
 
 - **Reduced density matrix** (live, n ≤ 20; inputs: keep) — ρ of the kept qubits (others traced out), with purity Tr ρ² and entropy.
 - **Mutual information** (live, n ≤ 12, n ≥ 2) — I(i:j) = S(i) + S(j) − S(ij) for every pair, in bits: total (classical + quantum) correlation.
@@ -46,6 +41,12 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 - **Entropy profile** (live, n ≤ 20, n ≥ 2) — Entanglement entropy across every contiguous cut: area law vs volume law.
 - **Page curve** (live, n ≤ 20, n ≥ 2) — Entropy profile against the Haar-random (Page) average: how scrambled is the state?
 - **Rényi spectrum** (live, n ≤ 20, n ≥ 2; inputs: A) — Rényi entropies S_α across the cut, from the log rank (α→0) to the min-entropy (α→∞).
+- **Prefix conditional entropy** (live, n ≤ 20, n ≥ 2; inputs: region size) — S(qⱼ | q₀…qⱼ₋₁) = S(q₀…qⱼ) − S(q₀…qⱼ₋₁) for each site of the region q₀…: it sums to S(region) but depends on the order and can be negative, so it is not an entanglement contour.
+- **Negativity spectrum** (live, n ≤ 6, n ≥ 2; inputs: A) — Eigenvalues of the partial transpose across the cut; the negative ones are the entanglement.
+- **PT moments** (live, n ≤ 6, n ≥ 2; inputs: A) — Moments Tr[(ρ^T_A)ⁿ]; p₃ < p₂² certifies entanglement from low moments alone.
+
+## Multipartite & correlations
+
 - **Tripartite information** (live, n ≤ 14, n ≥ 4; inputs: A, B, C) — I₃ = I(A:B) + I(A:C) − I(A:BC); negative means information about A is scrambled into BC.
 - **Total correlation** (live, n ≤ 14, n ≥ 2) — Multi-information Σ S(qᵢ) − S(all): every qubit's entanglement with the rest, added up.
 - **CHSH nonlocality** (live, n ≤ 12, n ≥ 2) — Maximal CHSH value per pair (Horodecki); above 2 the pair violates a Bell inequality.
@@ -55,17 +56,39 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 - **Structure factor** (live, n ≤ 16, n ≥ 2) — S(k): Fourier transform of the ZZ correlations; k = 0 ferromagnetic, k = π Néel order.
 - **Symmetry sectors** (live, n ≤ 20) — Weight in each excitation-number sector and the Z₂ parity ⟨ΠZ⟩.
 - **Counting statistics** (live, n ≤ 20; inputs: A) — Distribution of the number of 1s in region A; its variance is the charge fluctuation.
-- **Prefix conditional entropy** (live, n ≤ 20, n ≥ 2; inputs: region size) — S(qⱼ | q₀…qⱼ₋₁) = S(q₀…qⱼ) − S(q₀…qⱼ₋₁) for each site of the region q₀…: it sums to S(region) but depends on the order and can be negative, so it is not an entanglement contour.
+- **Three-tangle** (live, n ≤ 3, n ≥ 3; inputs: focal) — Genuine tripartite entanglement τ₃ (CKW): 1 for GHZ, 0 for W.
+
+## Entanglement spectrum
+
 - **Schmidt gap** (live, n ≤ 20, n ≥ 2) — λ₁ − λ₂ across every cut; it closes at a critical point.
 - **Entanglement Hamiltonian** (live, n ≤ 20, n ≥ 2; inputs: A) — Entanglement energies ξᵢ = −ln λᵢ (Li–Haldane spectrum) across the cut.
 - **Entanglement-spectrum statistics** (live, n ≤ 20, n ≥ 3; inputs: A) — Gap ratios of the entanglement spectrum: ⟨r⟩ ≈ 0.386 Poisson (localized), 0.536 GOE (ergodic).
 - **MPS bond dimension** (live, n ≤ 20, n ≥ 2; inputs: error) — Bond dimension χ a matrix-product state needs at each cut for the chosen truncation error.
-- **Negativity spectrum** (live, n ≤ 6, n ≥ 2; inputs: A) — Eigenvalues of the partial transpose across the cut; the negative ones are the entanglement.
-- **PT moments** (live, n ≤ 6, n ≥ 2; inputs: A) — Moments Tr[(ρ^T_A)ⁿ]; p₃ < p₂² certifies entanglement from low moments alone.
-- **Three-tangle** (live, n ≤ 3, n ≥ 3; inputs: focal) — Genuine tripartite entanglement τ₃ (CKW): 1 for GHZ, 0 for W.
-- **Multifractal dimensions** (live, n ≤ 16) — Generalized fractal dimensions D_q of the basis distribution: 1 delocalized, 0 localized.
-- **Coherence** (live, n ≤ 20) — l₁-norm and relative-entropy coherence in the computational basis.
-- **Participation** (live, n ≤ 16) — Inverse participation ratio, participation ratio and entropies of the basis distribution; plus its growth along the circuit.
+- **Schmidt spectrum**: see Entanglement: bipartite.
+- **Negativity spectrum**: see Entanglement: bipartite.
+
+## Expectation & metrology
+
+- **Expectation value** (live, n ≤ 20; inputs: observable, shots) — ⟨H⟩ for a Pauli string or Pauli sum, with its variance and the shot-noise error σ/√N.
+- **Quantum Fisher information** (live, n ≤ 20; inputs: axis) — F_Q = 4 Var(J) for collective rotations: > N witnesses entanglement, N² is the Heisenberg limit.
+- **QFI matrix** (live, n ≤ 14) — 3×3 QFI matrix over Jx, Jy, Jz; its top eigenvalue is the best single-axis QFI.
+- **Spin squeezing** (live, n ≤ 14, n ≥ 2) — Wineland ξ² = N·min ΔJ⊥² / |⟨J⟩|²; below 1 is squeezed (and entangled).
+- **Optimise ⟨H⟩ (VQE)**: see Variational optimisation.
+- **Landscape**: see Variational optimisation.
+- **Barren-plateau check**: see Variational optimisation.
+- **Quantum geometric tensor**: see Geometry & topology.
+
+## Geometry & topology
+
+- **Quantum geometric tensor** (live, n ≤ 12) — Fubini–Study metric and Berry curvature over the circuit's symbols (finite differences).
+- **Berry phase** (RUN, n ≤ 12; inputs: x, y, loop) — Geometric phase around a square loop in two symbols, centred on their current values (discrete Wilson loop).
+- **Chern number** (RUN, n ≤ 12; inputs: x, y, grid) — Berry flux over the torus of two symbols in [0, 2π): an integer for a topological band.
+
+## Variational optimisation
+
+- **Optimise ⟨H⟩ (VQE)** (RUN, n ≤ 12; inputs: observable, goal, method, steps) — Gradient descent on ⟨H⟩ over the circuit's symbols (finite differences); apply the result to the sliders.
+- **Landscape** (RUN, n ≤ 12; inputs: observable, x, y) — ⟨H⟩ as one or two symbols sweep [−π, π]: a curve or a heatmap.
+- **Barren-plateau check** (RUN, n ≤ 12; inputs: observable, samples) — Variance of ∂⟨H⟩/∂θ over random parameter points; exponentially small means a barren plateau.
 
 ## Dynamics
 
@@ -75,15 +98,26 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 - **Imbalance** (live, n ≤ 14) — Staggered magnetisation (1/n)Σ(−1)ⁱ⟨Zᵢ⟩ over t: it decays when thermalising, stays in localised phases.
 - **Entanglement growth rate** (live, n ≤ 12, n ≥ 2) — Half-cut entropy S(t) and its steepest slope max dS/dt, in bits per unit of the parameter t.
 - **Negativity over t** (live, n ≤ 12, n ≥ 2; inputs: A) — Log-negativity across the cut as t sweeps: growth, oscillation, sudden death and revival.
+- **Autocorrelation** (RUN, n ≤ 6; inputs: qubit) — Infinite-temperature ⟨Z(t)Z(0)⟩ and its spectrum: how long a qubit remembers its polarisation.
+- **Space-time ⟨Z⟩** (live, n ≤ 14) — ⟨Z⟩ of every qubit after every circuit step.
+- **Space-time entropy** (live, n ≤ 12) — Each qubit's entanglement entropy after every circuit step: the entanglement front.
+- **Entanglement asymmetry** (live, n ≤ 12, n ≥ 2) — How much the first half breaks the excitation-number symmetry, after every step (quantum Mpemba).
+- **OTOC**: see Chaos & scrambling.
+- **OTOC light cone**: see Chaos & scrambling.
+- **Butterfly velocity**: see Chaos & scrambling.
+- **OTOC growth rate**: see Chaos & scrambling.
+- **Operator weight**: see Chaos & scrambling.
+
+## Chaos & scrambling
+
+- **Level statistics** (live, n ≤ 6, n ≥ 2; inputs: H) — Gap ratio ⟨r⟩ of H's spectrum: 0.386 Poisson (integrable), 0.531 GOE (chaotic).
+- **Spectral form factor** (live, n ≤ 6; inputs: H) — |Σ e^(−iEt)|²/D² on log-log axes: dip, ramp, plateau.
+- **Krylov complexity** (live, n ≤ 6; inputs: H) — Lanczos coefficients bₙ of H from the current state, and the spread complexity C(t).
 - **OTOC** (RUN, n ≤ 6, n ≥ 2; inputs: W on, V on) — C(t) = 1 − Re⟨W(t)VW(t)V⟩ on |0…0⟩ with Z operators: it rises when the operator front reaches V.
 - **OTOC light cone** (RUN, n ≤ 5, n ≥ 2; inputs: W on) — OTOC over every qubit and t: the operator light cone.
 - **Butterfly velocity** (RUN, n ≤ 5, n ≥ 2; inputs: W on) — Arrival time of the OTOC front at each distance, and the fitted speed v_B.
 - **OTOC growth rate** (RUN, n ≤ 6, n ≥ 2; inputs: W on, V on) — Slope of ln C(t) over the OTOC's first rising window, with the fit's R²: an empirical rate, a Lyapunov exponent only for chaotic dynamics.
 - **Operator weight** (RUN, n ≤ 4; inputs: Z on) — How Z on one qubit spreads under W(t) = U†WU: weight by Pauli support size, over t.
-- **Autocorrelation** (RUN, n ≤ 6; inputs: qubit) — Infinite-temperature ⟨Z(t)Z(0)⟩ and its spectrum: how long a qubit remembers its polarisation.
-- **Space-time ⟨Z⟩** (live, n ≤ 14) — ⟨Z⟩ of every qubit after every circuit step.
-- **Space-time entropy** (live, n ≤ 12) — Each qubit's entanglement entropy after every circuit step: the entanglement front.
-- **Entanglement asymmetry** (live, n ≤ 12, n ≥ 2) — How much the first half breaks the excitation-number symmetry, after every step (quantum Mpemba).
 
 ## Operator & spectrum
 
@@ -93,16 +127,17 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 - **Floquet spectrum** (RUN, n ≤ 6) — Eigenphases of U on the unit circle, with circular level-spacing statistics.
 - **Hamiltonian spectrum** (live, n ≤ 6; inputs: H) — Exact energy levels of a Pauli-sum H, the ground energy and gap, with ⟨H⟩ of the current state.
 - **Density of states** (live, n ≤ 6; inputs: H) — Histogram of H's energy levels.
-- **Level statistics** (live, n ≤ 6, n ≥ 2; inputs: H) — Gap ratio ⟨r⟩ of H's spectrum: 0.386 Poisson (integrable), 0.531 GOE (chaotic).
-- **Spectral form factor** (live, n ≤ 6; inputs: H) — |Σ e^(−iEt)|²/D² on log-log axes: dip, ramp, plateau.
-- **Krylov complexity** (live, n ≤ 6; inputs: H) — Lanczos coefficients bₙ of H from the current state, and the spread complexity C(t).
+- **Level statistics**: see Chaos & scrambling.
+- **Spectral form factor**: see Chaos & scrambling.
+- **Krylov complexity**: see Chaos & scrambling.
+
+## Thermalisation & thermodynamics
+
 - **Diagonal ensemble** (live, n ≤ 6; inputs: H) — The state's weight on each energy level of H, ⟨H⟩, ΔE and the effective dimension.
 - **Effective temperature** (live, n ≤ 6; inputs: H) — Boltzmann fit ln p = c − βE to the energy populations, and the β of the Gibbs state with the same ⟨H⟩ (non-degenerate H).
 - **ETH matrix elements** (RUN, n ≤ 5; inputs: H, O) — |⟨Eₘ|O|Eₙ⟩|² against ω = Eₘ − Eₙ, and the diagonal ⟨Eₙ|O|Eₙ⟩ (non-degenerate H).
 - **Eigenstate entanglement** (RUN, n ≤ 6, n ≥ 2; inputs: H) — Half-chain entropy of every eigenstate of H against its energy: volume-law arch vs area law.
 - **Work distribution** (RUN, n ≤ 5; inputs: H) — Two-point-measurement work W = Eₘ − Eₙ for the circuit as a quench from |0…0⟩ (energy-level projectors).
-- **Berry phase** (RUN, n ≤ 12; inputs: x, y, loop) — Geometric phase around a square loop in two symbols, centred on their current values (discrete Wilson loop).
-- **Chern number** (RUN, n ≤ 12; inputs: x, y, grid) — Berry flux over the torus of two symbols in [0, 2π): an integer for a topological band.
 
 ## Circuit structure
 
@@ -146,6 +181,11 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 - **Mirror circuits** (RUN, any n (also above 20 qubits)) — Success probability of random Clifford circuits followed by their inverse, by width and depth.
 - **T1 / T2 experiments** (RUN, any n (also above 20 qubits)) — Relaxation, Ramsey and echo decays over idle gates, with fitted T1, T2*, T2.
 - **Repetition code** (RUN, any n (also above 20 qubits); inputs: shots) — Logical error rate of the bit-flip code for d = 3, 5, 7 against the physical flip rate: exact and decoded.
+- **Classical shadows**: see Tomography & estimation.
+- **Process tomography**: see Tomography & estimation.
+
+## Tomography & estimation
+
 - **Classical shadows** (RUN, n ≤ 12; inputs: observable, snapshots) — Estimate ⟨H⟩ from random-Pauli measurement snapshots of the current state, against the exact value.
 - **Process tomography** (RUN, n ≤ 2; inputs: channel) — The circuit's Pauli transfer matrix reconstructed from prepared inputs and Pauli readouts; process and gate fidelity.
 
@@ -154,9 +194,14 @@ checked against Qiskit, Qiskit Aer, numpy or scipy references (`validation/`).
 - **QEC playground** (live, any n (also above 20 qubits); inputs: code, distance d, errors, random error rate %, random seed) — Put errors on a surface or repetition code (or draw them at random): the lit checks, the union-find decoder's correction, and whether a logical error slips through.
 - **QEC threshold** (RUN, any n (also above 20 qubits); inputs: code, errors, shots per point) — Logical error rate against the physical error rate for d = 3, 5, 7 (code capacity, union-find decoding): the curves cross at the threshold.
 
+## Visualisation & plotting
+
+- **Custom plot** (RUN, n ≤ 14; inputs: plot, over, observable) — Any of these quantities along the circuit (after each step), over one period of t, or over another symbol.
+- **Plot program (JavaScript)** (RUN, n ≤ 14; inputs: program) — Draw anything from the state with a few lines of JavaScript: the program gets data (amplitudes, probabilities, per-qubit ρ, symbols) and returns shapes. It runs sandboxed: its own worker, no network or storage, a time limit.
+
 ## Verification & export
 
 - **Compare with memory** (live, n ≤ 20; inputs: M) — The circuit against a stored circuit (STO): same operator?, process and average gate fidelity, state fidelity, resources.
-- **Custom plot** (RUN, n ≤ 14; inputs: plot, over, observable) — Any of these quantities along the circuit (after each step), over one period of t, or over another symbol.
-- **Plot program (JavaScript)** (RUN, n ≤ 14; inputs: program) — Draw anything from the state with a few lines of JavaScript: the program gets data (amplitudes, probabilities, per-qubit ρ, symbols) and returns shapes. It runs sandboxed: its own worker, no network or storage, a time limit.
 - **Self-test** (RUN, any n (also above 20 qubits)) — Replay the committed Qiskit/Aer references on this device: gates, random circuits, symbols, classical control, noise, stabilizer mode.
+- **Custom plot**: see Visualisation & plotting.
+- **Plot program (JavaScript)**: see Visualisation & plotting.

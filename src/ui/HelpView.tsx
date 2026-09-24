@@ -1,6 +1,6 @@
 import type { Calculator } from "../calc/calculator";
 import { KEYPAD } from "./keys";
-import { ANALYSES, CATEGORIES } from "../analysis/catalog";
+import { CATEGORIES, analysesIn } from "../analysis/catalog";
 
 /** Phone-first help: keys, 2ND functions (from the keypad), views, LAB, conventions. */
 export function HelpView({ calc }: { calc: Calculator }) {
@@ -31,8 +31,9 @@ export function HelpView({ calc }: { calc: Calculator }) {
         <p>CIRC ≡ → Examples: tap a program, then <b>▶ step through</b>. It loads at the start; ◀ ▶ under the display walk the steps with the program's own comments, in any view (KET, PROB, BLOCH…). ✕ ends it.</p>
         <h3>LAB</h3>
         <ul>
-          {CATEGORIES.map((c) => <li key={c.id}>{c.label} <span className="dim">· {ANALYSES.filter((a) => a.category === c.id).length}</span></li>)}
+          {CATEGORIES.map((c) => <li key={c.id}>{c.label} <span className="dim">· {analysesIn(c.id).length}</span></li>)}
         </ul>
+        <p>Some analyses appear in more than one group (OTOCs under Dynamics and Chaos, the QGT under Metrology and Geometry). The search field at the top of LAB finds an analysis by name, summary or group; ☆ on an analysis screen adds it to ★ Favourites, and the last ones you opened are under Recent.</p>
         <p>Noise: LAB → Noise &amp; error → Noise model (Qiskit Aer conventions). With noise on, PROB, BLOCH, SHOTS and the noise and benchmarking analyses use it.</p>
         <h3>AI chat</h3>
         <p>The <b>AI</b> button opens a chat with a model of your choice through OpenRouter, using your own API key (stored on this device only). It reads the circuit and state and runs LAB analyses; a circuit it suggests comes with APPLY, and UNDO takes it back.</p>

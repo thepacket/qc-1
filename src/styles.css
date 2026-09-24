@@ -442,6 +442,7 @@ button {
   text-align: left;
 }
 .cat-row.on { background: rgba(57, 135, 229, 0.28); box-shadow: inset 3px 0 0 var(--series-1); }
+.cat-row.pinned { color: var(--amber); }
 
 /* ── Expanded display ──────────────────────────────────────── */
 .handle {
@@ -507,6 +508,22 @@ button {
   color: var(--ink);
 }
 .lab-status.busy { border-color: var(--series-1); color: var(--series-1); }
+/* LAB search and favourites */
+.lab-search {
+  width: 100%;
+  margin: 2px 0 6px;
+  padding: 4px 8px;
+  font: 13px var(--sans);
+  color: var(--ink);
+  background: var(--lcd-hi);
+  border: 1px solid var(--grid);
+  border-radius: 4px;
+}
+.lab-search::placeholder { color: var(--ink-muted); }
+.lab-search:focus { outline: none; border-color: var(--series-1); }
+.lab-empty { font-size: 12px; padding: 4px 2px; }
+.lab-fav { font-size: 15px; line-height: 1; padding: 0 2px; color: var(--ink-muted); }
+.lab-fav.on { color: var(--amber); }
 .lab-body { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
 .lab-inputs { display: flex; flex-direction: column; gap: 4px; }
 .cut-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 11px; }

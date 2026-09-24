@@ -121,23 +121,94 @@ describe("LAB framework", () => {
     expect(c.tape).toHaveLength(2);
   });
 
-  test("◀ ▶ = navigate categories and lists, skipping empty categories", async () => {
-    const { CATEGORIES, analysesIn } = await import("../src/analysis/catalog");
+  test("◀ ▶ = navigate groups and lists, skipping empty groups (no favourites yet)", async () => {
+    const { analysesIn } = await import("../src/analysis/catalog");
     const c = calc();
     c.setMode("lab");
-    const usable = CATEGORIES.map((cat, i) => [i, analysesIn(cat.id).length] as const).filter(([, k]) => k > 0).map(([i]) => i);
+    const groups = c.labGroups();
+    const usable = groups.map((g, i) => [i, g.items.length] as const).filter(([, k]) => k > 0).map(([i]) => i);
+    expect(groups[c.lab.index].id).toBe("state"); // Favourites and Recent are empty: the lit row starts at State
     keys(c, "right");
     expect(c.lab.index).toBe(usable[1]);
     keys(c, "eq");
     expect(c.lab.level).toBe("list");
     keys(c, "eq");
     expect(c.lab.level).toBe("view");
-    expect(c.lab.id).toBe(analysesIn(CATEGORIES[usable[1]].id)[0].id);
+    expect(c.lab.id).toBe(groups[usable[1]].items[0].id);
     keys(c, "ac", "ac");
-    const ent = CATEGORIES.findIndex((x) => x.id === "entanglement");
+    const ent = groups.findIndex((x) => x.id === "entanglement");
     while (c.lab.index !== ent) keys(c, "right");
     keys(c, "eq", "eq");
     expect(c.lab.id).toBe("density");
+    expect(analysesIn("entanglement")[0].id).toBe("density");
+  });
+
+  test("a panel in two groups opens from either and goes back to the one it came from", () => {
+    const c = calc();
+    c.setMode("lab");
+    const at = (id: string) => c.labGroups().findIndex((g) => g.id === id);
+    for (const g of ["dynamics", "chaos"]) {
+      c.labPick("cats", at(g));
+      const i = c.labGroup().items.findIndex((a) => a.id === "otoc");
+      expect(i).toBeGreaterThanOrEqual(0);
+      c.labPick("list", i);
+      expect(c.lab.id).toBe("otoc");
+      c.labBack(); c.labBack();
+      expect(c.labGroups()[c.lab.index].id).toBe(g);
+    }
+  });
+
+  test("favourites, recent and search", () => {
+    const c = calc();
+    c.setMode("lab");
+    c.openAnalysis("berry");
+    c.openAnalysis("qfi");
+    c.toggleFavourite("qfi");
+    expect(c.isFavourite("qfi")).toBe(true);
+    const g = (id: string) => c.labGroups().find((x) => x.id === id)!.items.map((a) => a.id);
+    expect(g("fav")).toEqual(["qfi"]);
+    expect(g("recent")).toEqual(["qfi", "berry"]);
+    c.labBack(); c.labBack();
+    expect(c.labGroups()[c.lab.index].id).toBe(c.labGroups()[c.lab.index].id);
+    c.labSearch("chern");
+    expect(c.lab.level).toBe("list");
+    expect(c.labGroup().items.map((a) => a.id)).toEqual(["chern"]);
+    c.labPick("list", 0);
+    expect(c.lab.id).toBe("chern");
+    c.labBack();
+    expect(c.labGroup().id).toBe("search"); // back to the matches
+    c.labBack();
+    expect(c.lab.level).toBe("cats");
+    expect(c.lab.query).toBe("");
+    c.toggleFavourite("qfi");
+    expect(g("fav")).toEqual([]);
+    // Removing the last favourite from inside Favourites: back skips the emptied group.
+    c.toggleFavourite("zx");
+    c.labPick("cats", 0);
+    c.labPick("list", 0);
+    c.toggleFavourite("zx");
+    c.labBack();
+    expect(c.lab.level).toBe("cats");
+    expect(c.labGroups()[c.lab.index].items.length).toBeGreaterThan(0);
+  });
+
+  test("favourites and recent survive a reload; a session saved with a category index still opens", () => {
+    const a = calc();
+    a.setMode("lab");
+    a.openAnalysis("chern");
+    a.toggleFavourite("chern");
+    const saved = JSON.parse(JSON.stringify(a.save()));
+    const b = new Calculator(new InlineEngine(runAnalysis), saved);
+    expect(b.lab.favs).toEqual(["chern"]);
+    expect(b.lab.recent[0]).toBe("chern");
+    expect(b.lab.level).toBe("view");
+    expect(b.lab.id).toBe("chern");
+    // Before groups: { level: "list", cat: 4, index: 3 }, plus a favourite that no longer exists.
+    const old = { ...saved, lab: { level: "list", cat: 4, index: 3, id: null, opts: {}, favs: ["chern", "gone"] } };
+    const c = new Calculator(new InlineEngine(runAnalysis), old);
+    expect(c.lab.level).toBe("cats");
+    expect(c.lab.favs).toEqual(["chern"]);
+    expect(c.labGroups()[c.lab.index].items.length).toBeGreaterThan(0);
   });
 
   test("results for a superseded request are not shown over a newer one", () => {

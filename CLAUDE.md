@@ -52,6 +52,7 @@ right-hand panel, the display reflowing beside it. Vite + React + TypeScript.
   - `catalog.ts`: metadata the UI imports (title, category, inputs, caps, live/run).
   - `run.ts`: id → compute function. Only the analysis worker loads it (and InlineEngine in tests).
   - `worker.ts`: the **second worker**. The core worker hands it a register snapshot over a MessageChannel, so analyses never block keys.
+  - Groups (21, `CATEGORIES`): each analysis has a home `category` and may be listed in others (`also`), e.g. OTOCs under Chaos & scrambling and Dynamics, the QGT under Geometry & topology and Expectation & metrology; `analysesIn(group)` lists home panels first. `LabState.group` is a group id or "fav" / "recent" / "search"; the Calculator's `labGroups()` puts ★ Favourites and Recent (last 8 opened) first, both persisted in the session; `labSearch(q)` lists `searchAnalyses(q)` (every word in id, title, summary or group names; title matches first). Back returns to the group a panel was opened from. The AI's `list_analyses` reports each panel's groups.
   - The Calculator keeps the latest request and drops superseded replies. Work that's still running after 150 ms is abandoned by restarting the worker. A live analysis slower than 400 ms stops auto-refreshing ("stale · RUN").
   - `Result.rev` marks when the register changed.
   - Charts are in `src/ui/charts/` (heatmap seq/div/complex, bars, lines, table, disks, Q-sphere; colours in `colors.ts`); the screens are in `src/ui/lab/LabView.tsx`.
