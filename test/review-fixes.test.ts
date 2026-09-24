@@ -1,10 +1,11 @@
 import { describe, test, expect } from "vitest";
-import { Calculator, type KeyId } from "../src/calc/calculator";
+import { Calculator } from "../src/calc/calculator";
 import { InlineEngine } from "../src/calc/engine";
 import { runAnalysis } from "../src/analysis/run";
 import { formatEntry } from "../src/calc/steps";
 
-const keys = (c: Calculator, ...ks: KeyId[]) => ks.forEach((k) => c.press(k));
+import { add, cx } from "./ed";
+
 const settle = async (c: Calculator, until: () => boolean) => {
   for (let t0 = Date.now(); !until() && Date.now() - t0 < 5000;) await new Promise((r) => setTimeout(r, 5));
 };
@@ -12,7 +13,8 @@ const settle = async (c: Calculator, until: () => boolean) => {
 describe("fixes from review", () => {
   test("noisy PROB follows the scrub position (H → CX, scrubbed to step 1: no |11⟩)", async () => {
     const c = new Calculator(new InlineEngine(runAnalysis));
-    keys(c, "h", "ctrl", "right", "x"); // H q0, CX q0→q1
+    add(c, "h", [0]);
+    cx(c, 0, 1); // H q0, CX q0→q1
     c.setNoise({ enabled: true, p1: 0.001, p2: 0.001 });
     c.setMode("prob");
     c.setScrub(1);
@@ -26,19 +28,21 @@ describe("fixes from review", () => {
 
   test("a refused gate leaves the insertion point where it was", () => {
     const c = new Calculator(new InlineEngine());
-    keys(c, "3", "0", "2nd", "q"); // n = 30: stabilizer mode
-    keys(c, "h", "x");
+    c.setQubitCount(30); // stabilizer mode
+    add(c, "h", [0]);
+    add(c, "x", [0]);
     c.setScrub(1);
-    keys(c, "t"); // not Clifford: refused
+    add(c, "t", [0]); // not Clifford: refused
     expect(c.message?.kind).toBe("error");
     expect(c.scrub).toBe(1);
-    keys(c, "s");
+    add(c, "s", [0]);
     expect(c.tape.map(formatEntry)).toEqual(["H q0", "S q0", "X q0"]);
   });
 
   test("reloading keeps the selected qubit", () => {
     const a = new Calculator(new InlineEngine());
-    keys(a, "5", "2nd", "q", "right", "right", "right", "right");
+    a.setQubitCount(5);
+    a.select(4);
     expect(a.sel).toBe(4);
     const b = new Calculator(new InlineEngine(), a.save());
     expect(b.sel).toBe(4);

@@ -1,28 +1,18 @@
 import { describe, test, expect, vi } from "vitest";
-import { Calculator, type KeyId } from "../src/calc/calculator";
+import { Calculator } from "../src/calc/calculator";
 import { InlineEngine } from "../src/calc/engine";
+import { calc, add, cx } from "./ed";
 import { Register } from "../src/calc/register";
 import { exportQasm3 } from "../src/qasm/fromTape";
 
-const calc = () => new Calculator(new InlineEngine());
-const keys = (c: Calculator, ...ks: KeyId[]) => ks.forEach((k) => c.press(k));
 const state = (c: Calculator) => (c.engine as InlineEngine).core.reg.state;
 const p1 = (c: Calculator) => state(c)[2] ** 2 + state(c)[3] ** 2; // P(q0 = 1) on n = 1
 
 describe("symbols", () => {
-  test("2ND . is t and 2ND , cycles θ → φ → λ", () => {
-    const c = calc();
-    keys(c, "2", "2nd", ",");
-    expect(c.entryText).toBe("2θ");
-    keys(c, "2nd", ",", "2nd", ",");
-    expect(c.entryText).toBe("2λ");
-    keys(c, "ac", "2nd", ".", "div", "2");
-    expect(c.entryText).toBe("t÷2");
-  });
-
   test("a symbolic rotation defines the symbol at 0 and follows its value", () => {
     const c = calc();
-    keys(c, "1", "2nd", "q", "2nd", ",", "rx"); // RX(θ)
+    c.setQubitCount(1);
+    add(c, "rx", [0], { params: ["θ"] }); // RX(θ)
     expect(c.symbols).toEqual(["theta"]);
     expect(c.scope.theta).toBe(0);
     expect(p1(c)).toBeCloseTo(0, 12);
@@ -32,22 +22,25 @@ describe("symbols", () => {
     expect(p1(c)).toBeCloseTo(0.5, 12);
   });
 
-  test("= on the PARAM screen sets the value from the entry", () => {
+  test("the PARAM screen sets a symbol's value", () => {
     const c = calc();
-    keys(c, "1", "2nd", "q", "2nd", ",", "ry");
+    c.setQubitCount(1);
+    add(c, "ry", [0], { params: ["θ"] });
     c.openParams();
-    keys(c, "pi", "eq");
+    expect(c.param.open).toBe(true);
+    c.setSymbol(c.symbols[c.param.index], Math.PI);
     expect(c.scope.theta).toBeCloseTo(Math.PI, 12);
     expect(p1(c)).toBeCloseTo(1, 12);
-    keys(c, "ac");
+    c.closeParams();
     expect(c.param.open).toBe(false);
   });
 
   test("a measurement made impossible by a new value is re-sampled, with a note", () => {
     const c = calc();
-    keys(c, "1", "2nd", "q", "2nd", ",", "rx"); // RX(θ)
+    c.setQubitCount(1);
+    add(c, "rx", [0], { params: ["θ"] }); // RX(θ)
     c.setSymbol("theta", Math.PI);
-    keys(c, "meas"); // certainly 1
+    add(c, "measure", [0]); // certainly 1
     expect(c.tape[1][0].outcome).toBe(1);
     c.setSymbol("theta", 0); // outcome 1 now impossible
     expect(c.tape[1][0].outcome).toBe(0);
@@ -57,7 +50,8 @@ describe("symbols", () => {
 
   test("scope survives save/restore", () => {
     const c = calc();
-    keys(c, "1", "2nd", "q", "2nd", ",", "rx");
+    c.setQubitCount(1);
+    add(c, "rx", [0], { params: ["θ"] });
     c.setSymbol("theta", 1.25);
     const d = new Calculator(new InlineEngine(), JSON.parse(JSON.stringify(c.save())));
     expect(d.scope.theta).toBe(1.25);
@@ -66,7 +60,8 @@ describe("symbols", () => {
 
   test("symbols export as input floats, t renamed", () => {
     const c = calc();
-    keys(c, "2", "2nd", "q", "2nd", ".", "rz", "2", "2nd", ",", "right", "rx");
+    add(c, "rz", [0], { params: ["t"] });
+    add(c, "rx", [1], { params: ["2*θ"] });
     const q = exportQasm3(c.n, c.tape);
     expect(q).toContain("input float t_;");
     expect(q).toContain("input float theta;");
@@ -77,7 +72,8 @@ describe("symbols", () => {
   test("playback advances t in wall-clock time, pulled by views", () => {
     vi.useFakeTimers();
     const c = calc();
-    keys(c, "1", "2nd", "q", "2nd", ".", "rx");
+    c.setQubitCount(1);
+    add(c, "rx", [0], { params: ["t"] });
     c.togglePlayback("t", 1); // one turn per second
     for (let i = 0; i < 30; i++) vi.advanceTimersByTime(16);
     expect(c.scope.t).toBeGreaterThan(0.3);
@@ -93,28 +89,32 @@ describe("symbols", () => {
 describe("memory and whole-tape undo", () => {
   test("STO / RCL, and UNDO brings the previous tape back", () => {
     const c = calc();
-    keys(c, "h", "3", "2nd", "eq"); // STO M3
+    add(c, "h", [0]);
+    expect(c.store(3)).toBe(true);
     expect(c.memory[3].tape).toHaveLength(1);
-    keys(c, "x", "y");
-    keys(c, "3", "2nd", "bs"); // RCL M3
+    add(c, "x", [0]);
+    add(c, "y", [0]);
+    expect(c.recall(3)).toBe(true);
     expect(c.tape).toHaveLength(1);
-    keys(c, "undo");
+    c.undo();
     expect(c.tape).toHaveLength(3);
-    keys(c, "2nd", "undo"); // REDO
+    c.redo();
     expect(c.tape).toHaveLength(1);
   });
 
   test("RCL of an empty slot is an error", () => {
     const c = calc();
-    keys(c, "7", "2nd", "bs");
+    expect(c.recall(7)).toBe(false);
     expect(c.message).toEqual({ kind: "error", text: "M7 is empty" });
   });
 
-  test("AC is undoable", () => {
+  test("clearing the circuit is undoable", () => {
     const c = calc();
-    keys(c, "h", "ctrl", "right", "x", "ac");
+    add(c, "h", [0]);
+    cx(c, 0, 1);
+    c.clearCircuit();
     expect(c.tape).toHaveLength(0);
-    keys(c, "undo");
+    c.undo();
     expect(c.tape).toHaveLength(2);
   });
 

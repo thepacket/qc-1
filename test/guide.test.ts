@@ -62,9 +62,9 @@ describe("step-through guide", () => {
     expect(c.scrub).toBe(0);
     expect(c.activeGuide?.title).toBe("Bell state");
     c.setScrub(1);
-    c.press("x"); // inserts at the scrub point: not the loaded tape any more
+    c.addGate("x", { targets: [0] }); // inserts at the scrub point: not the loaded tape any more
     expect(c.activeGuide).toBeNull();
-    c.press("undo");
+    c.undo();
     expect(c.activeGuide).not.toBeNull();
     c.endGuide();
     expect(c.activeGuide).toBeNull();

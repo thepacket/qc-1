@@ -14,7 +14,15 @@ import { compileExpr } from "../sim/expr";
  * (`x` + one control, never `cx`); the engine wraps the base matrix with
  * `controlled()`.
  */
-export type Step = PlacedGate & { outcome?: 0 | 1 };
+export type Step = PlacedGate & {
+  outcome?: 0 | 1;
+  /**
+   * The diagram column the editor pinned this step to (a lower bound: the
+   * layout pushes it right if what comes before it on its wires needs the
+   * room). Absent: as early as possible. Drawing only, never the simulation.
+   */
+  pin?: number;
+};
 
 /** One key press worth of steps; undo/redo work in these units. */
 export type Entry = Step[];
@@ -298,6 +306,7 @@ const GLYPH: Record<string, string> = {
 /** Pretty-print an expression the way it was keyed in (π/4, 3π/4, √(2)). */
 export function prettyExpr(e: string): string {
   return e
+    .replace(/\bpi\b/g, "π")
     .replace(/\b(theta|phi|lambda|alpha|beta|gamma|delta|tau|omega)\b/g, (g) => GLYPH[g])
     .replace(/(\d|\)|π)\*(π|t\b|[θφλαβγδτω]|sin\(|cos\(|exp\(|sqrt\()/g, "$1$2")
     .replace(/(\d|\))\*π/g, "$1π")

@@ -1,10 +1,9 @@
 import type { Calculator } from "../calc/calculator";
-import { KEYPAD } from "./keys";
 import { CATEGORIES, analysesIn } from "../analysis/catalog";
+import { PALETTE_GROUPS } from "../calc/gateSpecs";
 
-/** Phone-first help: keys, 2ND functions (from the keypad), views, LAB, conventions. */
+/** Phone-first help: building a circuit, editing it, the views, LAB, conventions. */
 export function HelpView({ calc }: { calc: Calculator }) {
-  const shifted = KEYPAD.filter((k) => k.alt);
   return (
     <div className="view">
       <div className="view-head lab-head">
@@ -12,29 +11,32 @@ export function HelpView({ calc }: { calc: Calculator }) {
         <span>Help</span>
       </div>
       <div className="rows lab-body help">
-        <h3>Keying gates</h3>
-        <p>Select a qubit with ◀ ▶ (or tap it), press a gate key. Rotations take the angle typed first: <b>3 π ÷ 4 RX</b>. Separate several arguments with <b>,</b>.</p>
-        <p><b>CTRL</b> marks the selected qubit as a control (2ND: ○CTRL, an anti-control); two-qubit gates take the last mark as their partner. <b>ALL</b> applies the next one-qubit gate to every qubit. <b>=</b> repeats the last entry. <b>AC</b> clears the entry and marks, then resets the register (UNDO brings it back).</p>
-        <p>Qubits: type n, then <b>2ND Q</b> (N). Up to 20 qubits run on the statevector; above that (to 1024) a stabilizer tableau runs Clifford gates only.</p>
-        <h3>Second functions (2ND)</h3>
-        <div className="help-grid">
-          {shifted.map((k) => <span key={k.id}><b>{k.alt}</b> <span className="dim">on {k.label}</span></span>)}
-        </div>
-        <p><b>t</b> and <b>VAR</b> (repeat to cycle θ φ λ α β γ δ τ ω) put symbols into angles; tap the symbol badge for sliders, t playback and ● REC (one period of t as a video). <b>STO</b>/<b>RCL</b> with a digit 1–9 store and recall whole circuits. <b>IF</b> with k (or k,v) makes the next gate run only when bit c[k] = v; measuring qubit q writes c[q]. <b>CAT</b> lists every other gate, the algorithm blocks (QFT, QFT†, Grover diffuser, a QAOA layer: on the CTRL-marked qubits and the selected one, or on the whole register), STATE… and MATRIX… (type a state or a unitary on the phone keyboard; it becomes a gate), custom gates and DEFINE.</p>
+        <h3>Building a circuit</h3>
+        <p>In the <b>CIRCUIT</b> tab, the gate palette sits under the diagram. The diagram is a grid: a column for each time step, a row for each qubit. <b>Drag a gate up into a cell</b> and let go: it lands in that column (or the first free one to its right) and stays there. A dashed outline shows where. A gate on k qubits takes k wires from the one you drop it on (controls first).</p>
+        <p>Or <b>tap an empty cell</b>, then tap gates in the palette: they fill that wire left to right. Without a chosen cell, a tapped gate goes after the last gate on the selected wire.</p>
+        <p>Palette groups: {PALETTE_GROUPS.map((g) => g.label).join(" · ")}. Search finds a gate by name. Blocks (QFT, QFT†, Grover diffuser, a QAOA layer) ask for their number of qubits; <b>State…</b> and <b>Matrix…</b> take what you type (a ket like |00⟩ + |11⟩, or a unitary) and turn it into a gate.</p>
+        <p>Qubits: <b>− n +</b> at the top, or tap the number and type it. Up to 20 qubits run on the statevector; above that (to 1024) a stabilizer tableau runs Clifford gates only.</p>
+        <h3>Editing on the diagram</h3>
+        <p><b>Drag a gate</b> to another column or wire; drop it on the <b>trash</b> (over the palette while you drag) to delete it. Nothing else moves: gates keep their columns. <b>Drag a control dot</b> to another wire, or onto the trash to remove it. <b>Tap a gate</b> to select it: its targets become dots to drag too, and its <b>● +</b> handle adds a control where you drop it.</p>
+        <p><b>Long-press a gate</b> (right-click with a mouse) for its menu: its angles (type <b>pi/2</b>, <b>2*theta</b>, <b>t</b>, <b>sqrt(2)</b>…), duplicate, invert, add or remove a control, flip a control between ● (fires on |1⟩) and ○ (on |0⟩), run it only if a measured bit c[k] = v (measuring qubit q writes c[q]), put a one-qubit gate on every qubit, delete.</p>
+        <p><b>Long-press empty space</b> (right-click with a mouse) for the <b>Edit</b> and <b>Transform</b> menus. Edit: undo, redo; copy the circuit as OpenQASM or paste one; copy, cut, paste, repeat ×N or fold the selected gates; insert a block (Bell pair, GHZ, QFT, inverse QFT, a Trotter Ising layer); clear. Transform: compact, append U†, optimise, a random Clifford circuit, transpile or compile to Clifford+T, IBM or Rigetti gates, route onto a line, ring or grid. A transform replaces the circuit only once it is checked (the same operator), and UNDO takes it back.</p>
+        <p>To select gates, long-press empty space and keep holding while you drag a rectangle (a mouse just drags). Long-press the selection for the same menus.</p>
+        <p>↶ ↷ at the top undo and redo every edit. With a keyboard: Ctrl+Z / Ctrl+Shift+Z, Ctrl+C / X / V, Ctrl+A, Ctrl+D (duplicate), Delete, arrows (move the selected gate), Esc.</p>
+        <p>Symbols: an angle that names one (t, theta, phi…) makes it a parameter. The symbol badge at the top opens sliders, exact values, t playback and ● REC (one period of t as a video).</p>
+        <h3>The circuit tab's MENU</h3>
+        <p>Examples, OpenQASM import and export, Qiskit (Python) export, share links and QR codes, a printable report, <b>Memory</b> (save circuits in M1–M9 and load them back), <b>Define gate</b> (the last steps as a gate of your own, then under "Your gates" in the palette) and Clear circuit.</p>
+        <p>The scrubber shows the state after any step (or tap a step in STEP); editing the circuit goes back to the live state.</p>
         <h3>Views</h3>
-        <p><b>CIRC</b> the circuit (DIAG for the diagram, or STEP for the numbered gates), a scrubber to look at the state after any step, and ≡ for examples, OpenQASM import/export, Qiskit (Python) export, share links, QR codes and a printable report · <b>KET</b> amplitudes · <b>PROB</b> probabilities · <b>BLOCH</b> one sphere per qubit · <b>SHOTS</b> sampled counts (tap again to re-roll) · <b>LAB</b> analyses and tools (PIN adds a result to the report).</p>
-        <p>Turn the phone sideways for a full-screen display; <b>KEYS</b> slides the keypad in (and out).</p>
-        <h3>Editing the circuit</h3>
-        <p>In CIRC → <b>DIAG</b>: tap a spot on a wire to place the insertion point there (the next gate key goes there). Tap a gate to select it: ◀ ▶ move it earlier or later, ▲ ▼ to another wire, <b>angle</b> sets the typed number as its angle, <b>± ctrl</b> then a tap on a wire adds or removes a control, a gate key changes it, <b>DEL</b> deletes it. Long-press a gate and drag it to move it. AC lets go of the selection; UNDO takes back every edit.</p>
-        <p>Scrub back (drag the slider, or tap a gate in DIAG, or a step in STEP): gate keys now go in at that point, and the views follow. <b>DEL</b> removes the step before the scrub point (the last one when live). Later measurements keep their recorded outcomes unless one has become impossible. UNDO takes back each edit.</p>
+        <p><b>CIRCUIT</b> the menu of examples, import and export (MENU), the diagram (CIRCUIT), the numbered steps (STEP) and the OpenQASM (QASM) · <b>STATE</b> amplitudes · <b>PROB</b> probabilities · <b>BLOCH</b> one sphere per qubit · <b>SHOTS</b> sampled counts (type the number of shots; re-roll) · <b>LAB</b> analyses and tools (PIN adds a result to the report).</p>
+        <p>Turn the phone sideways: the display on the left, the palette on the right.</p>
         <h3>Examples, step by step</h3>
-        <p>CIRC ≡ → Examples: tap a program, then <b>▶ step through</b>. It loads at the start; ◀ ▶ under the display walk the steps with the program's own comments, in any view (KET, PROB, BLOCH…). ✕ ends it.</p>
+        <p>MENU → Examples: tap a program, then <b>▶ step through</b>. It loads at the start; ◀ ▶ under the display walk the steps with the program's own comments, in any view. ✕ ends it.</p>
         <h3>LAB</h3>
         <ul>
           {CATEGORIES.map((c) => <li key={c.id}>{c.label} <span className="dim">· {analysesIn(c.id).length}</span></li>)}
         </ul>
         <p>Some analyses appear in more than one group (OTOCs under Dynamics and Chaos, the QGT under Metrology and Geometry). The search field at the top of LAB finds an analysis by name, summary or group; ☆ on an analysis screen adds it to ★ Favourites, and the last ones you opened are under Recent.</p>
-        <p>Noise: LAB → Noise &amp; error → Noise model (Qiskit Aer conventions). With noise on, PROB, BLOCH, SHOTS and the noise and benchmarking analyses use it.</p>
+        <p>Noise: LAB → Noise &amp; error → Noise model (Qiskit Aer conventions). With noise on, Prob, Bloch, Shots and the noise and benchmarking analyses use it.</p>
         <h3>AI chat</h3>
         <p>The <b>AI</b> button opens a chat with a model of your choice through OpenRouter, using your own API key (stored on this device only). It reads the circuit and state and runs LAB analyses; a circuit it suggests comes with APPLY, and UNDO takes it back.</p>
         <h3>Conventions</h3>

@@ -74,25 +74,14 @@ describe("typed entry: gates are exact, global phase included", () => {
   });
 });
 
-import { Calculator } from "../src/calc/calculator";
-import { InlineEngine } from "../src/calc/engine";
+import { calc, add } from "./ed";
 import { formatEntry } from "../src/calc/steps";
 
 describe("typed entry in the calculator", () => {
-  const openTyped = (c: Calculator, label: string) => {
-    c.press("2nd"); c.press("all");
-    const i = c.catalogItems.findIndex((it) => it.label === label);
-    c.pickCatalog(i);
-    c.pickCatalog(i);
-    expect(c.catalog.typing).not.toBeNull();
-  };
-
-  test("STATE… resets and prepares on q0…; the KET is the typed state", () => {
-    const c = new Calculator(new InlineEngine());
-    c.press("x"); // q0 = |1⟩: the reset must clear it
-    openTyped(c, "STATE…");
-    c.enterTyped("(|00⟩ + i|11⟩)/√2");
-    expect(c.catalog.open).toBe(false);
+  test("a typed state resets and prepares on q0…; the KET is the typed state", () => {
+    const c = calc();
+    add(c, "x", [0]); // q0 = |1⟩: the reset must clear it
+    c.addTyped("state", "(|00⟩ + i|11⟩)/√2", 0);
     expect(c.tape.slice(-2).map(formatEntry)).toEqual(["RST q0 RST q1", "PSI1 q0,q1"]);
     const v = c.view!;
     if (v.mode !== "ket") throw new Error(v.mode);
@@ -101,14 +90,13 @@ describe("typed entry in the calculator", () => {
     expect(rows[1].im).toBeCloseTo(Math.SQRT1_2, 12);
   });
 
-  test("MATRIX… on CTRL-marked qubits; a bad matrix throws and leaves the field open", () => {
-    const c = new Calculator(new InlineEngine());
-    c.press("3"); c.press("2nd"); c.press("q");
-    c.press("ctrl"); c.press("right"); c.press("right"); // mark q0, select q2
-    openTyped(c, "MATRIX…");
-    expect(() => c.enterTyped("1, 1; 0, 1")).toThrow(/not unitary/);
-    expect(c.catalog.typing).toBe("matrix");
-    c.enterTyped("1,0,0,0; 0,0,1,0; 0,1,0,0; 0,0,0,1");
-    expect(formatEntry(c.tape.at(-1)!)).toBe("M1 q0,q2");
+  test("a typed matrix goes on consecutive qubits from the first; a bad matrix throws and changes nothing", () => {
+    const c = calc();
+    c.setQubitCount(3);
+    expect(() => c.addTyped("matrix", "1, 1; 0, 1", 0)).toThrow(/not unitary/);
+    expect(c.tape).toHaveLength(0);
+    expect(c.customGates).toHaveLength(0);
+    c.addTyped("matrix", "1,0,0,0; 0,0,1,0; 0,1,0,0; 0,0,0,1", 1);
+    expect(formatEntry(c.tape.at(-1)!)).toBe("M1 q1,q2");
   });
 });

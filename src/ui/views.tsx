@@ -119,12 +119,34 @@ export function ProbView({ data }: ViewProps<"prob">) {
   return <Bars items={items} head={data.complete ? "P(basis)" : `the ${data.rows.length.toLocaleString()} most likely + the rest`} />;
 }
 
-export function ShotsView({ data }: ViewProps<"shots">) {
+export function ShotsView({ calc, data }: ViewProps<"shots">) {
   const items = data.rows.map(({ i, count, bits }) => ({ label: bits ? (bits.length > 24 ? `${bits.slice(0, 24)}…` : bits) : ket(i, data.n), p: count, note: String(count) }));
   // Every shot is accounted for: outcomes beyond the listed ones are summed in one last row.
   if (data.other > 0) items.push({ label: `${(data.distinct - data.rows.length).toLocaleString()} other outcomes`, p: data.other, note: String(data.other) });
   const shots = data.requested ? `${data.shots.toLocaleString()} shots (of ${data.requested.toLocaleString()}: the budget at n = ${data.n})` : `${data.shots.toLocaleString()} shots`;
-  return <Bars items={items} head={`${shots} · ${data.distinct.toLocaleString()} outcomes · tap SHOTS to re-roll`} />;
+  return (
+    <>
+      <ShotsBar calc={calc} />
+      <Bars items={items} head={`${shots} · ${data.distinct.toLocaleString()} outcomes`} />
+    </>
+  );
+}
+
+/** The shot count (typed) and a re-roll. */
+function ShotsBar({ calc }: { calc: Calculator }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft !== null && draft.trim() !== "") calc.setShots(Number(draft));
+    setDraft(null);
+  };
+  return (
+    <div className="shots-bar">
+      <label>shots <input type="number" inputMode="numeric" min={1} max={1000000} value={draft ?? String(calc.shots)}
+        onFocus={(e) => { setDraft(String(calc.shots)); e.target.select(); }} onChange={(e) => setDraft(e.target.value)} onBlur={commit}
+        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} /></label>
+      <button className="qb" onClick={() => calc.rerollShots()}>re-roll</button>
+    </div>
+  );
 }
 
 async function copyText(calc: Calculator, text: string, done = "QASM copied") {
@@ -154,7 +176,7 @@ async function shareQasm(calc: Calculator, text: string, name = "qc1-circuit.qas
   calc.notify(`saved ${name}`);
 }
 
-type TapePane = "list" | "circ" | "qasm" | "menu" | "examples" | "import" | "qr";
+type TapePane = "list" | "circ" | "qasm" | "menu" | "examples" | "import" | "qr" | "memory" | "define";
 
 export function TapeView({ calc }: { calc: Calculator }) {
   const [pane, setPane] = useState<TapePane>("circ");
@@ -175,33 +197,32 @@ export function TapeView({ calc }: { calc: Calculator }) {
       <div className="view-head tape-head">
         <span>{tape.length} steps</span>
         <span className="lcd-btns">
-          {tab("circ", "DIAG")}
+          {tab("menu", "MENU")}
+          {tab("circ", "CIRCUIT")}
           {tab("list", "STEP")}
           {tab("qasm", "QASM")}
-          {tab("menu", "≡")}
         </span>
       </div>
       {pane === "menu" && <TapeMenu calc={calc} go={setPane} />}
       {pane === "qr" && <QrPane calc={calc} done={() => setPane("menu")} />}
       {pane === "examples" && <ExamplesPane calc={calc} done={() => setPane("circ")} />}
       {pane === "import" && <ImportPane calc={calc} done={() => setPane("circ")} />}
+      {pane === "memory" && <MemoryPane calc={calc} done={() => setPane("circ")} />}
+      {pane === "define" && <DefinePane calc={calc} done={() => setPane("circ")} />}
       {(pane === "list" || pane === "circ") && tape.length > 0 && (
         <div className="scrubber">
           <button onClick={() => calc.setScrub(at - 1)} disabled={at === 0} aria-label="Step back">◀</button>
           <input type="range" min={0} max={tape.length} value={at} aria-label="Show the state after step"
             onChange={(e) => calc.setScrub(Number(e.target.value))} />
           <button onClick={() => calc.setScrub(at + 1)} disabled={at >= tape.length} aria-label="Step forward">▶</button>
-          <span className="dim">{calc.scrub === null ? "live" : `@${at} · insert`}</span>
-          {calc.diagSel !== null
-            ? <button className="del" onClick={() => calc.deleteCurrent()} aria-label={`Delete the selected gate, step ${calc.diagSel + 1}`}>DEL {calc.diagSel + 1}</button>
-            : <button className="del" onClick={() => calc.deleteCurrent()} disabled={at === 0} aria-label={`Delete step ${at}`}>DEL</button>}
+          <span className="dim">{calc.scrub === null ? "live" : `@${at}`}</span>
         </div>
       )}
       {pane === "circ" && <CircuitView calc={calc} />}
       {pane === "qasm" && <pre className="rows qasm">{text}</pre>}
       {pane === "list" && (
         <div className="rows">
-          {tape.length === 0 && <div className="dim">empty — every key press is recorded here (≡ for examples and import)</div>}
+          {tape.length === 0 && <div className="dim">empty — drag gates from the palette onto the wires (MENU for examples and import)</div>}
           {tape.map((e, i) => (
             <div className={`row tape-row${i >= at ? " ahead" : ""}${i === at - 1 && calc.scrub !== null ? " at" : ""}`} key={i}
               ref={i === Math.max(0, at - 1) ? cur : undefined} onClick={() => calc.setScrub(i + 1)}>
@@ -273,10 +294,13 @@ function TapeMenu({ calc, go }: { calc: Calculator; go: (p: TapePane) => void })
     ["Copy QASM", "OpenQASM 3 of the circuit (Qiskit loads it)", () => { void copyText(calc, qasm()); go("circ"); }],
     ["Share QASM file", "qc1-circuit.qasm", () => { void shareQasm(calc, qasm()); go("circ"); }],
     ["Copy Qiskit (Python)", "a script that builds the QuantumCircuit", () => { void copyText(calc, qiskitPython(calc.n, calc.tape), "Qiskit script copied"); go("circ"); }],
-    ["Share Qiskit file", "qc1_tape.py", () => { void shareQasm(calc, qiskitPython(calc.n, calc.tape), "qc1_tape.py"); go("circ"); }],
+    ["Share Qiskit file", "qc1-circuit.py", () => { void shareQasm(calc, qiskitPython(calc.n, calc.tape), "qc1-circuit.py"); go("circ"); }],
     ["Share link", "the circuit and symbol values in a URL", () => { void shareLink(); go("circ"); }],
     ["QR code", "the share link, for phones pointed at this screen", () => go("qr")],
     ["Report", `circuit, state${calc.pins.length ? `, ${calc.pins.length} pinned LAB result${calc.pins.length > 1 ? "s" : ""}` : ""}: print or save as PDF`, () => { calc.toggleReport(); go("circ"); }],
+    ["Memory…", `save or load circuits in M1–M9${Object.keys(calc.memory).length ? ` (${Object.keys(calc.memory).length} used)` : ""}`, () => go("memory")],
+    ["Define gate…", "the last steps (or the whole circuit) as a gate of your own", () => go("define")],
+    ["Clear circuit", "back to |0…0⟩ (UNDO restores it)", () => { calc.clearCircuit(); go("circ"); }],
   ];
   return (
     <div className="rows">
@@ -287,6 +311,45 @@ function TapeMenu({ calc, go }: { calc: Calculator; go: (p: TapePane) => void })
         </button>
       ))}
     </div>
+  );
+}
+
+/** Memory M1–M9: save the circuit in a slot, or load one (an undoable replace). */
+function MemoryPane({ calc, done }: { calc: Calculator; done: () => void }) {
+  return (
+    <div className="rows">
+      <div className="view-head lab-head"><button className="back" onClick={done} aria-label="Back">‹</button><span>Memory</span></div>
+      {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((k) => {
+        const m = calc.memory[k];
+        return (
+          <div key={k} className="mem-row">
+            <span className="mem-name">M{k}</span>
+            <span className="dim mem-what">{m ? `${m.tape.length} steps · ${m.n} qubits` : "empty"}</span>
+            <button className="qb" onClick={() => { calc.store(k); }}>save here</button>
+            <button className="qb" disabled={!m} onClick={() => { if (calc.recall(k)) done(); }}>load</button>
+          </div>
+        );
+      })}
+      <p className="dim note">Memory slots are kept with the session. LAB → Verification → Compare checks the circuit against a slot.</p>
+    </div>
+  );
+}
+
+/** Define gate: the last k steps, or the whole circuit, become a gate under the palette's "Your gates". */
+function DefinePane({ calc, done }: { calc: Calculator; done: () => void }) {
+  const [k, setK] = useState(String(calc.tape.length));
+  const define = () => {
+    const name = calc.defineGate(Number(k));
+    if (name) { calc.notify(`${name} is in the palette under "Your gates"`); done(); }
+  };
+  return (
+    <form className="rows" onSubmit={(e) => { e.preventDefault(); define(); }}>
+      <div className="view-head lab-head"><button type="button" className="back" onClick={done} aria-label="Back">‹</button><span>Define a gate</span></div>
+      <label className="define-row">the last <input type="number" inputMode="numeric" min={1} max={calc.tape.length} value={k}
+        onChange={(e) => setK(e.target.value)} onKeyDown={(e) => e.stopPropagation()} /> steps (of {calc.tape.length})</label>
+      <button type="submit" className="qb sel" disabled={!calc.tape.length}>Define</button>
+      <p className="dim note">The steps' qubits, in order, become the gate's qubits. Unitary steps only (no measurement, reset or preparation). Symbols stay symbols.</p>
+    </form>
   );
 }
 
@@ -373,82 +436,11 @@ function ImportPane({ calc, done }: { calc: Calculator; done: () => void }) {
   );
 }
 
-export function CatalogView({ calc }: { calc: Calculator }) {
-  const { index } = calc.catalog;
-  const lit = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    lit.current?.scrollIntoView({ block: "nearest" });
-  }, [index]);
-  const items = calc.catalogItems;
-  const cur = items[index];
-  const partners = cur.arity - 1;
-  if (calc.catalog.typing) return <TypedField calc={calc} kind={calc.catalog.typing} />;
-  return (
-    <div className="view">
-      <div className="view-head cat-head">
-        {cur.note}
-        {partners > 0 && ` · CTRL-mark ${partners === 1 ? "a partner" : `${partners} qubits`}`}
-      </div>
-      <div className="rows">
-        {items.map((it, i) => (
-          <div key={it.gate}>
-            {(i === 0 || items[i - 1].group !== it.group) && <div className="cat-group">{it.group}</div>}
-            <button
-              ref={i === index ? lit : undefined}
-              className={`cat-row${i === index ? " on" : ""}`}
-              onClick={() => calc.pickCatalog(i)}
-            >
-              <span>{it.label}{it.argNames.length > 0 && `(${it.argNames.join(",")})`}</span>
-              <span className="dim">{it.arity > 1 ? `${it.arity}q` : ""}</span>
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-const TYPED_PRESETS: Record<"state" | "matrix", [string, string][]> = {
+/** Examples for the typed State… / Matrix… sheet. */
+export const TYPED_PRESETS: Record<"state" | "matrix", [string, string][]> = {
   state: [["Bell", "(|00⟩ + |11⟩)/√2"], ["GHZ₃", "(|000⟩ + |111⟩)/√2"], ["W₃", "|001⟩ + |010⟩ + |100⟩"], ["|+i⟩", "|0⟩ + i|1⟩"]],
   matrix: [["H", "1/√2, 1/√2; 1/√2, -1/√2"], ["CZ", "1,0,0,0; 0,1,0,0; 0,0,1,0; 0,0,0,-1"], ["iSWAP", "1,0,0,0; 0,0,i,0; 0,i,0,0; 0,0,0,1"], ["√SWAP", "1,0,0,0; 0,(1+i)/2,(1-i)/2,0; 0,(1-i)/2,(1+i)/2,0; 0,0,0,1"]],
 };
-
-/** CATALOG → STATE… / MATRIX…: the phone keyboard's text becomes a gate (calc/typed.ts). */
-function TypedField({ calc, kind }: { calc: Calculator; kind: "state" | "matrix" }) {
-  const [text, setText] = useState("");
-  const [err, setErr] = useState<string | null>(null);
-  const ok = () => {
-    try {
-      calc.enterTyped(text);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
-  };
-  return (
-    <div className="view">
-      <div className="view-head lab-head">
-        <button className="back" onClick={() => calc.cancelTyped()} aria-label="Back to the catalog">‹</button>
-        <span>{kind === "state" ? "Type a state" : "Type a matrix"}</span>
-      </div>
-      <div className="rows typed">
-        <textarea value={text} rows={kind === "matrix" ? 4 : 2} autoFocus spellCheck={false} autoCapitalize="off" autoCorrect="off"
-          placeholder={kind === "state" ? "(|00⟩ + |11⟩)/√2   or   1, 0, 0, i" : "rows by ; or new lines, entries by ,\n0, 1; 1, 0"}
-          aria-label={kind === "state" ? "State" : "Matrix"}
-          onChange={(e) => { setText(e.target.value); setErr(null); }}
-          onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter" && kind === "state") { e.preventDefault(); ok(); } }} />
-        <div className="cut-picker">
-          {TYPED_PRESETS[kind].map(([label, t]) => <button key={label} className="qb" onClick={() => { setText(t); setErr(null); }}>{label}</button>)}
-          <span className="grow" />
-          <button className="qb sel" onClick={ok}>OK</button>
-        </div>
-        {err && <div className="lab-error">E: {err}</div>}
-        <p className="dim note">{kind === "state"
-          ? "Kets |bits⟩ with coefficients (i, √2, fractions), or 2ⁿ amplitudes. Normalised. Goes on the CTRL-marked qubits and the selected one, else q0…, after resetting them."
-          : "A unitary up to 16×16, complex entries like 0.5+0.5i. Close to unitary (1e−3) is enough: it is made exact. Becomes a gate on the CTRL-marked qubits and the selected one, else q0…; the first is the most significant."}</p>
-      </div>
-    </div>
-  );
-}
 
 function Sphere({ v, r, labels, className }: { v: Vec3; r: number; labels?: boolean; className?: string }) {
   const c = r + (labels ? 14 : 2);

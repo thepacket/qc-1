@@ -1,13 +1,14 @@
 import { describe, test, expect } from "vitest";
-import { Calculator, type KeyId } from "../src/calc/calculator";
-import { InlineEngine } from "../src/calc/engine";
+import { Calculator } from "../src/calc/calculator";
 import { Core } from "../src/calc/core";
 import { Register } from "../src/calc/register";
 import { formatEntry } from "../src/calc/steps";
 import { randomTape, rng } from "../validation/cases/tapes";
 
-const calc = () => new Calculator(new InlineEngine());
-const keys = (c: Calculator, ...ks: KeyId[]) => ks.forEach((k) => c.press(k));
+import { calc, add, cx } from "./ed";
+
+/** 1-qubit gates on q0, in order. */
+const q0 = (c: Calculator, ...gates: string[]) => gates.forEach((g) => add(c, g, [0]));
 const ket = (c: Calculator) => {
   const v = c.view!;
   if (v.mode !== "ket") throw new Error(v.mode);
@@ -17,7 +18,9 @@ const ket = (c: Calculator) => {
 describe("TAPE step-scrubber", () => {
   test("views show the state after k entries; the register is untouched", () => {
     const c = calc();
-    keys(c, "h", "ctrl", "right", "x", "z"); // H, CX, Z → (|00⟩ − |11⟩)/√2… with Z on q0
+    add(c, "h", [0]);
+    cx(c, 0, 1);
+    add(c, "z", [0]); // H, CX, Z → (|00⟩ − |11⟩)/√2… with Z on q0
     expect(ket(c)).toEqual([0, 3]);
     c.setScrub(0);
     expect(ket(c)).toEqual([0]);
@@ -33,7 +36,7 @@ describe("TAPE step-scrubber", () => {
 
   test("a measurement replays its recorded outcome", () => {
     const c = calc();
-    keys(c, "h", "meas", "x");
+    q0(c, "h", "measure", "x");
     const outcome = c.tape[1][0].outcome!;
     for (let k = 0; k < 5; k++) {
       c.setScrub(2);
@@ -42,25 +45,24 @@ describe("TAPE step-scrubber", () => {
     }
   });
 
-  test("while scrubbed, a gate goes in at the scrub point and the scrub follows it", () => {
+  test("while scrubbed, a gate goes in at the scrub point and the scrub follows it; a grid edit ends the scrub", () => {
     const c = calc();
-    keys(c, "h", "x");
+    q0(c, "h", "x");
     c.setScrub(1);
-    keys(c, "z");
+    q0(c, "z");
     expect(c.scrub).toBe(2);
     expect(c.view!.at).toBe(2);
     expect(c.tape.map(formatEntry)).toEqual(["H q0", "Z q0", "X q0"]);
-    keys(c, "eq"); // = repeats the entry before the scrub point
-    expect(c.tape.map(formatEntry)).toEqual(["H q0", "Z q0", "Z q0", "X q0"]);
-    expect(c.scrub).toBe(3);
-    keys(c, "undo"); // one insert, one undo
+    c.duplicateGate(1); // a copy in the next free column after the Z (the X holds column 2): an edit on the grid ends the scrub
+    expect(c.tape.map(formatEntry)).toEqual(["H q0", "Z q0", "X q0", "Z q0"]);
     expect(c.scrub).toBeNull();
+    c.undo(); // one edit, one undo
     expect(c.tape.map(formatEntry)).toEqual(["H q0", "Z q0", "X q0"]);
   });
 
   test("DEL removes the entry before the scrub point (the last one when live); UNDO restores it", () => {
     const c = calc();
-    keys(c, "h", "x", "z");
+    q0(c, "h", "x", "z");
     c.setScrub(2);
     c.deleteStep();
     expect(c.tape.map(formatEntry)).toEqual(["H q0", "Z q0"]);
@@ -70,11 +72,12 @@ describe("TAPE step-scrubber", () => {
     c.deleteStep();
     expect(c.tape.map(formatEntry)).toEqual(["H q0"]);
     expect(c.scrub).toBeNull();
-    keys(c, "undo", "undo");
+    c.undo();
+    c.undo();
     expect(c.tape.map(formatEntry)).toEqual(["H q0", "X q0", "Z q0"]);
   });
 
-  test("an edited tape equals the same tape keyed from scratch (random tapes, exact)", () => {
+  test("an edited tape equals the same tape built from scratch (random tapes, exact)", () => {
     const r = rng(7);
     for (let trial = 0; trial < 25; trial++) {
       const n = 1 + r.int(4);
@@ -94,9 +97,9 @@ describe("TAPE step-scrubber", () => {
 
   test("later measurements keep their recorded outcomes unless they become impossible", () => {
     const c = calc();
-    keys(c, "meas"); // |0⟩ → 0
+    q0(c, "measure"); // |0⟩ → 0
     c.setScrub(0);
-    keys(c, "x"); // X before the measurement: 0 is now impossible
+    q0(c, "x"); // X before the measurement: 0 is now impossible
     expect(c.tape[1][0].outcome).toBe(1);
   });
 
@@ -104,17 +107,17 @@ describe("TAPE step-scrubber", () => {
     const c = calc();
     c.loadQasm(`OPENQASM 3.0; include "stdgates.inc"; qubit[30] q; h q[0]; cx q[0], q[29];`, "import");
     c.setScrub(1);
-    keys(c, "t");
+    q0(c, "t");
     expect(c.message?.kind).toBe("error");
     expect(c.tape.map(formatEntry)).toEqual(["H q0", "CX q0→q29"]);
     c.setScrub(1);
-    keys(c, "s");
+    q0(c, "s");
     expect(c.tape.map(formatEntry)).toEqual(["H q0", "S q0", "CX q0→q29"]);
   });
 
   test("scrubbing works past the snapshot interval", () => {
     const c = calc();
-    for (let i = 0; i < 9; i++) keys(c, "x");
+    for (let i = 0; i < 9; i++) q0(c, "x");
     for (let k = 0; k <= 9; k++) {
       c.setScrub(k);
       expect(ket(c)).toEqual([k % 2 ? 2 : 0]);

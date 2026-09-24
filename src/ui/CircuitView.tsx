@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Calculator } from "../calc/calculator";
 import { layoutTape, usedQubits, type Placed } from "../calc/diagram";
-import { insertionIndex } from "../calc/diagEdit";
-import { formatEntry, gateLabel, MEASURE_IDS, type Entry } from "../calc/steps";
+import { freeColumn, shape, shiftEntry } from "../calc/grid";
+import { gateLabel, MEASURE_IDS, NONUNITARY, type Entry } from "../calc/steps";
+import { groupOf, itemWidth, spanFrom } from "../calc/gateSpecs";
 import { elementToSvg, saveSvg } from "./svgExport";
+import { LONG_PRESS, pressToDrag, setDropHandler, setDropZone, useDrag, type DragPayload, type Hover } from "./dnd";
+import { DiagramMenu, type MenuAt } from "./DiagramMenu";
 
 /** Diagram limits: beyond these the STEP pane is the readable form. */
 export const DIAGRAM_MAX_QUBITS = 1024; // wires; the pane scrolls both ways
@@ -14,8 +17,10 @@ const TOP = 14; // room for IF labels
 const CH = 6.6; // mono character width at 11px
 const BOX_H = 18;
 const GAP = 8; // between columns
-const GAP_EDIT = 22; // while editing: room for a tappable "+" in every gap
-const LONG_PRESS_MS = 350;
+const CELL = 28; // an empty column's width while editing (a drop target)
+const EXTRA_W = 380; // while editing, empty columns fill at least this width
+const FOLD_W = 34; // a folded range of columns
+const LABEL_W = 30; // the wire labels, pinned at the left of the scroller
 
 /** Width a step needs in its column. */
 function need(s: Placed["step"]): number {
@@ -27,270 +32,344 @@ function need(s: Placed["step"]): number {
 
 const label = (s: Placed["step"]) => (s.gateId === "measure" ? "M" : gateLabel(s));
 
-/** What the editor needs from the diagram (absent in the report's read-only copy). */
-type Edit = {
-  sel: number | null; ctrlPick: boolean; cursorQubit: number;
-  /** The selected gate as it would read with the typed angle (drawn in its place, dashed). */
-  preview: Entry | null;
-  /** In "± ctrl": the wires that can take a control. */
-  ctrlOk: Set<number>;
-  onGate: (entry: number) => void;
-  onWire: (q: number, at: number) => void;
-  onDrop: (entry: number, items: Placed[], col: number, dq: number) => void;
-};
-
-/** "q1, before step 3: RX(t)" / "q1, at the end": where the next gate key lands. */
-function nextPlace(calc: Calculator): string {
-  const at = calc.scrub ?? calc.tape.length;
-  const q = calc.sel;
-  const next = calc.tape.findIndex((e, k) => k >= at && e.some((s) => [...s.controls, ...s.targets].includes(q)));
-  return next < 0 ? `q${q}, at the end` : `q${q}, before step ${next + 1}: ${formatEntry(calc.tape[next])}`;
-}
+type Cell = { row: number; col: number };
+const NO_FOLDS: { from: number; to: number }[] = [];
 
 /**
- * CIRC → DIAG: the circuit drawn, and edited. The selected wire shows a "+"
- * in every gap: tap one to put the next gate there (the filled one is where
- * it goes now). Tap a gate to select it; the panel under the diagram, always
- * the same height so nothing moves under the finger, moves it, sets its angle
- * (type a number, then = or "angle"), adds controls; a gate key changes it;
- * DEL in the header deletes it; drag it by its handle, or long-press. Every
- * edit is one UNDO.
+ * The Circuit tab's diagram, edited with fingers or a mouse as in Quantiom's
+ * editor: drag a palette tile into a cell (the gate lands in that column, or
+ * the first free one right of it, and stays there); drag a gate to another
+ * column or wire; drag a control dot (or a selected gate's target) to another
+ * wire, onto the trash to remove it; drag the selected gate's "● +" onto a
+ * wire to add a control. Long-press (right-click) a gate for its menu:
+ * angles, duplicate, invert, controls, condition, delete. Long-press empty
+ * space for paste / select all / compact, then drag to select a rectangle.
+ * Tap a gate to select it; tap an empty cell to choose where tapped tiles go.
+ * Every edit is one UNDO.
  */
 export function CircuitView({ calc }: { calc: Calculator }) {
+  const [menu, setMenu] = useState<MenuAt | null>(null);
+  const close = useCallback(() => setMenu(null), []);
   const sel = calc.diagSel;
-  const e = sel !== null ? calc.tape[sel] : undefined;
-  const preview = calc.selectedPreview();
-  const typed = calc.entry.length > 0;
   return (
     <>
       <CircuitDiagram n={calc.n} tape={calc.tape} scrub={calc.scrub}
         edit={{
-          sel, ctrlPick: calc.ctrlPick, cursorQubit: calc.sel, preview, ctrlOk: calc.ctrlPick ? calc.controlCandidates() : new Set(),
+          sel, set: calc.diagSet, cursor: calc.cursor, folds: calc.folds, onUnfold: (from) => calc.unfold(from),
           onGate: (i) => calc.selectStep(sel === i ? null : i),
-          onWire: (q, at) => calc.tapWire(q, at),
-          onDrop: (i, items, col, dq) => calc.dropStep(i, items, col, dq),
+          onCell: (c) => calc.tapCell(calc.cursor && c && calc.cursor.row === c.row && calc.cursor.col === c.col ? null : c),
+          onBox: (a, b) => calc.selectBox(a.col, b.col, a.row, b.row),
+          onMenu: (m) => setMenu((cur) => cur ?? (m.kind === "gate" && calc.diagSet.size && calc.diagSet.has(calc.tape.findIndex((e) => e[0]?.id === m.id))
+            ? { x: m.x, y: m.y, kind: "selection" }
+            : m.kind === "canvas" && calc.diagSet.size ? { x: m.x, y: m.y, kind: "selection" } : m)),
+          onDrop: (payload, cell) => {
+            switch (payload.kind) {
+              case "new": return void calc.placeItem(payload.item, cell.row, cell.col);
+              case "move": return void calc.moveGate(payload.entry, cell.col, cell.row - payload.grabRow);
+              case "dot": {
+                // Along its own wire a dot carries the whole gate to another column; onto another wire it moves alone.
+                const s = calc.tape[payload.entry]?.[0];
+                const own = s && (payload.role === "target" ? s.targets : s.controls)[payload.index];
+                if (own === cell.row) return void calc.moveGate(payload.entry, cell.col, 0);
+                return void calc.reassignQubit(payload.entry, payload.role, payload.index, cell.row);
+              }
+              case "addctl": return void calc.addControl(payload.entry, cell.row);
+            }
+          },
+          onTrash: (p) => {
+            if (p.kind === "move") calc.removeGate(p.entry);
+            else if (p.kind === "dot" && p.role === "control") calc.removeControl(p.entry, calc.tape[p.entry]?.[0].controls[p.index]);
+            else if (p.kind === "dot") calc.notify("a target can't be removed: drag the whole gate to delete it", "error");
+          },
         }} />
-      <div className="diag-panel" role="region" aria-label="Circuit editing" aria-live="polite">
-        {!e ? (
-          <>
-            <div className="diag-status">Next gate → <b>{nextPlace(calc)}</b></div>
-            <div className="diag-hint dim">Tap a <b>+</b> on the wire to insert there, another wire to switch to it, a gate to edit it.</div>
-          </>
-        ) : calc.ctrlPick ? (
-          <>
-            <div className="diag-status">Controls for <b>{sel! + 1}: {formatEntry(e)}</b></div>
-            <div className="diag-hint">Tap a highlighted wire to add a control there, or a control to remove it.</div>
-            <div className="diag-bar" role="toolbar" aria-label="Controls">
-              <button className="on" onClick={() => calc.toggleCtrlPick()}>Done</button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="diag-status">
-              <b>{sel! + 1}: {formatEntry(e)}</b>
-              {preview && <span className="diag-preview"> → {formatEntry(preview)} · = applies</span>}
-            </div>
-            <div className="diag-bar" role="toolbar" aria-label="Selected gate">
-              <button onClick={() => calc.moveSelected(-1)} aria-label="Move earlier">‹ earlier</button>
-              <button onClick={() => calc.moveSelected(1)} aria-label="Move later">later ›</button>
-              <button onClick={() => calc.shiftSelected(-1)} aria-label="Move up a wire">up</button>
-              <button onClick={() => calc.shiftSelected(1)} aria-label="Move down a wire">down</button>
-              {e[0].params.length > 0 && (
-                <button className={preview ? "on" : ""} disabled={!typed} onClick={() => calc.setSelectedParams()}
-                  aria-label="Set the angle from the typed number">angle</button>
-              )}
-              <button onClick={() => calc.toggleCtrlPick()} aria-label="Add or remove controls">± ctrl</button>
-              <button onClick={() => calc.selectStep(null)} aria-label="Deselect">done</button>
-            </div>
-            <div className="diag-hint dim">{e[0].params.length > 0 && !typed ? "Type an angle, then =. " : ""}A gate key changes it · DEL deletes it · drag the ⠿ handle to move it.</div>
-          </>
-        )}
-      </div>
+      {menu && <DiagramMenu calc={calc} menu={menu} close={close} />}
     </>
   );
 }
 
+/** What the editor needs from the diagram (absent in the report's read-only copy). */
+type Edit = {
+  sel: number | null; set: Set<number>; cursor: Cell | null;
+  /** Column ranges drawn as one box; tap it to unfold. */
+  folds: { from: number; to: number }[];
+  onUnfold: (from: number) => void;
+  /** Tap on a gate. */
+  onGate: (entry: number) => void;
+  /** Tap on an empty cell (null: outside the grid). */
+  onCell: (cell: Cell | null) => void;
+  /** A rectangle dragged from cell a to cell b. */
+  onBox: (a: Cell, b: Cell) => void;
+  /** Long-press or right-click: a gate's menu (by its first step's id), or the canvas's. */
+  onMenu: (m: MenuAt) => void;
+  /** Something dropped in a cell. */
+  onDrop: (payload: DragPayload, cell: Cell) => void;
+  /** Something dropped on the trash area. */
+  onTrash: (payload: DragPayload) => void;
+};
+
 /** The diagram (also the session report's read-only figure): `scrub` dims what lies ahead. */
 export function CircuitDiagram({ n, tape, scrub, edit }: { n: number; tape: Entry[]; scrub: number | null; edit?: Edit }) {
   const at = scrub ?? tape.length;
+  const folds = edit?.folds ?? NO_FOLDS;
+  const folded = (c: number) => folds.some((f) => c >= f.from && c <= f.to);
   const steps = useMemo(() => tape.reduce((k, e) => k + e.length, 0), [tape]);
   // A wide register draws only the wires the tape touches.
   const wires = useMemo(() => (n <= DIAGRAM_MAX_QUBITS ? null : usedQubits(tape)), [n, tape]);
   const tooWide = wires !== null && wires.length > DIAGRAM_MAX_QUBITS;
   const lay = useMemo(() => (!tooWide && steps <= MAX_STEPS ? layoutTape(n, tape, wires ?? undefined) : null), [n, tape, wires, tooWide, steps]);
-  // Editing leaves room between columns for the "+" insertion slots.
-  const gap = edit ? GAP_EDIT : GAP;
   const geo = useMemo(() => {
     if (!lay) return null;
-    const w = new Array<number>(lay.cols).fill(20);
+    const min = edit ? CELL : 20;
+    const w = new Array<number>(lay.cols).fill(min);
     for (const it of lay.items) w[it.col] = Math.max(w[it.col], need(it.step));
-    const x = [gap];
-    for (let c = 0; c < lay.cols; c++) x.push(x[c] + w[c] + gap);
-    return { w, x };
-  }, [lay, gap]);
+    // A folded range: its first column is the box, the others take no room.
+    for (const f of folds) for (let c = f.from; c <= Math.min(f.to, lay.cols - 1); c++) w[c] = c === f.from ? FOLD_W : 0;
+    const x = [GAP];
+    for (let c = 0; c < lay.cols; c++) x.push(x[c] + w[c] + (w[c] ? GAP : 0));
+    // Editing: empty columns after the circuit to drop into.
+    if (edit) {
+      const end = x[x.length - 1];
+      const extra = Math.max(4, Math.ceil((EXTRA_W - end) / (CELL + GAP)));
+      for (let k = 0; k < extra; k++) { w.push(CELL); x.push(x[x.length - 1] + CELL + GAP); }
+    }
+    return { w, x, cols: w.length };
+  }, [lay, edit !== undefined, folds]); // eslint-disable-line react-hooks/exhaustive-deps
   const box = useRef<HTMLDivElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const main = useRef<SVGSVGElement>(null);
-  const [drag, setDrag] = useState<{ entry: number; dx: number; dy: number } | null>(null);
-  const press = useRef<{ entry: number; x0: number; y0: number; timer: number; dragging: boolean; moved: boolean } | null>(null);
+  const drag = useDrag();
+  const [band, setBand] = useState<{ a: Cell; b: Cell } | null>(null);
+  const banding = useRef(false);
 
   const curCol = lay?.items.filter((it) => it.entry === at - 1).reduce((m, it) => Math.max(m, it.col), -1) ?? -1;
   useEffect(() => {
     const el = box.current;
     if (!el || !geo) return;
     // The current step's column; before the first step, the start.
-    const cx = curCol >= 0 ? geo.x[curCol] + geo.w[curCol] / 2 : at === 0 ? 0 : geo.x[geo.x.length - 1];
-    if (cx < el.scrollLeft + 20 || cx > el.scrollLeft + el.clientWidth - 20) el.scrollLeft = cx - el.clientWidth / 2;
-  }, [curCol, geo, at]);
+    const cx = curCol >= 0 ? geo.x[curCol] + geo.w[curCol] / 2 : at === 0 ? 0 : geo.x[lay!.cols];
+    const px = cx + LABEL_W; // the wire labels come first in the scroller
+    if (px < el.scrollLeft + LABEL_W + 20 || px > el.scrollLeft + el.clientWidth - 20) el.scrollLeft = px - el.clientWidth / 2;
+  }, [curCol, geo, at]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // While a gate is dragged, the page must not scroll under the finger (only a non-passive listener can say so).
+  // Selecting a rectangle with a finger: the page mustn't scroll meanwhile (listeners that can cancel it).
   useEffect(() => {
-    const el = main.current;
-    if (!el) return;
-    const stop = (ev: TouchEvent) => { if (press.current?.dragging) ev.preventDefault(); };
-    el.addEventListener("touchmove", stop, { passive: false });
-    return () => el.removeEventListener("touchmove", stop);
-  });
+    const el = root.current;
+    if (!el || !edit) return;
+    const f = (e: TouchEvent) => { if (banding.current) e.preventDefault(); };
+    el.addEventListener("touchmove", f, { passive: false });
+    return () => el.removeEventListener("touchmove", f);
+  }, [edit !== undefined]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const rows = lay?.wires.length ?? 0;
+  /** A column's left edge and width, including the empty ones past the drawn grid. */
+  const colX = (c: number) => (!geo ? 0 : c < geo.cols ? geo.x[c] : geo.x[geo.cols] + (c - geo.cols) * (CELL + GAP));
+  const colW = (c: number) => (geo && c < geo.cols ? geo.w[c] : CELL);
+  /** The column an x falls in (each column's cell includes half the gaps around it). */
+  const colAt = (px: number) => {
+    if (!geo) return 0;
+    for (let c = 0; c < geo.cols; c++) if (px < geo.x[c] + geo.w[c] + GAP / 2) return c;
+    return geo.cols + Math.max(0, Math.floor((px - geo.x[geo.cols] + GAP / 2) / (CELL + GAP)));
+  };
+  const rowAt = (py: number) => Math.max(0, Math.min(rows - 1, Math.floor((py - TOP) / ROW)));
+  const cellAt = (clientX: number, clientY: number): Cell => {
+    const r = main.current!.getBoundingClientRect();
+    return { row: rowAt(clientY - r.top), col: colAt(clientX - r.left) };
+  };
+
+  // The drop zone (the grid) and what a drop does: registered while this diagram edits.
+  const latest = useRef({ edit, rows, colAt });
+  latest.current = { edit, rows, colAt };
+  useEffect(() => {
+    if (!edit) return;
+    setDropZone({
+      resolve: (x, yy) => {
+        const svg = main.current, L = latest.current;
+        if (!svg) return null;
+        const r = svg.getBoundingClientRect();
+        if (x < r.left - 24 || x > r.right + 60 || yy < r.top - ROW / 2 || yy > r.bottom + ROW / 2) return null;
+        const row = Math.max(0, Math.min(L.rows - 1, Math.floor((yy - r.top - TOP) / ROW)));
+        return { row, col: L.colAt(x - r.left) };
+      },
+    });
+    setDropHandler((payload: DragPayload, hover: Hover) => {
+      const L = latest.current;
+      if (!L.edit || !hover) return;
+      if ("trash" in hover) return L.edit.onTrash(payload);
+      L.edit.onDrop(payload, hover.spot);
+    });
+    return () => { setDropZone(null); setDropHandler(null); };
+  }, [edit !== undefined]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!lay || !geo) {
     return <div className="rows dim">{tooWide ? `the diagram shows up to ${DIAGRAM_MAX_QUBITS} wires (the circuit uses ${wires!.length})` : `the diagram shows up to ${MAX_STEPS} steps`}: see STEP</div>;
   }
   if (!edit && tape.length === 0) return <div className="rows dim">empty</div>;
-  const rows = lay.wires.length;
-  const H = TOP + rows * ROW;
-  // Room after the last gate to tap (append) when editing.
-  const W = edit ? Math.max(geo.x[geo.x.length - 1] + 60, 240) : geo.x[geo.x.length - 1];
+  // Editing: room under the last wire for the selected gate's "● +" handle.
+  const H = TOP + rows * ROW + (edit ? 16 : 0);
+  const W = geo.x[geo.cols];
   const y = (r: number) => TOP + r * ROW + ROW / 2;
   const rowOf = new Map(lay.wires.map((q, r) => [q, r]));
   const save = () => root.current && main.current && void saveSvg(elementToSvg(root.current, [main.current]), "qc1-circuit.svg");
+  const firstId = (entry: number) => tape[entry]?.[0]?.id ?? "";
 
-  /** The insertion column an x falls at: before the first column whose middle is to its right. */
-  const colAt = (x: number) => {
-    for (let c = 0; c < lay.cols; c++) if (x < geo.x[c] + geo.w[c] / 2) return c;
-    return lay.cols;
+  /** Empty space: tap a cell; long-press for the menu, then drag to select a rectangle (a mouse drags at once). */
+  const bgDown = (ev: React.PointerEvent) => {
+    if (!edit || (ev.target as Element).closest(".gate, .svg-btn, .circ-labels")) return;
+    const mouse = ev.pointerType === "mouse";
+    if (mouse && ev.button !== 0) return;
+    const x0 = ev.clientX, y0 = ev.clientY, id = ev.pointerId, a = cellAt(x0, y0);
+    const r0 = main.current!.getBoundingClientRect();
+    const inGrid = y0 >= r0.top + TOP && y0 < r0.top + TOP + rows * ROW && x0 >= r0.left;
+    let mode: "press" | "armed" | "band" | "off" = "press";
+    const timer = mouse ? undefined : setTimeout(() => {
+      if (mode !== "press") return;
+      mode = "armed";
+      banding.current = true;
+      try { navigator.vibrate?.(12); } catch { /* none */ }
+    }, LONG_PRESS);
+    const done = () => {
+      clearTimeout(timer);
+      banding.current = false;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+    };
+    const move = (e: PointerEvent) => {
+      if (e.pointerId !== id) return;
+      const d = Math.hypot(e.clientX - x0, e.clientY - y0);
+      if (mode === "press") {
+        if (mouse && d > 4) mode = "band";
+        else if (!mouse && d > 8) { mode = "off"; done(); return; } // a swipe: the pane scrolls
+      } else if (mode === "armed" && d > 6) mode = "band";
+      if (mode === "band") { e.preventDefault(); setBand({ a, b: cellAt(e.clientX, e.clientY) }); }
+    };
+    const up = (e: PointerEvent) => {
+      if (e.pointerId !== id) return;
+      const m = mode;
+      done();
+      if (m === "band") { setBand(null); edit.onBox(a, cellAt(e.clientX, e.clientY)); }
+      else if (m === "armed") edit.onMenu({ kind: "canvas", x: x0, y: y0 });
+      else if (m === "press") edit.onCell(inGrid ? a : null);
+    };
+    const cancel = (e: PointerEvent) => { if (e.pointerId === id) { done(); setBand(null); } };
+    window.addEventListener("pointermove", move, { passive: false });
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
   };
-  const svgX = (clientX: number) => clientX - main.current!.getBoundingClientRect().left;
 
-  // The selected wire's insertion slots: one before its first gate and one after each of its gates.
-  // Slot L (L = the column of the gate it follows, −1 at the start) sits in the gap before column L + 1.
-  const curRow = edit ? rowOf.get(edit.cursorQubit) : undefined;
-  const onRow = (it: Placed) => curRow !== undefined && it.lo <= curRow && curRow <= it.hi;
-  const lastBefore = lay.items.filter((it) => it.entry < at && onRow(it)).reduce((m, it) => Math.max(m, it.col), -1);
-  const slotX = (L: number) => geo.x[L + 1] - gap / 2;
-  // After a wire's last gate, the rest of the circuit commutes with the new one: put it at the very end
-  // (live, nothing dimmed) rather than in the middle of the tape.
-  const onWireAt = (r: number, ins: number) => (lay.items.some((it) => it.lo <= r && r <= it.hi && it.entry >= ins) ? ins : tape.length);
-  const slots = edit && edit.sel === null && curRow !== undefined
-    ? [...new Set([-1, ...lay.items.filter(onRow).map((it) => it.col)])].map((L) => {
-        const ins = onWireAt(curRow, insertionIndex(lay.items, L + 1, curRow, curRow));
-        const next = lay.items.filter(onRow).find((it) => it.entry === ins);
-        return { L, at: ins, here: L === lastBefore, label: next ? `Insert on q${edit.cursorQubit} before step ${ins + 1}` : `Insert on q${edit.cursorQubit} at the end` };
-      })
-    : [];
-
-  /** A press on a gate: a tap selects it; a long press (or a press on the selected gate's handle, `now`) drags it. */
-  const onDown = (ev: RPointerEvent, entry: number, now = false) => {
-    if (!edit) return;
-    if (now) {
-      ev.stopPropagation();
-      press.current = { entry, x0: ev.clientX, y0: ev.clientY, timer: 0, dragging: true, moved: false };
-      setDrag({ entry, dx: 0, dy: 0 });
-      (ev.currentTarget as Element).setPointerCapture?.(ev.pointerId);
-      return;
+  // The drop preview: the cells the dragged thing would take (the first free column at or right of the pointer's).
+  const spot = drag?.hover && "spot" in drag.hover ? drag.hover.spot : null;
+  const preview = (() => {
+    if (!edit || !drag || !spot) return null;
+    const p = drag.payload;
+    const rect = (c: number, lo: number, hi: number, k: number, bad = false) => (
+      <rect key={k} className={bad ? "bad" : undefined} x={colX(c) - 2} y={y(lo) - BOX_H / 2 - 3} width={colW(c) + 4} height={y(hi) - y(lo) + BOX_H + 6} rx={4} />
+    );
+    if (p.kind === "new") {
+      const span = spanFrom(spot.row, Math.max(1, itemWidth(p.item)), rows);
+      const fake: Entry = [{ id: "", gateId: "x", column: 0, controls: [], targets: span, clbits: [], params: [] }];
+      const c = freeColumn(lay.items, fake, [0], spot.col);
+      return <g className="drop-preview">{rect(c, span[0], span[span.length - 1], 0)}</g>;
     }
-    const timer = window.setTimeout(() => {
-      if (!press.current || press.current.moved) return;
-      press.current.dragging = true;
-      setDrag({ entry, dx: 0, dy: 0 });
-      try { navigator.vibrate?.(10); } catch { /* none */ }
-    }, LONG_PRESS_MS);
-    press.current = { entry, x0: ev.clientX, y0: ev.clientY, timer, dragging: false, moved: false };
-    (ev.currentTarget as Element).setPointerCapture?.(ev.pointerId);
-  };
-  const onMove = (ev: RPointerEvent) => {
-    const p = press.current;
-    if (!p) return;
-    const dx = ev.clientX - p.x0, dy = ev.clientY - p.y0;
-    if (!p.dragging) {
-      if (Math.hypot(dx, dy) > 8) { p.moved = true; clearTimeout(p.timer); } // a scroll, not a press
-      return;
+    const s0 = p.kind === "dot" ? tape[p.entry]?.[0] : undefined;
+    const alongWire = p.kind === "dot" && s0 && (p.role === "target" ? s0.targets : s0.controls)[p.index] === spot.row;
+    if (p.kind === "move" || alongWire) {
+      const moved = p.kind === "move" ? shiftEntry(tape[p.entry], spot.row - p.grabRow, rows) : tape[p.entry];
+      if (!moved) return <g className="drop-preview">{rect(spot.col, spot.row, spot.row, 0, true)}</g>;
+      const rel = shape(n, moved);
+      const c = freeColumn(lay.items, moved, rel, spot.col, p.entry);
+      return <g className="drop-preview">{moved.map((s, k) => {
+        const qs = [...s.controls, ...s.targets].map((q) => rowOf.get(q)!);
+        return rect(c + rel[k], Math.min(...qs), Math.max(...qs), k);
+      })}</g>;
     }
-    setDrag({ entry: p.entry, dx, dy });
-  };
-  const onUp = (ev: RPointerEvent) => {
-    const p = press.current;
-    press.current = null;
-    if (!p || !edit) return;
-    clearTimeout(p.timer);
-    if (p.dragging) {
-      setDrag(null);
-      edit.onDrop(p.entry, lay.items, colAt(svgX(ev.clientX)), Math.round((ev.clientY - p.y0) / ROW));
-    } else if (!p.moved) edit.onGate(p.entry);
-  };
-  const onCancel = () => {
-    if (press.current) clearTimeout(press.current.timer);
-    press.current = null;
-    setDrag(null);
-  };
+    const it = lay.items.find((x) => x.entry === p.entry);
+    if (!it) return null;
+    const gx = colX(it.col) + colW(it.col) / 2;
+    return <g className="drop-preview"><line x1={gx} x2={gx} y1={y(Math.min(it.lo, spot.row))} y2={y(Math.max(it.hi, spot.row))} /><circle cx={gx} cy={y(spot.row)} r={6} /></g>;
+  })();
+
+  const bandRect = band && (() => {
+    const c0 = Math.min(band.a.col, band.b.col), c1 = Math.max(band.a.col, band.b.col);
+    const r0 = Math.min(band.a.row, band.b.row), r1 = Math.max(band.a.row, band.b.row);
+    return <rect className="band" x={colX(c0) - GAP / 2} y={y(r0) - ROW / 2} width={colX(c1) + colW(c1) - colX(c0) + GAP} height={(r1 - r0 + 1) * ROW} />;
+  })();
 
   return (
-    <div className="circ" ref={root}>
+    <div className="circ" ref={root} onPointerDown={edit ? bgDown : undefined}
+      onContextMenu={edit ? (e) => { e.preventDefault(); if (!(e.target as Element).closest(".gate")) edit.onMenu({ kind: "canvas", x: e.clientX, y: e.clientY }); } : undefined}>
       <button className="svg-btn" onClick={save} aria-label="Save the circuit as SVG">SVG</button>
-      <svg className="circ-labels" width={30} height={H} aria-hidden>
-        {lay.wires.map((q, r) => (
-          <text key={q} x={26} y={y(r) + 4} textAnchor="end" className={edit && q === edit.cursorQubit && edit.sel === null ? "cursor" : ""}>q{q}</text>
-        ))}
-      </svg>
       <div className="circ-scroll" ref={box}>
-        <svg ref={main} width={W} height={H} role="img" aria-label={`Circuit: ${tape.length} steps on ${n} qubits`}
-          className={edit?.ctrlPick ? "ctrl-pick" : undefined}>
-          {lay.wires.map((q, r) => {
-            const pick = edit?.ctrlPick;
-            const ok = pick && edit!.ctrlOk.has(q);
-            return (
-              <g key={q} className={pick ? (ok ? "ctl-ok" : "ctl-no") : edit && q === edit.cursorQubit && edit.sel === null ? "cur" : undefined}>
-                {/* the wire's tap target: switch to this wire (the next gate goes where it was tapped), or toggle a control */}
-                {edit && <rect className="wire-hit" x={0} y={y(r) - ROW / 2} width={W} height={ROW}
-                  onClick={(ev) => edit.onWire(q, onWireAt(r, insertionIndex(lay.items, colAt(svgX(ev.clientX)), r, r)))} />}
-                <line className="wire" x1={0} x2={W} y1={y(r)} y2={y(r)} />
-              </g>
-            );
-          })}
-          {lay.items.map((it, k) => (
-            <Gate key={k} it={it} row={(q) => rowOf.get(q)!} x={geo.x[it.col] + geo.w[it.col] / 2} y={y}
-              state={[
-                it.entry >= at ? "ahead" : it.entry === at - 1 && scrub !== null && !edit ? "at" : "",
-                edit?.sel === it.entry ? "sel" : "",
-                drag?.entry === it.entry ? "dragging" : "",
-                edit?.sel === it.entry && edit.preview ? "preview" : "",
-              ].join(" ")}
-              shown={edit?.sel === it.entry && edit.preview ? edit.preview.find((s) => s.id === it.step.id) ?? it.step : it.step}
-              offset={drag?.entry === it.entry ? drag : null}
-              onDown={edit ? (ev, now) => onDown(ev, it.entry, now) : undefined} onMove={onMove} onUp={onUp} onCancel={onCancel}
-              onActivate={edit ? () => edit.onGate(it.entry) : undefined} />
-          ))}
-          {slots.map((sl) => (
-            <g key={sl.L} className={`slot${sl.here ? " here" : ""}`} role="button" tabIndex={0} aria-label={sl.label + (sl.here ? " (the insertion point)" : "")}
-              onClick={() => edit!.onWire(edit!.cursorQubit, sl.at)}
-              onKeyDown={(ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); edit!.onWire(edit!.cursorQubit, sl.at); } }}>
-              <rect className="slot-hit" x={slotX(sl.L) - gap / 2} y={y(curRow!) - ROW / 2} width={gap} height={ROW} />
-              <circle cx={slotX(sl.L)} cy={y(curRow!)} r={7} />
-              <text x={slotX(sl.L)} y={y(curRow!) + 4} textAnchor="middle">+</text>
-            </g>
-          ))}
-        </svg>
+        <div className="circ-row">
+          <svg className="circ-labels" width={LABEL_W} height={H} aria-hidden>
+            {lay.wires.map((q, r) => (
+              <text key={q} x={26} y={y(r) + 4} textAnchor="end" className={edit?.cursor?.row === r ? "cursor" : ""}>q{q}</text>
+            ))}
+          </svg>
+          <svg ref={main} width={W} height={H} role="group" aria-label={`Circuit: ${tape.length} steps on ${n} qubits`} className={drag ? "dragging" : undefined}>
+            {edit && <rect className="grid-hit" x={0} y={0} width={W} height={H} />}
+            {lay.wires.map((q, r) => <line key={q} className="wire" x1={0} x2={W} y1={y(r)} y2={y(r)} />)}
+            {edit?.cursor && edit.cursor.row < rows && (
+              <rect className="cursor-cell" x={colX(edit.cursor.col) - 2} y={y(edit.cursor.row) - BOX_H / 2 - 3} width={colW(edit.cursor.col) + 4} height={BOX_H + 6} rx={4} />
+            )}
+            {edit && edit.set.size > 0 && lay.items.filter((it) => edit.set.has(it.entry) && !folded(it.col)).map((it, k) => (
+              <rect key={`s${k}`} className="picked" x={colX(it.col) - 3} y={y(it.lo) - BOX_H / 2 - 4} width={colW(it.col) + 6} height={y(it.hi) - y(it.lo) + BOX_H + 8} rx={4} />
+            ))}
+            {folds.filter((f) => f.from < lay.cols).map((f) => {
+              const k = new Set(lay.items.filter((it) => it.col >= f.from && it.col <= f.to).map((it) => it.entry)).size;
+              return (
+                <g key={`f${f.from}`} className="fold" role="button" tabIndex={0} aria-label={`Folded columns ${f.from + 1}–${f.to + 1}, ${k} gates: tap to unfold`}
+                  onPointerDown={(e) => e.stopPropagation()} onClick={() => edit!.onUnfold(f.from)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); edit!.onUnfold(f.from); } }}>
+                  <rect x={colX(f.from)} y={y(0) - ROW / 2 + 4} width={FOLD_W} height={rows * ROW - 8} rx={5} />
+                  <text x={colX(f.from) + FOLD_W / 2} y={TOP + (rows * ROW) / 2 + 4} textAnchor="middle">⊞ {k}</text>
+                </g>
+              );
+            })}
+            {lay.items.map((it, k) => {
+              if (folded(it.col)) return null;
+              const selected = edit?.sel === it.entry;
+              return (
+                <Gate key={k} it={it} row={(q) => rowOf.get(q)!} x={colX(it.col) + colW(it.col) / 2} y={y}
+                  state={[
+                    it.entry >= at ? "ahead" : it.entry === at - 1 && scrub !== null && !edit ? "at" : "",
+                    selected ? "sel" : "",
+                    drag && (drag.payload.kind === "move" || drag.payload.kind === "dot") && drag.payload.entry === it.entry ? "dragging" : "",
+                  ].join(" ")}
+                  dragTargets={selected && it.step.targets.length + it.step.controls.length > 1}
+                  onPress={edit ? (ev, dot) => pressToDrag(ev,
+                    dot ? { kind: "dot", entry: it.entry, role: dot.role, index: dot.index } : { kind: "move", entry: it.entry, grabRow: rowAt(ev.clientY - main.current!.getBoundingClientRect().top) },
+                    dot ? (dot.role === "control" ? "●" : label(it.step)) : label(it.step),
+                    () => edit.onGate(it.entry),
+                    (x, yy) => edit.onMenu({ kind: "gate", id: firstId(it.entry), x, y: yy })) : undefined}
+                  onMenu={edit ? (x, yy) => edit.onMenu({ kind: "gate", id: firstId(it.entry), x, y: yy }) : undefined}
+                  onAddControl={edit && selected && !NONUNITARY.has(it.step.gateId) ? (ev) => pressToDrag(ev, { kind: "addctl", entry: it.entry }, "● +") : undefined}
+                  onActivate={edit ? () => edit.onGate(it.entry) : undefined} />
+              );
+            })}
+            {preview}
+            {bandRect}
+          </svg>
+        </div>
       </div>
     </div>
   );
 }
 
-function Gate({ it, shown, x, y: yRow, row, state, offset, onDown, onMove, onUp, onCancel, onActivate }: {
-  it: Placed; shown?: Placed["step"]; x: number; y: (r: number) => number; row: (q: number) => number; state: string;
-  offset: { dx: number; dy: number } | null;
-  onDown?: (ev: RPointerEvent, now?: boolean) => void; onMove: (ev: RPointerEvent) => void; onUp: (ev: RPointerEvent) => void; onCancel: () => void;
+type DotRef = { role: "target" | "control"; index: number };
+
+function Gate({ it, x, y: yRow, row, state, dragTargets, onPress, onMenu, onAddControl, onActivate }: {
+  it: Placed; x: number; y: (r: number) => number; row: (q: number) => number; state: string;
+  /** The selected multi-qubit gate: its targets are dots to drag too. */
+  dragTargets?: boolean;
+  /** A press on the gate (dot: one of its control or target dots). */
+  onPress?: (ev: React.PointerEvent, dot?: DotRef) => void;
+  /** Right-click, or the keyboard's menu key. */
+  onMenu?: (x: number, y: number) => void;
+  onAddControl?: (ev: React.PointerEvent) => void;
   onActivate?: () => void;
 }) {
-  const s = shown ?? it.step;
+  const s = it.step;
   const y = (q: number) => yRow(row(q)); // by qubit
   const yr = yRow; // by row
   const ctrl = new Set(s.controls);
@@ -299,44 +378,61 @@ function Gate({ it, shown, x, y: yRow, row, state, offset, onDown, onMove, onUp,
   const bw = Math.max(20, text.length * CH + 10);
   const where = [...new Set([...s.controls, ...s.targets])].sort((a, b) => a - b).map((q) => `q${q}`).join(", ");
   const selected = state.includes("sel");
+  const dot = (q: number, d: DotRef, key: string) => (
+    // a bigger target on the dot: drag it to another wire (a control also onto the trash)
+    <circle key={key} className="dot-hit" cx={x} cy={y(q)} r={11} onPointerDown={(ev) => { ev.stopPropagation(); onPress!(ev, d); }} />
+  );
   return (
-    <g className={`gate ${state}`} transform={offset ? `translate(${offset.dx},${offset.dy})` : undefined}
+    <g className={`gate ${state}`}
       role={onActivate ? "button" : undefined} tabIndex={onActivate ? 0 : undefined} aria-pressed={onActivate ? selected : undefined}
       aria-label={onActivate ? `Step ${it.entry + 1}: ${text} on ${where}` : undefined}
-      onKeyDown={onActivate && ((ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); onActivate(); } })}
-      onPointerDown={onDown && ((ev) => onDown(ev))} onPointerMove={onDown && onMove} onPointerUp={onDown && onUp} onPointerCancel={onDown && onCancel}>
+      onKeyDown={onActivate && ((ev) => {
+        if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); onActivate(); }
+        if (ev.key === "ContextMenu" || (ev.shiftKey && ev.key === "F10")) {
+          ev.preventDefault();
+          const r = (ev.currentTarget as Element).getBoundingClientRect();
+          onMenu?.(r.left + r.width / 2, r.bottom);
+        }
+      })}
+      onPointerDown={onPress && ((ev) => onPress(ev))}
+      onContextMenu={onMenu && ((ev) => { ev.preventDefault(); ev.stopPropagation(); onMenu(ev.clientX, ev.clientY); })}>
       <title>{`${it.entry + 1}: ${text}`}</title>
-      {/* the hit area: the gate's own width (the gaps belong to the insertion slots) */}
-      <rect className="hit" x={x - bw / 2} y={yr(it.lo) - ROW / 2} width={bw} height={(it.hi - it.lo + 1) * ROW} />
+      <rect className="hit" x={x - bw / 2 - 3} y={yr(it.lo) - ROW / 2} width={bw + 6} height={(it.hi - it.lo + 1) * ROW} />
       {it.hi > it.lo && <line className="link" x1={x} x2={x} y1={yr(it.lo)} y2={yr(it.hi)} />}
       {s.controls.map((q, i) => (
-        <circle key={`c${q}`} className={s.controlStates?.[i] === false ? "ctl open" : "ctl"} cx={x} cy={y(q)} r={4} />
+        <g key={`c${q}`}>
+          <circle className={s.controlStates?.[i] === false ? "ctl open" : "ctl"} cx={x} cy={y(q)} r={4} />
+          {onPress && dot(q, { role: "control", index: i }, "h")}
+        </g>
       ))}
-      {s.targets.map((q) => {
+      {s.targets.map((q, i) => {
         if (ctrl.has(q)) return null;
+        const handle = onPress && dragTargets ? dot(q, { role: "target", index: i }, "h") : null;
         if (cnot) return (
           <g key={q}>
             <circle className="oplus" cx={x} cy={y(q)} r={8} />
             <line className="oplus" x1={x - 8} x2={x + 8} y1={y(q)} y2={y(q)} />
             <line className="oplus" x1={x} x2={x} y1={y(q) - 8} y2={y(q) + 8} />
+            {handle}
           </g>
         );
-        if (s.gateId === "swap") return <text key={q} className="swapx" x={x} y={y(q) + 5} textAnchor="middle">×</text>;
+        if (s.gateId === "swap") return <g key={q}><text className="swapx" x={x} y={y(q) + 5} textAnchor="middle">×</text>{handle}</g>;
         const measured = MEASURE_IDS.has(s.gateId) && s.gateId !== "reset";
         return (
           <g key={q}>
-            <rect className={`box${measured ? " meas" : ""}${s.condition ? " cond" : ""}`} x={x - bw / 2} y={y(q) - BOX_H / 2} width={bw} height={BOX_H} rx={3} />
+            <rect className={`box g-${groupOf(s.gateId, s.controls.length)}${measured ? " meas" : ""}${s.condition ? " cond" : ""}`} x={x - bw / 2} y={y(q) - BOX_H / 2} width={bw} height={BOX_H} rx={3} />
             <text className="glabel" x={x} y={y(q) + 4} textAnchor="middle">{text}</text>
             {measured && s.outcome !== undefined && <text className="outcome" x={x + bw / 2 - 1} y={y(q) + BOX_H / 2 + 8} textAnchor="end">{s.outcome}</text>}
+            {handle}
           </g>
         );
       })}
       {s.condition && <text className="iflabel" x={x} y={yr(it.lo) - BOX_H / 2 - 2} textAnchor="middle">c{s.condition.clbit}={s.condition.value}</text>}
-      {selected && onDown && (
-        // The drag handle: press and move right away (no long press needed).
-        <g className="handle-grip" onPointerDown={(ev) => onDown(ev, true)} aria-hidden>
-          <rect x={x - 11} y={yr(it.hi) + BOX_H / 2 + 1} width={22} height={13} rx={3} />
-          <text x={x} y={yr(it.hi) + BOX_H / 2 + 11} textAnchor="middle">⠿</text>
+      {selected && onAddControl && (
+        // "● +": drag onto a wire to add a control there
+        <g className="handle-grip" onPointerDown={(ev) => { ev.stopPropagation(); onAddControl(ev); }} role="button" aria-label="Drag onto a wire to add a control">
+          <rect x={x - 13} y={yr(it.hi) + BOX_H / 2 + 1} width={26} height={13} rx={3} />
+          <text x={x} y={yr(it.hi) + BOX_H / 2 + 11} textAnchor="middle">● +</text>
         </g>
       )}
     </g>

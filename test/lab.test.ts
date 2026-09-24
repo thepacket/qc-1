@@ -1,15 +1,16 @@
 import { describe, test, expect } from "vitest";
-import { Calculator, type KeyId } from "../src/calc/calculator";
+import { Calculator } from "../src/calc/calculator";
 import { InlineEngine } from "../src/calc/engine";
 import { runAnalysis, RUN_IDS } from "../src/analysis/run";
 import { ANALYSES } from "../src/analysis/catalog";
 import type { Chart } from "../src/analysis/types";
+import { add, cx } from "./ed";
 
 const calc = () => new Calculator(new InlineEngine(runAnalysis));
-const keys = (c: Calculator, ...ks: KeyId[]) => ks.forEach((k) => c.press(k));
 const bell = () => {
   const c = calc();
-  keys(c, "h", "ctrl", "right", "x");
+  add(c, "h", [0]);
+  cx(c, 0, 1);
   c.setMode("lab");
   return c;
 };
@@ -29,12 +30,15 @@ describe("LAB framework", () => {
       const c = calc();
       // A generically entangled state: H layer, CZ ring, RX(0.7) + T layers,
       // CZ ring again; plus symbols θ and t for the analyses that sweep them.
-      keys(c, ...(String(n).split("") as KeyId[]), "2nd", "q", "all", "h");
-      const czRing = () => { for (let q = 0; q < n; q++) keys(c, "ctrl", "right", "z"); };
+      c.setQubitCount(n);
+      c.addBroadcast("h");
+      const czRing = () => { if (n > 1) for (let q = 0; q < n; q++) cx(c, q, (q + 1) % n, "z"); };
       czRing();
-      keys(c, "0", ".", "7", "all", "rx", "all", "t");
+      c.addBroadcast("rx", ["0.7"]);
+      c.addBroadcast("t");
       czRing();
-      keys(c, "2nd", ",", "ry", "2nd", ".", "rz");
+      add(c, "ry", [0], { params: ["theta"] });
+      add(c, "rz", [0], { params: ["t"] });
       c.setSymbol("theta", 0.4);
       c.setSymbol("t", 0.9);
       if (a.category === "noise" || a.category === "bench") c.setNoise({ enabled: true, p1: 0.02, p2: 0.05, ad: 0.01, pd: 0.01, readout: 0.02, trajectories: 64 });
@@ -70,7 +74,8 @@ describe("LAB framework", () => {
 
   test("phase disk angle is the relative phase (|+i⟩ → +90°)", () => {
     const c = calc();
-    keys(c, "h", "s");
+    add(c, "h", [0]);
+    add(c, "s", [0]);
     c.setMode("lab");
     c.openAnalysis("phasedisk");
     const d = chart(c, "disks").disks[0];
@@ -80,7 +85,10 @@ describe("LAB framework", () => {
 
   test("Q-sphere of GHZ: two antipodal points of |a| = 1/√2", () => {
     const c = calc();
-    keys(c, "3", "2nd", "q", "h", "ctrl", "right", "x", "ctrl", "right", "x");
+    c.setQubitCount(3);
+    add(c, "h", [0]);
+    cx(c, 0, 1);
+    cx(c, 1, 2);
     c.setMode("lab");
     c.openAnalysis("qsphere");
     const pts = chart(c, "qsphere").points;
@@ -89,19 +97,22 @@ describe("LAB framework", () => {
     expect(pts[0].z + pts[1].z).toBeCloseTo(0, 9);
   });
 
-  test("a live analysis refreshes when a gate is keyed in", () => {
+  test("a live analysis refreshes when a gate is added", () => {
     const c = calc();
     c.setMode("lab");
     c.openAnalysis("mutualinfo");
     expect(chart(c, "heatmap").values[0][1]).toBeCloseTo(0, 9);
-    keys(c, "h", "ctrl", "right", "x");
+    add(c, "h", [0]);
+    cx(c, 0, 1);
     expect(chart(c, "heatmap").values[0][1]).toBeCloseTo(2, 9);
     expect(c.analysis!.rev).toBe(c.rev);
   });
 
   test("cut option reaches the computation", () => {
     const c = calc();
-    keys(c, "3", "2nd", "q", "h", "ctrl", "right", "x"); // Bell on q0,q1; q2 idle
+    c.setQubitCount(3);
+    add(c, "h", [0]);
+    cx(c, 0, 1); // Bell on q0,q1; q2 idle
     c.setMode("lab");
     c.openAnalysis("schmidt");
     c.setLabOpts("schmidt", { cut: [2] });
@@ -110,35 +121,38 @@ describe("LAB framework", () => {
     expect(scalar(c, "entropy S(A)")).toBeCloseTo(1, 9);
   });
 
-  test("AC in LAB goes back and never clears the register", () => {
+  test("back in LAB goes up a level and never clears the register", () => {
     const c = bell();
     c.openAnalysis("negativity");
-    keys(c, "ac");
+    c.labBack();
     expect(c.lab.level).toBe("list");
-    keys(c, "ac");
+    c.labBack();
     expect(c.lab.level).toBe("cats");
-    keys(c, "ac");
+    c.labBack();
+    expect(c.lab.level).toBe("cats");
     expect(c.tape).toHaveLength(2);
   });
 
-  test("◀ ▶ = navigate groups and lists, skipping empty groups (no favourites yet)", async () => {
+  test("picking groups and lists; empty groups (no favourites yet) can't be opened", async () => {
     const { analysesIn } = await import("../src/analysis/catalog");
     const c = calc();
     c.setMode("lab");
     const groups = c.labGroups();
     const usable = groups.map((g, i) => [i, g.items.length] as const).filter(([, k]) => k > 0).map(([i]) => i);
     expect(groups[c.lab.index].id).toBe("state"); // Favourites and Recent are empty: the lit row starts at State
-    keys(c, "right");
-    expect(c.lab.index).toBe(usable[1]);
-    keys(c, "eq");
+    const fav = groups.findIndex((x) => x.id === "fav");
+    expect(groups[fav].items).toHaveLength(0);
+    c.labPick("cats", fav); // refused
+    expect(c.lab.level).toBe("cats");
+    c.labPick("cats", usable[1]);
     expect(c.lab.level).toBe("list");
-    keys(c, "eq");
+    c.labPick("list", 0);
     expect(c.lab.level).toBe("view");
     expect(c.lab.id).toBe(groups[usable[1]].items[0].id);
-    keys(c, "ac", "ac");
-    const ent = groups.findIndex((x) => x.id === "entanglement");
-    while (c.lab.index !== ent) keys(c, "right");
-    keys(c, "eq", "eq");
+    c.labBack(); c.labBack();
+    expect(c.lab.index).toBe(usable[1]);
+    c.labPick("cats", groups.findIndex((x) => x.id === "entanglement"));
+    c.labPick("list", 0);
     expect(c.lab.id).toBe("density");
     expect(analysesIn("entanglement")[0].id).toBe("density");
   });
@@ -236,7 +250,7 @@ describe("LAB framework", () => {
     c.openAnalysis("mutualinfo");
     c.analysis = { ...c.analysis!, ms: 5000 }; // pretend the last run was slow
     const rev = c.analysis.rev;
-    keys(c, "h");
+    add(c, "h", [0]);
     expect(c.analysis.rev).toBe(rev); // not recomputed
     c.requestAnalysis();
     expect(c.analysis!.rev).toBe(c.rev);
@@ -246,7 +260,7 @@ describe("LAB framework", () => {
 describe("Phase 5b dynamics in LAB", () => {
   const rabi = () => {
     const c = calc();
-    keys(c, "2nd", ".", "rx"); // RX(t) on q0: ⟨Z⟩(t) = cos t
+    add(c, "rx", [0], { params: ["t"] }); // RX(t) on q0: ⟨Z⟩(t) = cos t
     c.setMode("lab");
     return c;
   };
@@ -276,7 +290,10 @@ describe("Phase 5b dynamics in LAB", () => {
 
   test("light cone: q2 idle is outside a Bell pair's backward cone of q0", () => {
     const c = calc();
-    keys(c, "3", "2nd", "q", "h", "ctrl", "right", "x", "down", "down", "x");
+    c.setQubitCount(3);
+    add(c, "h", [0]);
+    cx(c, 0, 1);
+    add(c, "x", [1]);
     c.setMode("lab");
     c.openAnalysis("lightcone");
     expect(scalar(c, "backward cone of q0")).toBe("2 of 3 gates");
@@ -294,19 +311,23 @@ describe("Phase 6 circuit tools in LAB", () => {
 
   test("Simplify proposes a verified shorter tape; APPLY replaces it, UNDO restores", () => {
     const c = calc();
-    keys(c, "h", "h", "s", "s", "ctrl", "right", "x");
+    for (const g of ["h", "h", "s", "s"]) add(c, g, [0]);
+    cx(c, 0, 1);
     const r = run(c, "simplify");
     expect(r.proposal?.verified).toBe(true);
     expect(r.proposal!.tape.length).toBeLessThan(5);
     c.applyProposal(r.proposal!);
     expect(c.tape.length).toBe(r.proposal!.tape.length);
-    keys(c, "undo");
+    c.undo();
     expect(c.tape.length).toBe(5);
   });
 
   test("appending U† returns the register to |0…0⟩", () => {
     const c = calc();
-    keys(c, "h", "ctrl", "right", "x", "t", "rx");
+    add(c, "h", [0]);
+    cx(c, 0, 1);
+    add(c, "t", [1]);
+    add(c, "rx", [1]);
     const r = run(c, "inverse", { mode: 0 });
     c.applyProposal(r.proposal!);
     c.setMode("ket");
@@ -318,12 +339,14 @@ describe("Phase 6 circuit tools in LAB", () => {
 
   test("state preparation of GHZ, and routing a far CX on a line", () => {
     const c = calc();
-    keys(c, "3", "2nd", "q");
+    c.setQubitCount(3);
     const r = run(c, "stateprep", { target: "1,0,0,0,0,0,0,1" });
     expect(r.proposal?.verified).toBe(true);
     expect(r.scalars!.find((s) => s.label === "|⟨target|ψ⟩|")!.value as number).toBeCloseTo(1, 12);
     const d = calc();
-    keys(d, "3", "2nd", "q", "h", "ctrl", "right", "right", "x");
+    d.setQubitCount(3);
+    add(d, "h", [0]);
+    cx(d, 0, 2);
     const rt = run(d, "route", { coupling: 0 });
     expect(rt.proposal?.verified).toBe(true);
     expect(rt.scalars!.find((s) => s.label === "SWAPs inserted")!.value).toBe(1);
@@ -331,7 +354,6 @@ describe("Phase 6 circuit tools in LAB", () => {
 
   test("Trotter circuit in t; its error shrinks with the order (at t = 1)", () => {
     const c = calc();
-    keys(c, "2", "2nd", "q");
     const err = (order: number) => {
       const r = run(c, "trotter", { ham: "ZZ + 0.5*XI + 0.5*IX", steps: 4, order });
       expect(r.proposal!.tape.flat().some((s) => s.params.some((p) => /\bt\b/.test(p)))).toBe(true);

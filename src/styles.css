@@ -1,4 +1,15 @@
 :root {
+  /* Gate groups (palette tiles and the diagram's gate boxes), black text on each: contrast ≥ 10:1. */
+  --g-pauli: #8ec5ff;
+  --g-rotation: #b9adff;
+  --g-controlled: #7fd9c4;
+  --g-two: #f7a8cb;
+  --g-multi: #f8b77f;
+  --g-measure: #d6d6d0;
+  --g-prep: #a9df8c;
+  --g-blocks: #f3d67c;
+  --g-typed: #e2b6f2;
+  --g-custom: #cdbf9c;
   --body: #1f2126;
   --body-hi: #2a2d33;
   /* Display: a color graphing screen. Series colors are the validated dark
@@ -70,25 +81,6 @@ button {
   overflow: hidden;
 }
 
-/* ── Nameplate ─────────────────────────────────────────────── */
-.brand {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: 0 4px;
-  color: #9aa0aa;
-}
-.logo {
-  font-weight: 800;
-  font-size: 15px;
-  letter-spacing: 0.06em;
-  color: #e9e6df;
-}
-.model {
-  font-size: 9.5px;
-  letter-spacing: 0.22em;
-}
-
 /* ── LCD ───────────────────────────────────────────────────── */
 .lcd {
   flex: 1 1 0;
@@ -143,7 +135,6 @@ button {
   color: var(--ink-muted);
   border: 1px solid var(--ink-faint);
 }
-.qb.marked { color: var(--ink); border-color: var(--ink-dim); }
 .qb.sel { background: var(--series-1); color: #fff; border-color: var(--series-1); }
 
 .view {
@@ -245,38 +236,10 @@ button {
 }
 .mini.on { background: var(--ink-faint); color: var(--ink); }
 
-.tape-strip {
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-  overflow: hidden;
-  white-space: nowrap;
-  font-size: 11px;
-  color: var(--ink-muted);
-}
-/* Newest on the right; older entries overflow off the left edge. */
-.tape-strip span { flex: 0 0 auto; }
-.tape-strip span:last-child { color: var(--ink); }
-
-.entry {
-  font-size: 24px;
-  line-height: 1.15;
-  text-align: right;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  /* rtl so long entries clip on the left; the <bdi> keeps the text itself ltr. */
-  direction: rtl;
-  font-variant-numeric: tabular-nums;
-  min-height: 1.15em;
-}
-.entry bdi { direction: ltr; }
-.entry.err { font-size: 16px; line-height: 1.7; color: var(--critical); }
-
 /* ── Display-mode row ──────────────────────────────────────── */
 .modes {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(6, minmax(0, 1fr)) auto;
   gap: 5px;
 }
 .modes button {
@@ -289,81 +252,18 @@ button {
   background: #2b2e34;
   box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.35);
 }
+.modes button { min-width: 0; overflow: hidden; }
+.modes button:last-child { padding: 0 10px; } /* AI: the chat, not a view */
 .modes button.on {
   color: #fff;
   background: var(--series-1);
 }
 
-/* ── Keypad ────────────────────────────────────────────────── */
-.keypad {
-  flex: 0 0 auto;
-  /* 8 rows of a 13px 2ND label over a 26px key (the mode buttons' height). */
-  height: calc(8 * 39px + 7 * 2px);
-  min-height: 0;
-  transition: height 0.25s ease, opacity 0.2s ease;
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  grid-template-rows: repeat(8, 39px);
-  column-gap: 8px;
-  row-gap: 2px;
-}
-.keypad .key { flex: 0 0 26px; height: 26px; border-radius: 8px; }
-.cell {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-.cell.wide { grid-column: span 2; }
-.alt {
-  flex: 0 0 13px;
-  font-size: 9.5px;
-  line-height: 13px;
-  font-weight: 700;
-  text-align: center;
-  color: var(--amber);
-  opacity: 0.8;
-  white-space: nowrap;
-}
-.alt.lit { opacity: 1; text-shadow: 0 0 6px rgba(232, 169, 58, 0.6); }
-
-.key {
-  flex: 1;
-  min-height: 0;
-  border-radius: 9px;
-  font-weight: 650;
-  font-size: clamp(13px, 4.2vw, 18px);
-  letter-spacing: 0.02em;
-  color: #f2f0eb;
-  background: var(--key-gate);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    inset 0 -3px 0 rgba(0, 0, 0, 0.35),
-    0 1px 2px rgba(0, 0, 0, 0.5);
-  transition: transform 40ms, filter 40ms;
-}
-.key:active {
-  transform: translateY(1px);
-  filter: brightness(0.85);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 1px rgba(0, 0, 0, 0.5);
-}
-.key:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
-
-.key.digit { background: var(--key-digit); color: #1d1f23; font-size: clamp(16px, 5.4vw, 22px); }
-.key.op { background: #54585f; font-size: clamp(15px, 5vw, 20px); }
-.key.nav { background: #2d3036; font-size: clamp(12px, 3.6vw, 15px); }
-.key.mod { background: var(--key-mod); font-size: clamp(12px, 3.6vw, 15px); }
-.key.mod.active { background: var(--key-mod-hi); box-shadow: 0 0 0 2px #8fb7e0, inset 0 -3px 0 rgba(0, 0, 0, 0.35); }
-.key.shift { background: var(--amber); color: #1d1f23; font-size: clamp(12px, 3.6vw, 15px); }
-.key.shift.active { box-shadow: 0 0 0 2px #fff3d6, 0 0 12px rgba(232, 169, 58, 0.7); }
-.key.clear { background: var(--key-clear); }
-.key.eq { background: var(--key-eq); font-size: clamp(16px, 5.4vw, 22px); }
-.key.gate { font-size: clamp(13px, 4.2vw, 17px); }
-
 @media (min-aspect-ratio: 4/5) {
   /* Wide screens (desktop, landscape): keep the calculator's proportions. */
   .calc {
     height: min(100dvh, 900px);
-    aspect-ratio: 9 / 18;
+    aspect-ratio: 10 / 16;
     width: auto;
     max-width: 100%;
     margin: auto;
@@ -444,34 +344,6 @@ button {
 .cat-row.on { background: rgba(57, 135, 229, 0.28); box-shadow: inset 3px 0 0 var(--series-1); }
 .cat-row.pinned { color: var(--amber); }
 
-/* ── Expanded display ──────────────────────────────────────── */
-.handle {
-  flex: 0 0 auto;
-  height: 14px;
-  margin: -4px 0 -4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  touch-action: none;
-}
-.handle span {
-  width: 44px;
-  height: 4px;
-  border-radius: 2px;
-  background: #4a4e56;
-}
-.calc.expanded .keypad { height: 0; opacity: 0; pointer-events: none; }
-.mini-keys {
-  display: none;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
-  flex: 0 0 26px; /* as tall as the mode buttons above */
-}
-.calc.expanded .mini-keys { display: grid; }
-.mini-keys .key { height: 26px; border-radius: 13px; font-size: 13px; }
-@media (prefers-reduced-motion: reduce) {
-  .keypad { transition: none; }
-}
 /* Keep sphere line weights constant as the main sphere scales with the display. */
 .sphere, .eq, .axis, .vec, .tip { vector-effect: non-scaling-stroke; }
 
@@ -598,7 +470,10 @@ button {
 .param-row.on { background: rgba(57, 135, 229, 0.16); box-shadow: inset 3px 0 0 var(--series-1); }
 .param-top { display: flex; align-items: baseline; gap: 10px; }
 .param-name { font-size: 18px; min-width: 1.2em; }
-.param-val { flex: 1; font-variant-numeric: tabular-nums; }
+.param-val { flex: 1; min-width: 0; font: inherit; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); background: #111110; border: 1px solid var(--grid); border-radius: 4px; padding: 2px 6px; }
+.param-val:focus { outline: none; border-color: var(--series-1); }
+.param-val.bad { border-color: var(--critical); }
+.param-pi { flex: none; font-size: 11px; }
 .param-row input[type="range"] { width: 100%; accent-color: var(--series-1); }
 
 .pauli-field { display: flex; flex-direction: column; gap: 4px; }
@@ -654,7 +529,8 @@ button {
 
 /* TAPE → CIRC: the tape as a circuit diagram */
 .circ { display: flex; flex: 1; min-height: 0; overflow-y: auto; font-family: var(--mono); font-size: 11px; }
-.circ-labels { flex: none; }
+.circ-labels { flex: none; position: sticky; left: 0; z-index: 1; background: var(--lcd); }
+.circ-row { display: flex; width: max-content; min-width: 100%; }
 .circ-labels text { fill: var(--ink-muted); font-size: 10px; }
 .circ-scroll { flex: 1; min-width: 0; overflow-x: auto; }
 .circ svg { display: block; }
@@ -692,7 +568,6 @@ button {
 .guide-head button:disabled { opacity: 0.3; }
 .guide-step { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--series-1); font-family: var(--mono); }
 .guide-text { margin: 3px 0 0; height: 4.2em; overflow-y: auto; color: var(--ink-dim); font-family: var(--sans); line-height: 1.4; white-space: pre-line; }
-.expanded .guide-text { height: 9em; }
 .guide-start { margin: 0 0 2px; font-family: var(--mono); font-size: 11px; color: var(--ink); background: none; border: 1px solid var(--series-1); border-radius: 3px; padding: 2px 8px; }
 
 /* CATALOG → STATE… / MATRIX… */
@@ -754,39 +629,6 @@ button {
 .lat-key.Z { background: #2a2a27; border: 1px solid #3a3a36; }
 .int-field { width: 5.5em; font: inherit; font-family: var(--mono); font-size: 12px; padding: 2px 5px; border-radius: 3px; border: 1px solid var(--ink-dim); background: #111110; color: var(--ink); text-align: center; }
 
-/* ── Landscape (a phone on its side) ───────────────────────────────────────
-   The display takes the screen; the keypad is a panel that slides in from the
-   right (KEYS), and the display reflows to the left of it while it is open. */
-.calc.landscape {
-  --panel: min(46vw, 430px);
-  max-width: none; width: 100%; height: 100dvh; aspect-ratio: auto; border-radius: 0; margin: 0;
-  gap: 5px;
-  padding: max(6px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
-}
-.calc.landscape .brand, .calc.landscape .handle, .calc.landscape .mini-keys, .calc.landscape .expand-btn[aria-label="Expand display"],
-.calc.landscape .expand-btn[aria-label="Show keypad"] { display: none; }
-.calc.landscape .lcd, .calc.landscape .modes { transition: margin-right 0.25s ease; }
-.calc.landscape.keys-open .lcd, .calc.landscape.keys-open .modes { margin-right: calc(var(--panel) + 8px); }
-.calc.landscape .modes { grid-template-columns: auto repeat(6, 1fr); }
-.calc.landscape .modes button { height: 24px; }
-.keys-toggle { padding: 0 10px; color: #fff !important; background: #3a3e46 !important; }
-.keys-toggle.on { background: var(--key-eq) !important; }
-.calc.landscape .keypad {
-  position: fixed; top: 0; right: 0; bottom: 0; z-index: 20;
-  width: var(--panel); height: auto; opacity: 1; pointer-events: auto;
-  padding: max(6px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) 10px;
-  background: linear-gradient(180deg, var(--body-hi), var(--body) 30%);
-  box-shadow: -6px 0 18px rgba(0, 0, 0, 0.45);
-  column-gap: 6px; row-gap: 1px;
-  transform: translateX(105%); transition: transform 0.25s ease;
-}
-.calc.landscape.keys-open .keypad { transform: none; }
-.calc.landscape .alt { flex-basis: 10px; font-size: 8px; line-height: 10px; }
-.calc.landscape .key { font-size: 13px; border-radius: 7px; }
-@media (prefers-reduced-motion: reduce) {
-  .calc.landscape .keypad, .calc.landscape .lcd, .calc.landscape .modes { transition: none; }
-}
-
 /* SVG export buttons (a chart's frame, the circuit diagram): small, top right, out of the exported image. */
 .chart, .circ { position: relative; }
 .svg-btn {
@@ -819,7 +661,6 @@ button {
 .chat-input textarea { flex: 1; font-family: var(--sans); font-size: 14px; padding: 5px 7px; border-radius: 6px; border: 1px solid var(--ink-dim); background: #111110; color: var(--ink); resize: none; }
 .chat-key { width: 100%; text-align: left; font-size: 13px; }
 .chat-models { display: flex; flex-direction: column; max-height: 11em; overflow-y: auto; }
-.entry.note { font-size: 11px; line-height: 1.5; color: var(--ink-dim); font-family: var(--sans); }
 
 /* Chat replies: Markdown and LaTeX (ui/Markdown.tsx, ui/Tex.tsx) */
 .chat-msg.md { white-space: normal; }
@@ -842,60 +683,203 @@ button {
 .ket-row { column-gap: 6px; }
 .ket-row .amp { white-space: pre; font-variant-numeric: tabular-nums; }
 
-/* DIAG editing: the selection's action bar, tap targets, insertion marker, drag */
-/* The editing panel sits under the diagram at a fixed height: selecting never moves the circuit. */
-.diag-panel {
-  flex: none;
-  height: 128px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 6px 0 2px;
-  border-top: 1px solid var(--grid);
-  font-size: 11px;
-  overflow: hidden;
-}
-.diag-panel > * { flex: none; }
-.diag-status { min-height: 15px; font-family: var(--mono); color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.diag-status b { color: var(--series-1); font-weight: 600; }
-.diag-preview { color: var(--amber); }
-.diag-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; font-family: var(--mono); font-size: 12px; }
-.diag-bar button {
-  min-width: 44px;
-  min-height: 34px;
-  padding: 0 4px;
-  border-radius: 6px;
-  border: 1px solid var(--ink-muted);
-  color: var(--ink);
-  background: var(--lcd-hi);
-}
-.diag-bar button.on { background: var(--series-1); border-color: var(--series-1); }
-.diag-bar button:disabled { opacity: 0.4; }
-.diag-hint { font-size: 10.5px; line-height: 1.35; font-family: var(--sans); }
-.diag-hint b { color: var(--series-1); }
-.circ .wire-hit { fill: transparent; cursor: crosshair; }
-/* The selected wire, its "+" insertion slots (filled: where the next gate goes) */
-.circ .cur .wire { stroke: var(--ink-dim); }
-.circ .slot { cursor: pointer; }
-.circ .slot-hit { fill: transparent; }
-.circ .slot circle { fill: var(--lcd); stroke: var(--ink-muted); stroke-width: 1; }
-.circ .slot text { fill: var(--ink-muted); font-size: 11px; pointer-events: none; }
-.circ .slot.here circle { fill: var(--series-1); stroke: var(--series-1); }
-.circ .slot.here text { fill: var(--ink); font-weight: 700; }
-.circ .slot:focus-visible circle, .circ .gate:focus-visible .box, .circ .gate:focus-visible .oplus { stroke: var(--amber); stroke-width: 2; }
-.circ .slot:focus, .circ .gate:focus { outline: none; }
-/* A typed angle previewed on the selected gate (amber, dashed); its drag handle */
-.circ .gate.preview .box { stroke: var(--amber); stroke-dasharray: 4 2; }
-.circ .gate.preview .glabel { fill: var(--amber); }
+/* The selected gate's "● +" handle: drag onto a wire to add a control */
 .circ .handle-grip { cursor: grab; touch-action: none; }
 .circ .handle-grip rect { fill: var(--series-1); }
 .circ .handle-grip text { fill: var(--ink); font-size: 10px; pointer-events: none; }
-/* "± ctrl": the wires a control can go on stand out, the others fade */
-.circ .ctl-ok .wire { stroke: var(--series-1); stroke-width: 2; }
-.circ .ctl-no .wire { opacity: 0.35; }
-.circ svg.ctrl-pick .wire-hit { fill: rgba(57, 135, 229, 0.08); }
-.circ-labels .cursor { fill: var(--amber); font-weight: 700; }
+/* The selected gate */
 .circ .gate.sel .box, .circ .gate.sel .oplus, .circ .gate.sel .ctl { stroke: var(--amber); stroke-width: 2; }
 .circ .gate.sel .link { stroke: var(--amber); }
 .circ .gate.dragging { opacity: 0.75; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6)); }
 .circ .gate { -webkit-user-select: none; user-select: none; }
+
+/* ── Editor shell: header controls, messages, dock (palette) ── */
+.icon-btn { min-width: 26px; height: 24px; padding: 0 4px; border-radius: 5px; color: var(--ink-dim); font-size: 13px; }
+.icon-btn:active, .icon-btn[aria-pressed="true"] { color: var(--ink); background: var(--ink-faint); }
+.qcount { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; }
+.qcount button { width: 24px; height: 24px; border-radius: 5px; font-size: 15px; color: var(--ink); background: var(--lcd-hi); }
+.qcount button:disabled { opacity: 0.35; }
+.qcount input { width: 3.2em; height: 24px; font: inherit; font-family: var(--mono); font-size: 13px; text-align: center; color: var(--ink); background: #111110; border: 1px solid var(--grid); border-radius: 4px; -moz-appearance: textfield; }
+.qcount input::-webkit-inner-spin-button, .qcount input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.qcount input:focus { outline: none; border-color: var(--series-1); }
+.msg { flex: none; font-family: var(--sans); font-size: 11px; line-height: 1.45; color: var(--ink-dim); }
+.msg.err { color: var(--critical); font-size: 12px; }
+
+/* The dock sits where the keypad was: a fixed height, so the diagram above never moves. */
+.dock {
+  position: relative;
+  flex: none;
+  min-height: 236px; /* grows with the group rows; the display takes the rest */
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--lcd);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 0 0 3px #0b0c0e;
+  overflow: hidden;
+}
+.palette { display: flex; flex-direction: column; gap: 6px; min-height: 0; flex: 1; }
+.palette-search { width: 100%; height: 30px; padding: 0 8px; font: 13px var(--sans); color: var(--ink); background: #111110; border: 1px solid var(--grid); border-radius: 6px; }
+.palette-search:focus { outline: none; border-color: var(--series-1); }
+.palette-groups { display: flex; flex-wrap: wrap; gap: 5px; flex: none; }
+.palette-groups button { flex: none; height: 26px; padding: 0 10px; border-radius: 13px; font-size: 11px; color: var(--ink-dim); background: #2b2e34; white-space: nowrap; }
+.palette-groups button.on { color: #fff; background: var(--series-1); }
+/* Tiles: three rows that scroll sideways. A vertical drag picks a tile up; a horizontal swipe scrolls. */
+.palette-tiles {
+  flex: none;
+  height: calc(3 * 44px + 2 * 6px + 8px); /* three rows, and room for a thin scrollbar */
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(3, 44px);
+  grid-auto-columns: 58px;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  align-content: start;
+}
+.tile {
+  touch-action: pan-x;
+  border-radius: 7px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--key-gate);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -2px 0 rgba(0, 0, 0, 0.35);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 3px;
+}
+.tile:active { filter: brightness(1.2); }
+.tile:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+.tile-pauli { background: var(--g-pauli); }
+.tile-rotation { background: var(--g-rotation); }
+.tile-controlled { background: var(--g-controlled); }
+.tile-two { background: var(--g-two); }
+.tile-multi { background: var(--g-multi); }
+.tile-measure { background: var(--g-measure); }
+.tile-prep { background: var(--g-prep); }
+.tile-blocks { background: var(--g-blocks); }
+.tile-typed { background: var(--g-typed); }
+.tile-custom { background: var(--g-custom); }
+.tile { color: #000; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -2px 0 rgba(0, 0, 0, 0.25); }
+.tile:focus-visible { outline-color: #fff; }
+.circ .box.g-pauli { fill: var(--g-pauli); }
+.circ .box.g-rotation { fill: var(--g-rotation); }
+.circ .box.g-controlled { fill: var(--g-controlled); }
+.circ .box.g-two { fill: var(--g-two); }
+.circ .box.g-multi { fill: var(--g-multi); }
+.circ .box.g-measure { fill: var(--g-measure); }
+.circ .box.g-prep { fill: var(--g-prep); }
+.circ .box.g-blocks { fill: var(--g-blocks); }
+.circ .box.g-typed { fill: var(--g-typed); }
+.circ .box.g-custom { fill: var(--g-custom); }
+.circ .box[class*="g-"] + .glabel { fill: #000; font-weight: 600; }
+.circ .box[class*="g-"] { stroke: rgba(0, 0, 0, 0.45); }
+.circ .gate.sel .box[class*="g-"] { stroke: var(--amber); stroke-width: 2.5; }
+.palette-empty { grid-row: 1; white-space: nowrap; font-size: 12px; padding: 8px 2px; }
+
+
+.sheet { display: flex; flex-direction: column; gap: 7px; font-size: 12px; overflow-y: auto; }
+.sheet-head b { color: var(--series-1); }
+.sheet-row { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+.sheet-row label { display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono); color: var(--ink-dim); }
+.sheet-row input, .sheet-text, .define-row input, .shots-bar input { font: 13px var(--mono); color: var(--ink); background: #111110; border: 1px solid var(--grid); border-radius: 5px; padding: 4px 6px; }
+.sheet-row input { width: 6em; }
+.sheet-text { width: 100%; resize: none; }
+.sheet-actions { display: flex; gap: 6px; }
+.sheet-actions button { min-height: 34px; padding: 0 16px; border-radius: 6px; color: var(--ink); background: var(--lcd-hi); border: 1px solid var(--grid); }
+.sheet-actions button.on { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+
+/* Drag and drop: the ghost under the finger, the trash over the dock, the preview on the wires. */
+.drag-ghost {
+  position: fixed; z-index: 50; pointer-events: none;
+  transform: translate(-50%, -130%);
+  padding: 5px 9px; border-radius: 6px;
+  font: 600 13px var(--mono); color: #fff;
+  background: var(--series-1); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+}
+.trash {
+  position: absolute; inset: 0; z-index: 5;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; color: var(--ink-dim);
+  background: rgba(26, 26, 25, 0.93);
+  border: 2px dashed var(--ink-muted); border-radius: 10px;
+}
+.trash.over { color: #fff; border-color: var(--critical); background: rgba(230, 103, 103, 0.25); }
+.circ .drop-preview rect { fill: rgba(57, 135, 229, 0.18); stroke: var(--series-1); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.circ .drop-preview.bad rect { fill: rgba(230, 103, 103, 0.18); stroke: var(--critical); }
+.circ .drop-preview line { stroke: var(--series-1); stroke-width: 1.5; stroke-dasharray: 3 2; }
+.circ .drop-preview circle { fill: var(--series-1); }
+.circ .gate { touch-action: none; }
+.circ .dot-hit { fill: transparent; cursor: grab; }
+.circ .gate.dragging { opacity: 0.35; }
+
+.shots-bar { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-dim); flex: none; }
+.shots-bar input { width: 7em; }
+.mem-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; }
+.mem-name { font-family: var(--mono); color: var(--ink); width: 2em; }
+.mem-what { flex: 1; }
+.define-row { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.define-row input { width: 5em; }
+
+/* ── Landscape (a phone on its side): the view tabs over the display on the left, the dock on the right. ── */
+.calc.landscape {
+  max-width: none; width: 100%; height: 100dvh; aspect-ratio: auto; border-radius: 0; margin: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr;
+  gap: 5px 8px;
+  padding: max(6px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+}
+.calc.landscape.docked { grid-template-columns: 1fr min(44vw, 400px); }
+.calc.landscape .modes { grid-column: 1; grid-row: 1; }
+.calc.landscape .lcd { grid-column: 1; grid-row: 2; min-height: 0; }
+.calc.landscape .modes button { height: 24px; }
+.calc.landscape .dock { grid-column: 2; grid-row: 1 / span 2; height: auto; }
+
+/* ── Grid editing: cells, the tapped cell, a selected rectangle, the long-press menu ── */
+.circ .grid-hit { fill: transparent; cursor: crosshair; }
+.circ svg { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.circ .cursor-cell { fill: rgba(57, 135, 229, 0.12); stroke: var(--series-1); stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none; }
+.circ .picked { fill: rgba(57, 135, 229, 0.1); stroke: var(--ink-dim); stroke-width: 1; stroke-dasharray: 1 3; stroke-linecap: round; pointer-events: none; }
+.circ .band { fill: rgba(57, 135, 229, 0.12); stroke: var(--series-1); stroke-width: 1; stroke-dasharray: 1 3; stroke-linecap: round; pointer-events: none; }
+.circ .drop-preview rect.bad { fill: rgba(230, 103, 103, 0.18); stroke: var(--critical); }
+.circ-labels .cursor { fill: var(--series-1); font-weight: 700; }
+
+.diagram-menu {
+  position: fixed; z-index: 1000; min-width: 190px; max-width: min(300px, calc(100vw - 16px)); max-height: calc(100dvh - 16px);
+  display: flex; flex-direction: column; padding: 5px;
+  font: 12.5px var(--mono); color: var(--ink);
+  background: #242423; border: 1px solid var(--grid); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+.diagram-menu button { min-height: 36px; padding: 0 10px; text-align: left; border-radius: 5px; color: var(--ink); background: none; font: inherit; }
+.diagram-menu button:hover:not(:disabled), .diagram-menu button:focus-visible { background: var(--lcd-hi); outline: none; }
+.diagram-menu button:disabled { opacity: 0.35; }
+.diagram-menu .danger { color: var(--critical); }
+.diagram-menu .menu-head { padding: 4px 10px 6px; color: var(--amber); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.diagram-menu .menu-sep { height: 1px; margin: 4px 6px; background: var(--grid); }
+.diagram-menu .menu-fields { display: flex; flex-wrap: wrap; gap: 6px 10px; padding: 2px 10px 6px; }
+.diagram-menu .menu-row { display: flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 10px; color: var(--ink-dim); }
+.menu-field { display: flex; align-items: center; gap: 5px; color: var(--ink-dim); }
+.menu-field input, .diagram-menu select { height: 30px; padding: 0 6px; font: 13px var(--mono); color: var(--ink); background: #111110; border: 1px solid var(--grid); border-radius: 5px; }
+.menu-field input { width: 8em; }
+.menu-field input:focus, .diagram-menu select:focus { outline: none; border-color: var(--series-1); }
+.circ .gate:focus { outline: none; }
+.circ .box.meas[class*="g-"] { stroke: var(--amber); stroke-width: 1.5; }
+.diagram-menu .menu-tabs { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding-bottom: 5px; border-bottom: 1px solid var(--grid); margin-bottom: 3px; }
+.diagram-menu .menu-tabs button { text-align: center; min-height: 32px; color: var(--ink-dim); }
+.diagram-menu .menu-tabs button.on { color: #fff; background: var(--series-1); }
+.diagram-menu .menu-scroll { overflow-y: auto; min-height: 0; display: flex; flex-direction: column; overscroll-behavior: contain; }
+.diagram-menu .menu-item { display: flex; flex-direction: column; justify-content: center; gap: 1px; padding-top: 4px; padding-bottom: 4px; }
+.diagram-menu .menu-hint { font-size: 10.5px; color: var(--ink-muted); line-height: 1.25; }
+.diagram-menu .menu-cat { padding: 8px 10px 2px; font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-muted); }
+.diagram-menu .menu-row .grow { flex: 1; padding-left: 0; }
+.diagram-menu .menu-num { width: 4em; height: 30px; padding: 0 6px; font: 13px var(--mono); color: var(--ink); background: #111110; border: 1px solid var(--grid); border-radius: 5px; }
+.circ .fold { cursor: pointer; }
+.circ .fold rect { fill: var(--lcd-hi); stroke: var(--ink-dim); stroke-dasharray: 3 2; }
+.circ .fold text { fill: var(--ink); font-size: 11px; pointer-events: none; }

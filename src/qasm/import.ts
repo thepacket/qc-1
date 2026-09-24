@@ -359,7 +359,7 @@ const NEG_FIRST = new Set(["p", "rx", "ry", "rz", "u1", "rxx", "ryy", "rzz", "rz
 const neg = (e: string) => `-(${e})`;
 
 /** The inverse of one base gate with params, or null if there's no closed form. */
-function invert(gate: string, params: string[]): { gate: string; params: string[] }[] | null {
+export function invert(gate: string, params: string[]): { gate: string; params: string[] }[] | null {
   if (SELF_INV.has(gate)) return [{ gate, params }];
   if (DAGGER[gate]) return [{ gate: DAGGER[gate], params }];
   if (NEG_FIRST.has(gate)) return [{ gate, params: [neg(params[0]), ...params.slice(1)] }];

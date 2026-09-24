@@ -1,88 +1,58 @@
 import { describe, test, expect } from "vitest";
-import { Calculator, type KeyId } from "../src/calc/calculator";
+import { Calculator } from "../src/calc/calculator";
 import { InlineEngine } from "../src/calc/engine";
-import { CATALOG } from "../src/calc/catalog";
 import { exportQasm3 } from "../src/qasm/fromTape";
 import { formatStep } from "../src/calc/steps";
+import { calc, add, cx, stateOf as state } from "./ed";
 
-const calc = () => new Calculator(new InlineEngine());
-const keys = (c: Calculator, ...ks: KeyId[]) => ks.forEach((k) => c.press(k));
-const state = (c: Calculator) => (c.engine as InlineEngine).core.reg.state;
 const amp = (c: Calculator, i: number) => [state(c)[2 * i], state(c)[2 * i + 1]];
 const close = (a: number, b: number) => expect(a).toBeCloseTo(b, 10);
-const idx = (gate: string) => CATALOG.findIndex((it) => it.gate === gate);
 
-/** Open the catalog and walk to `gate` with ▶, as a user would. */
-function choose(c: Calculator, gate: string) {
-  keys(c, "2nd", "all");
-  while (CATALOG[c.catalog.index].gate !== gate) c.press("right");
-}
-
-describe("CATALOG", () => {
-  test("2ND+ALL opens it; ◀ ▶ scroll and wrap; AC closes without clearing", () => {
+describe("gates without their own key", () => {
+  test("GPI takes its angle", () => {
     const c = calc();
-    keys(c, "x");
-    keys(c, "2nd", "all");
-    expect(c.catalog.open).toBe(true);
-    keys(c, "left");
-    expect(c.catalog.index).toBe(c.catalogItems.length - 1);
-    keys(c, "right");
-    expect(c.catalog.index).toBe(0);
-    expect(c.sel).toBe(0); // arrows moved the list, not the qubit
-    keys(c, "ac");
-    expect(c.catalog.open).toBe(false);
-    expect(c.tape).toHaveLength(1);
-  });
-
-  test("= applies the highlighted gate to the selected qubit and closes", () => {
-    const c = calc();
-    choose(c, "gpi");
-    keys(c, "pi", "div", "2", "eq"); // GPI(π/2)|0⟩ = e^{iπ/2}|1⟩ = i|1⟩ on q0
-    expect(c.catalog.open).toBe(false);
+    add(c, "gpi", [0], { params: ["pi/2"] }); // GPI(π/2)|0⟩ = e^{iπ/2}|1⟩ = i|1⟩ on q0
     const [re, im] = amp(c, 2);
     close(re, 0);
     close(im, 1);
   });
 
-  test("tap highlights, second tap applies", () => {
+  test("INIT1 prepares |1⟩", () => {
     const c = calc();
-    keys(c, "2nd", "all");
-    c.pickCatalog(idx("init1"));
-    expect(c.tape).toHaveLength(0);
-    c.pickCatalog(idx("init1"));
+    add(c, "init1", [0]);
     close(amp(c, 2)[0], 1);
   });
 
-  test("2-qubit catalog gate uses the CTRL mark as partner", () => {
+  test("a 2-qubit gate keeps its qubit order", () => {
     const c = calc();
-    keys(c, "x", "ctrl", "right"); // |10⟩, partner q0, target q1
-    choose(c, "dcx");
-    keys(c, "eq");
+    add(c, "x", [0]); // |10⟩
+    add(c, "dcx", [0, 1]);
     expect(c.tape[1][0].targets).toEqual([0, 1]);
   });
 
-  test("RCCX needs two marks and flips the target like a Toffoli", () => {
+  test("RCCX takes three qubits and flips the target like a Toffoli", () => {
     const c = calc();
-    keys(c, "3", "2nd", "q", "x", "right", "x", "ctrl", "left", "ctrl", "right", "right");
-    choose(c, "rccx");
-    keys(c, "eq");
+    c.setQubitCount(3);
+    add(c, "x", [0]);
+    add(c, "x", [1]);
+    add(c, "rccx", [0, 1, 2]);
     const p = [...Array(8).keys()].map((i) => amp(c, i)[0] ** 2 + amp(c, i)[1] ** 2);
     close(p[7], 1); // |110⟩ → |111⟩ (up to a relative phase)
   });
 
-  test("missing partners is an error and the catalog stays open", () => {
+  test("the wrong number of qubits is an error", () => {
     const c = calc();
-    choose(c, "rccx");
-    keys(c, "eq");
-    expect(c.message).toEqual({ kind: "error", text: "CTRL-mark 2 partner qubits first" });
-    expect(c.catalog.open).toBe(true);
+    c.setQubitCount(3);
+    expect(add(c, "rccx", [2])).toBe(false);
+    expect(c.message).toEqual({ kind: "error", text: "RCCX acts on 3 qubits" });
+    expect(c.tape).toHaveLength(0);
   });
 
   test("state prep resets an entangled qubit, then prepares", () => {
     const c = calc();
-    keys(c, "h", "ctrl", "right", "x", "left"); // Bell pair, select q0
-    choose(c, "initminus");
-    keys(c, "eq");
+    add(c, "h", [0]);
+    cx(c, 0, 1); // Bell pair
+    add(c, "initminus", [0]);
     // q0 is now |−⟩ and q1 collapsed to the reset outcome o: (|0o⟩ − |1o⟩)/√2
     const o = c.tape[2][0].outcome!;
     close(amp(c, o)[0], Math.SQRT1_2);
@@ -91,8 +61,7 @@ describe("CATALOG", () => {
 
   test("|ψ⟩ takes α,β, normalises, and matches its QASM (reset; U)", () => {
     const c = calc();
-    choose(c, "initialize");
-    keys(c, "3", ",", "4", "eq");
+    add(c, "initialize", [0], { params: ["3", "4"] });
     close(amp(c, 0)[0], 0.6);
     close(amp(c, 2)[0], 0.8);
     const q = exportQasm3(c.n, c.tape);
@@ -102,40 +71,30 @@ describe("CATALOG", () => {
 
   test("|ψ⟩ with complex amplitudes drops only the global phase", () => {
     const c = calc();
-    choose(c, "initialize");
-    keys(c, "0", ",", "1", ",", "1", ",", "0", "eq"); // α = i, β = 1  →  (|0⟩ − i|1⟩)/√2 up to phase
+    add(c, "initialize", [0], { params: ["i", "1"] }); // α = i, β = 1  →  (|0⟩ − i|1⟩)/√2 up to phase
     close(amp(c, 0)[0], Math.SQRT1_2);
     close(amp(c, 2)[1], -Math.SQRT1_2);
   });
 
   test("state prep can't be controlled", () => {
     const c = calc();
-    keys(c, "ctrl", "right");
-    choose(c, "init1");
-    keys(c, "eq");
-    expect(c.message?.kind).toBe("error");
+    expect(add(c, "init1", [1], { controls: [0] })).toBe(false);
+    expect(c.message).toEqual({ kind: "error", text: "a measurement, reset or preparation can't be controlled" });
   });
 });
 
 describe("custom gates (DEFINE)", () => {
-  const openAt = (c: Calculator, gate: string) => {
-    keys(c, "2nd", "all");
-    const i = c.catalogItems.findIndex((it) => it.gate === gate);
-    c.catalog.index = i;
-    keys(c, "eq");
-  };
-
   test("DEFINE the last 2 steps as G1, then place G1 elsewhere: same state as the steps", () => {
     const c = calc();
-    keys(c, "3", "2nd", "q", "h", "ctrl", "right", "x"); // Bell on q0,q1
-    keys(c, "2", "2nd", "all");
-    c.catalog.index = c.catalogItems.findIndex((it) => it.gate === "define");
-    keys(c, "eq");
+    c.setQubitCount(3);
+    add(c, "h", [0]);
+    cx(c, 0, 1); // Bell on q0,q1
+    expect(c.defineGate(2)).toBe("G1");
     expect(c.customGates.map((d) => [d.name, d.k, d.tape.length])).toEqual([["G1", 2, 2]]);
-    // Place G1 on (q1, q2): mark q1 as partner, target q2.
-    keys(c, "undo", "undo"); // empty tape; q1 selected
-    keys(c, "ctrl", "right"); // partner q1, target q2
-    openAt(c, "custom:G1");
+    // Place G1 on (q1, q2).
+    c.undo();
+    c.undo(); // empty tape
+    add(c, "custom:G1", [1, 2]);
     expect(c.tape).toHaveLength(1);
     expect(c.tape[0][0].targets).toEqual([1, 2]);
     const v = c.view!;
@@ -151,13 +110,10 @@ describe("custom gates (DEFINE)", () => {
 
   test("a controlled custom gate, and a custom gate with a symbol, export with ctrl @ and a parameter", () => {
     const c = calc();
-    keys(c, "2nd", ".", "rx"); // RX(t) on q0
-    keys(c, "2nd", "all");
-    c.catalog.index = c.catalogItems.findIndex((it) => it.gate === "define");
-    keys(c, "eq");
-    keys(c, "undo");
-    keys(c, "ctrl", "right"); // control q0, target q1
-    openAt(c, "custom:G1");
+    add(c, "rx", [0], { params: ["t"] }); // RX(t) on q0
+    expect(c.defineGate()).toBe("G1");
+    c.undo();
+    add(c, "custom:G1", [1], { controls: [0] }); // control q0, target q1
     const q = exportQasm3(c.n, c.tape);
     expect(q).toContain("gate G1(p0) a0 { rx(p0) a0; }");
     expect(q).toContain("ctrl @ G1(t_) q[0], q[1];");
@@ -165,21 +121,22 @@ describe("custom gates (DEFINE)", () => {
   });
 });
 
-describe("IF (2ND+Z): one-shot classical condition", () => {
+describe("IF: classical condition", () => {
   test("teleportation corrections: X if c1, Z if c0 — q2 ends in the input state", () => {
     for (let trial = 0; trial < 6; trial++) {
       const c = calc();
-      keys(c, "3", "2nd", "q");
+      c.setQubitCount(3);
       // Input on q0: RY(0.8)
-      keys(c, "0", ".", "8", "ry");
-      keys(c, "right", "h", "ctrl", "right", "x"); // Bell pair q1,q2 (sel ends on q2)
-      keys(c, "left", "left", "ctrl", "right", "x"); // CX q0→q1
-      keys(c, "left", "h", "meas", "right", "meas"); // measure q0, q1
-      keys(c, "right", "1", "2nd", "z");
-      expect(c.pendingIf).toEqual({ clbit: 1, value: 1 });
-      keys(c, "x");
-      expect(c.pendingIf).toBeNull();
-      keys(c, "0", "2nd", "z", "z");
+      add(c, "ry", [0], { params: ["0.8"] });
+      add(c, "h", [1]);
+      cx(c, 1, 2); // Bell pair q1,q2
+      cx(c, 0, 1); // CX q0→q1
+      add(c, "h", [0]);
+      add(c, "measure", [0]);
+      add(c, "measure", [1]); // measure q0, q1
+      add(c, "x", [2], { condition: { clbit: 1, value: 1 } });
+      expect(c.tape[c.tape.length - 1][0].condition).toEqual({ clbit: 1, value: 1 });
+      add(c, "z", [2], { condition: { clbit: 0, value: 1 } });
       const last = c.tape[c.tape.length - 1][0];
       expect(last.condition).toEqual({ clbit: 0, value: 1 });
       // q2's reduced state is RY(0.8)|0⟩ whatever was measured.
@@ -192,41 +149,34 @@ describe("IF (2ND+Z): one-shot classical condition", () => {
 
   test("the QASM export writes c[q] and if (c[k] == true)", () => {
     const c = calc();
-    keys(c, "h", "meas", "right", "0", "2nd", "z", "x");
+    add(c, "h", [0]);
+    add(c, "measure", [0]);
+    add(c, "x", [1], { condition: { clbit: 0, value: 1 } });
     const q = exportQasm3(c.n, c.tape);
     expect(q).toContain("c[0] = measure q[0];");
     expect(q).toContain("if (c[0] == true) x q[1];");
   });
 });
 
-describe("CATALOG blocks", () => {
-  const open = (c: Calculator, label: string) => {
-    c.press("2nd"); c.press("all"); // CATALOG
-    const i = c.catalogItems.findIndex((it) => it.label === label);
-    c.pickCatalog(i);
-    c.pickCatalog(i);
-  };
-
-  test("QFT with nothing marked covers the register as one step; QFT† undoes it", () => {
-    const c = new Calculator(new InlineEngine());
-    c.press("3"); c.press("2nd"); c.press("q"); // n = 3
-    c.press("x");
-    open(c, "QFT");
+describe("algorithm blocks", () => {
+  test("QFT on the register is one step; QFT† undoes it", () => {
+    const c = calc();
+    c.setQubitCount(3);
+    add(c, "x", [0]);
+    expect(c.addBlock("qft", [0, 1, 2])).toBe(true);
     expect(c.tape.at(-1)!.map(formatStep)).toEqual(["QFT3 q0,q1,q2"]);
-    open(c, "QFT†");
+    c.addBlock("iqft", [0, 1, 2]);
     const v = c.view!;
     if (v.mode !== "ket") throw new Error(v.mode);
     expect(v.rows.filter((r) => r.re ** 2 + r.im ** 2 > 1e-12).map((r) => r.i)).toEqual([4]); // back to |100⟩
   });
 
-  test("CTRL marks pick the block's qubits (ascending); QAOA takes γ,β from the entry as two steps", () => {
-    const c = new Calculator(new InlineEngine());
-    c.press("4"); c.press("2nd"); c.press("q");
-    c.press("ctrl"); c.press("right"); c.press("right"); c.press("ctrl"); c.press("right"); // marks q0, q2; selected q3
-    open(c, "DIFFUSER");
+  test("a block's qubits go in ascending order; QAOA takes γ,β as two steps", () => {
+    const c = calc();
+    c.setQubitCount(4);
+    c.addBlock("diff", [3, 0, 2]);
     expect(c.tape.at(-1)![0].targets).toEqual([0, 2, 3]);
-    c.press("pi"); c.press("div"); c.press("8"); c.press(","); c.press("pi"); c.press("div"); c.press("4");
-    open(c, "QAOA");
+    c.addBlock("qaoa", [0, 1, 2, 3], ["π/8", "π/4"]);
     expect(c.tape.slice(-2).map((e) => e.map((s) => s.gateId))).toEqual([["rzz", "rzz", "rzz", "rzz"], ["rx", "rx", "rx", "rx"]]);
     expect(c.tape.at(-2)![0].params[0]).toBe("2*(π/8)");
   });

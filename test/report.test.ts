@@ -6,8 +6,8 @@ import { runAnalysis } from "../src/analysis/run";
 describe("session report", () => {
   test("opening fetches a live KET view (even from TAPE, even scrubbed); closing restores the mode's view", () => {
     const c = new Calculator(new InlineEngine());
-    c.press("h");
-    c.press("x");
+    c.addGate("h", { targets: [0] });
+    c.addGate("x", { targets: [0] });
     c.setMode("tape");
     c.setScrub(1);
     c.toggleReport();
@@ -20,7 +20,7 @@ describe("session report", () => {
 
   test("PIN keeps the LAB result on screen; unpin removes it", () => {
     const c = new Calculator(new InlineEngine(runAnalysis));
-    c.press("h");
+    c.addGate("h", { targets: [0] });
     c.openAnalysis("density");
     c.pinAnalysis();
     expect(c.pins.map((p) => p.title)).toEqual(["Reduced density matrix"]);

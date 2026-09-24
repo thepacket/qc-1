@@ -1,22 +1,23 @@
 import { describe, test, expect } from "vitest";
-import { Calculator, type KeyId } from "../src/calc/calculator";
 import { InlineEngine } from "../src/calc/engine";
+import { calc, add, cx } from "./ed";
 import { bloch, topK } from "../src/calc/analysis";
 import { complex, pct } from "../src/ui/format";
 
-const run = (...ks: KeyId[]) => {
-  const c = new Calculator(new InlineEngine());
-  ks.forEach((k) => c.press(k));
+/** 1-qubit gates on q0, in order. */
+const run = (...gates: string[]) => {
+  const c = calc();
+  gates.forEach((g) => add(c, g, [0]));
   return c;
 };
 
 describe("bloch", () => {
   test.each([
-    [[] as KeyId[], { x: 0, y: 0, z: 1 }],
+    [[] as string[], { x: 0, y: 0, z: 1 }],
     [["x"], { x: 0, y: 0, z: -1 }],
     [["h"], { x: 1, y: 0, z: 0 }],
     [["h", "s"], { x: 0, y: 1, z: 0 }],
-    [["h", "2nd", "s"], { x: 0, y: -1, z: 0 }],
+    [["h", "sdg"], { x: 0, y: -1, z: 0 }],
     [["h", "t"], { x: Math.SQRT1_2, y: Math.SQRT1_2, z: 0 }],
   ])("%j", (keys, want) => {
     const c = run(...keys);
@@ -27,7 +28,8 @@ describe("bloch", () => {
   });
 
   test("entangled qubit is maximally mixed", () => {
-    const c = run("h", "ctrl", "right", "x");
+    const c = run("h");
+    cx(c, 0, 1);
     const v = bloch((c.engine as InlineEngine).core.reg.state, 2, 1);
     expect(Math.hypot(v.x, v.y, v.z)).toBeCloseTo(0, 10);
   });

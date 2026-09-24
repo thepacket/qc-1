@@ -1,75 +1,42 @@
 import { MAX_QUBITS } from "./register";
 import { STAB_MAX } from "../stab/register";
 import { evalParam, exprOk, formatEntry, NONUNITARY, type Entry, type Scope, type Step } from "./steps";
-import { CATALOG, type CatalogItem } from "./catalog";
 import { CUSTOM_PREFIX, defineGate, setCustomGates, type CustomGate } from "./custom";
 import { blockGate, qaoaLayer, type BlockKind } from "./blocks";
-import { dropEntry, moveEarlier, moveLater, shiftEntry, toggleControl } from "./diagEdit";
-import type { Placed } from "./diagram";
-import { matrixGate, parseMatrix, parseState, stateGate } from "./typed";
-import { importQasm } from "../qasm/import";
+import { layoutTape } from "./diagram";
+import { SNIPPETS } from "./snippets";
+import {
+  compact, copyEntries, endColumn, entriesIn, freeColumn, moveEntry, pasteClip, placeEntry, removeEntries,
+  repositionEntry, shape, type Clip,
+} from "./grid";
+import { matrixGate, parseComplex, parseMatrix, parseState, stateGate } from "./typed";
+import { importQasm, invert } from "../qasm/import";
+import { baseArity, BASE_ARITY, paramDefs, spanFrom, type PaletteItem } from "./gateSpecs";
+import { GATES_BY_ID } from "../sim/gates";
 import { stepCaptions } from "../qasm/captions";
 import { DEFAULT_NOISE, isIdeal, sanitiseNoise, type NoiseModel } from "../noise/model";
 import { ANALYSIS_BY_ID, CATEGORIES, analysesIn, searchAnalyses } from "../analysis/catalog";
 import type { AnalysisMeta } from "../analysis/types";
 import type { AnalysisReply, AnalysisResult, Opts, Proposal } from "../analysis/types";
-import { splitArgs, TOKENS, toDisplay, VARS, varToken, symbolGlyph, type Token } from "./entry";
+import { symbolGlyph } from "./entry";
 import type { Cmd, Mode, Result, ViewData } from "./core";
 import type { Engine } from "./engine";
 
 export type { Mode };
 
-export type KeyId =
-  | "2nd" | "left" | "right" | "q" | "undo"
-  | "ctrl" | "all" | "swap" | "meas" | "ac"
-  | "h" | "x" | "y" | "z" | "sx"
-  | "s" | "t" | "rx" | "ry" | "rz"
-  | "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
-  | "." | "," | "div" | "mul" | "minus" | "pi" | "bs" | "p" | "eq";
-
-/** Gate keys: base gate id, qubit arity, and default parameters. */
-type GateKey = { gate: string; arity: number; params: string[] };
-const GATE_KEYS: Record<string, GateKey> = {
-  h: { gate: "h", arity: 1, params: [] },
-  sy: { gate: "sy", arity: 1, params: [] },
-  x: { gate: "x", arity: 1, params: [] },
-  y: { gate: "y", arity: 1, params: [] },
-  z: { gate: "z", arity: 1, params: [] },
-  sx: { gate: "sx", arity: 1, params: [] },
-  sxdg: { gate: "sxdg", arity: 1, params: [] },
-  s: { gate: "s", arity: 1, params: [] },
-  sdg: { gate: "sdg", arity: 1, params: [] },
-  t: { gate: "t", arity: 1, params: [] },
-  tdg: { gate: "tdg", arity: 1, params: [] },
-  rx: { gate: "rx", arity: 1, params: ["π/2"] },
-  ry: { gate: "ry", arity: 1, params: ["π/2"] },
-  rz: { gate: "rz", arity: 1, params: ["π/2"] },
-  p: { gate: "p", arity: 1, params: ["π/2"] },
-  u: { gate: "u", arity: 1, params: ["π/2", "0", "π"] },
-  swap: { gate: "swap", arity: 2, params: [] },
-  iswap: { gate: "iswap", arity: 2, params: [] },
-  rxx: { gate: "rxx", arity: 2, params: ["π/2"] },
-  ryy: { gate: "ryy", arity: 2, params: ["π/2"] },
-  rzz: { gate: "rzz", arity: 2, params: ["π/2"] },
-  meas: { gate: "measure", arity: 1, params: [] },
-  measx: { gate: "measure_x", arity: 1, params: [] },
-  measy: { gate: "measure_y", arity: 1, params: [] },
-  reset: { gate: "reset", arity: 1, params: [] },
-};
-
-/** What a key does with 2ND held. Keys absent here ignore 2ND. */
-export const SHIFTED: Partial<Record<KeyId, string>> = {
-  left: "n-", right: "n+", q: "n", undo: "redo", ctrl: "actrl", all: "cat",
-  swap: "iswap", meas: "reset", h: "sy", x: "measx", y: "measy", z: "if",
-  sx: "sxdg", s: "sdg", t: "tdg", rx: "rxx", ry: "ryy", rz: "rzz",
-  p: "u", div: "lparen", mul: "rparen", minus: "plus", pi: "sqrt",
-  ".": "tsym", ",": "var", "7": "sin", "8": "cos", "9": "exp", eq: "sto", bs: "rcl",
+/** How a gate is placed (editing API). */
+export type GateOpts = {
+  targets: number[]; controls?: number[]; controlStates?: boolean[]; params?: string[];
+  condition?: { clbit: number; value: 0 | 1 };
+  /** Tape index to insert at (default: the insertion point). */
+  at?: number;
+  /** Diagram column to drop it in (the grid editor): the first free column there or right of it. */
+  col?: number;
 };
 
 /** A saved register in a memory slot M1–M9. */
 export type Memory = { n: number; tape: Entry[]; scope: Scope };
 
-export type Mark = { q: number; anti: boolean };
 /**
  * The entry line's message. "info" is a key's echo (kept for tests and
  * screen readers, not shown); "note" is shown small (importer warnings,
@@ -123,10 +90,9 @@ const newId = () => `k${Date.now().toString(36)}${(stepId++).toString(36)}`;
 const BUSY_DELAY = 120;
 
 /**
- * The key-press state machine. Immediate mode: every gate key applies to
- * the register at once. Modifiers (2ND, CTRL marks, ALL) are one-shot and
- * clear after the next gate. Numeric entry is the argument to the next
- * key that takes one (rotations, Q, N, SHOTS).
+ * The app's state and its editing API. Every edit (a gate placed from the
+ * palette, a drag, an Inspector change) goes through the core as a command,
+ * so each is one UNDO.
  *
  * The statevector lives in the Engine (a Web Worker in the app). This class
  * keeps a mirror of its register — n, tape, redo depth — plus the latest
@@ -149,12 +115,6 @@ export class Calculator {
   busy = false;
 
   sel = 0;
-  entry: Token[] = [];
-  shift = false;
-  all = false;
-  marks: Mark[] = [];
-  /** IF (2ND+Z): the next gate runs only when c[clbit] == value. */
-  pendingIf: { clbit: number; value: number } | null = null;
   mode: Mode = "ket";
   shots = 1024;
   /** Bumped to force a fresh shot sample without a state change. */
@@ -162,8 +122,6 @@ export class Calculator {
   /** TAPE scrubber: views show the state after this many entries (null = the end). */
   scrub: number | null = null;
   message: Message | null = null;
-  /** CATALOG list open on the LCD, and its highlighted row. */
-  catalog: { open: boolean; index: number; typing: "state" | "matrix" | null } = { open: false, index: 0, typing: null };
   /** The help screen is open. */
   helpOpen = false;
   /** The AI chat screen (ui/ChatView.tsx). */
@@ -268,10 +226,6 @@ export class Calculator {
     };
   }
 
-  get entryText(): string {
-    return toDisplay(this.entry);
-  }
-
   private viewReq() {
     return { mode: this.mode, shots: this.shots, shotSeed: this.shotSeed, upTo: this.scrub };
   }
@@ -326,7 +280,6 @@ export class Calculator {
     // Until a saved session has loaded, replies come from the default 2-qubit register: keep the saved selection.
     if (!this.restoring) {
       if (this.sel >= r.n) this.sel = r.n - 1;
-      this.marks = this.marks.filter((m) => m.q < r.n);
     }
     if (r.error) {
       this.error(r.error);
@@ -417,16 +370,6 @@ export class Calculator {
   setMode(m: Mode) {
     this.message = null;
     this.diagSel = null;
-    this.ctrlPick = false;
-    if (m === "shots" && this.entry.length > 0) {
-      const v = this.takeInt();
-      if (v === null) return this.changed();
-      if (v < 1 || v > 1_000_000) {
-        this.error("shots 1–1000000");
-        return this.changed();
-      }
-      this.shots = v;
-    }
     if (m === "shots" && this.mode === "shots") this.shotSeed++;
     this.mode = m;
     this.send({ t: "view", req: this.viewReq() });
@@ -593,6 +536,8 @@ export class Calculator {
   }
 
   private onAnalysis(r: AnalysisReply) {
+    if (this.transforming && r.seq === this.transforming.seq) return this.onTransform(r);
+    if (r.seq > 1_000_000_000) return; // a transform that was superseded
     if (r.id === "__view") {
       if (r.seq === this.vSeq) this.noisyView = { view: r.result.view ?? null, error: r.result.error, rev: r.rev, seq: r.seq };
       this.changed();
@@ -610,181 +555,669 @@ export class Calculator {
 
   private lastShownSeq = 0;
 
-  /** Keys that behave differently while browsing LAB. Returns true if handled. */
-  private labKey(id: string): boolean {
-    const { level } = this.lab;
-    if (level === "view") {
-      // AC never clears the register from LAB: it clears the entry, then goes back.
-      if (id === "ac" && this.entry.length === 0 && this.marks.length === 0 && !this.all) {
-        this.labBack();
-        return true;
-      }
-      return false;
-    }
-    const groups = this.labGroups();
-    const len = level === "cats" ? groups.length : this.labGroup().items.length;
-    if (!len) return id === "left" || id === "right" || id === "eq";
-    // Empty groups (no favourites or recent panels yet) are skipped.
-    const usable = (i: number) => level !== "cats" || groups[i].items.length > 0;
-    const step = (d: number) => {
-      let i = this.lab.index;
-      for (let k = 0; k < len; k++) {
-        i = (i + d + len) % len;
-        if (usable(i)) break;
-      }
-      this.lab = { ...this.lab, index: i };
-    };
-    switch (id) {
-      case "left": step(-1); return true;
-      case "right": step(1); return true;
-      case "eq": this.labPick(level, this.lab.index); return true;
-      case "ac":
-        if (this.entry.length > 0 || this.marks.length > 0 || this.all) return false;
-        if (level === "list") this.labBack();
-        return true;
-    }
+  // ─── Editing API (palette, drag and drop, inspector) ─────────────────
+  // Every method validates, reports a refusal as an error message (and returns
+  // false), and edits through the core's commands, so each is one UNDO.
+
+  /** Where a gate added without a position goes: the scrub point, else the end. */
+  get insertPoint(): number {
+    return this.scrub ?? this.tape.length;
+  }
+
+  private refuse(text: string): false {
+    this.error(text);
+    this.changed();
     return false;
   }
 
-  // ─── Editing in the diagram (CIRC → DIAG; pure edits in diagEdit.ts) ───
+  private qubitsProblem(qs: number[]): string | null {
+    if (qs.some((q) => !Number.isInteger(q) || q < 0 || q >= this.n)) return `only q0–q${this.n - 1}`;
+    if (new Set(qs).size !== qs.length) return "a qubit appears twice in one gate";
+    return null;
+  }
 
-  /** The tape entry selected in the diagram (its action bar is shown); gate keys then change it. */
+  /** Push `entry` at `at` (default: the insertion point; while scrubbed the scrub point advances with it). */
+  private pushEntry(entry: Entry, at?: number, done?: () => void) {
+    const report = (r: Result) => { if (r.done) (done ? done() : this.info(formatEntry(r.done))); };
+    if (at === undefined || (at >= this.tape.length && this.scrub === null)) {
+      this.send({ t: "push", entry }, report);
+    } else {
+      const where = Math.max(0, Math.min(at, this.tape.length));
+      if (this.scrub !== null && where <= this.scrub) {
+        this.scrub++;
+        this.send({ t: "view", req: this.viewReq() });
+      }
+      this.send({ t: "insert", at: where, entry }, report);
+    }
+  }
+
+  /**
+   * Entries dropped on the diagram's grid at column `col` (each in the first
+   * free column there or right of it, the next one after it): one UNDO. A
+   * single entry that needs no reordering goes in as a push or an insert.
+   */
+  private placeEntries(entries: Entry[], col: number, label: string, done?: () => void): number {
+    if (this.scrub !== null) this.setScrub(null);
+    let tape = this.tape, c = col, at = -1;
+    for (const e of entries) {
+      const r = placeEntry(this.n, tape, e, c);
+      tape = r.tape;
+      at = r.at;
+      c = r.col + Math.max(...shape(this.n, e)) + 1;
+    }
+    const inserted = entries.length === 1 && tape.length === this.tape.length + 1 && tape.every((x, k) => k === at || x === this.tape[k < at ? k : k - 1]);
+    if (inserted) this.pushEntry(tape[at], at >= this.tape.length ? undefined : at, done);
+    else this.applyEdit(tape, label, null);
+    return c;
+  }
+
+  /** `initialize` stores one parameter, the normalised amplitudes: α, β (real or complex expressions). */
+  private amplitudeParam(alpha: string, beta: string): string {
+    // A real expression (cos(0.3), 1/sqrt(2)) or a complex number (i, 1+2i, (1-i)/√2).
+    const cx = (x: string): [number, number] | null => {
+      const r = evalParam(x);
+      return Number.isFinite(r) ? [r, 0] : parseComplex(x);
+    };
+    const a = cx(alpha), b = cx(beta);
+    if (!a || !b) throw new Error("α and β must be numbers (complex like 1+2i)");
+    const norm = Math.hypot(a[0], a[1], b[0], b[1]);
+    if (norm < 1e-12) throw new Error("zero state");
+    return `(${a[0] / norm}, ${a[1] / norm}, ${b[0] / norm}, ${b[1] / norm})`;
+  }
+
+  /** The step a placed gate becomes (params: the given ones, else the gate's defaults). */
+  private buildStep(gate: string, o: GateOpts): Step {
+    const custom = gate.startsWith(CUSTOM_PREFIX) ? this.customGates.find((d) => CUSTOM_PREFIX + d.name === gate) : undefined;
+    if (!custom && !(gate in GATES_BY_ID) && !(gate in BASE_ARITY)) throw new Error(`unknown gate ${gate}`);
+    const arity = custom ? custom.k : baseArity(gate);
+    const label = gate.startsWith(CUSTOM_PREFIX) ? gate.slice(CUSTOM_PREFIX.length) : gate.toUpperCase();
+    if (o.targets.length !== arity) throw new Error(`${label} acts on ${arity} qubit${arity > 1 ? "s" : ""}`);
+    const controls = o.controls ?? [];
+    const bad = this.qubitsProblem([...controls, ...o.targets]);
+    if (bad) throw new Error(bad);
+    if (controls.length && NONUNITARY.has(gate)) throw new Error("a measurement, reset or preparation can't be controlled");
+    if (o.controlStates && o.controlStates.length !== controls.length) throw new Error("one state per control");
+    let params: string[];
+    if (custom) params = [];
+    else if (gate === "initialize") params = [this.amplitudeParam(o.params?.[0] ?? "1", o.params?.[1] ?? "0")];
+    else {
+      params = paramDefs(gate).map((d, i) => (o.params?.[i] ?? d.default).trim() || d.default);
+      for (const p of params) if (!exprOk(p)) throw new Error(`can't read "${p}"`);
+    }
+    if (o.condition) {
+      const { clbit, value } = o.condition;
+      if (!Number.isInteger(clbit) || clbit < 0 || clbit >= this.n || (value !== 0 && value !== 1)) throw new Error("condition: c[k] with k a qubit, value 0 or 1");
+    }
+    return {
+      id: newId(), gateId: gate, column: this.tape.length, targets: [...o.targets], controls: [...controls], clbits: [], params,
+      ...(o.controlStates?.some((on) => !on) ? { controlStates: [...o.controlStates] } : {}),
+      ...(o.condition ? { condition: { ...o.condition } } : {}),
+    };
+  }
+
+  /**
+   * Place a gate: base `gate` (x, rz, swap, custom:G1, …) on `targets`, with
+   * optional controls (and ○ states), parameters (defaults if missing),
+   * condition, at tape index `at` (default: the insertion point).
+   */
+  addGate(gate: string, o: GateOpts): boolean {
+    let step: Step;
+    try { step = this.buildStep(gate, o); } catch (e) { return this.refuse((e as Error).message); }
+    if (o.col !== undefined) this.placeEntries([[step]], o.col, gate);
+    else this.pushEntry([step], o.at);
+    this.changed();
+    return true;
+  }
+
+  /** A palette item waiting for its details (a block's size, a typed state's text), and where it goes. */
+  placing: { item: PaletteItem; row: number; col: number } | null = null;
+
+  /** The empty cell last tapped in the diagram: where a tapped palette tile goes. */
+  cursor: { row: number; col: number } | null = null;
+
+  /** A tap on an empty cell of the diagram (null: none). */
+  tapCell(cell: { row: number; col: number } | null) {
+    this.diagSel = null;
+    this.diagSet = new Set();
+    this.cursor = cell;
+    if (cell && cell.row < this.n) this.sel = cell.row;
+    this.changed();
+  }
+
+  /**
+   * Put a palette item on wire `row` at diagram column `col`: dropped there,
+   * or tapped (the tapped cell, else after the last gate on its wires). A
+   * k-qubit gate takes k consecutive wires from `row`, controls first, pulled
+   * up at the bottom. Blocks and typed gates open their sheet (`placing`).
+   */
+  placeItem(item: PaletteItem, row: number, col?: number): boolean {
+    const tapped = col === undefined;
+    const k = item.kind === "gate" ? item.controls + item.targets : item.kind === "custom" ? item.targets : 1;
+    if (k > this.n) return this.refuse(`${item.label} needs ${k} qubits: the circuit has ${this.n}`);
+    const qs = spanFrom(row, k, this.n);
+    const at = col ?? (this.cursor && this.cursor.row === row ? this.cursor.col : endColumn(layoutTape(this.n, this.tape), qs[0], qs[qs.length - 1]));
+    if (item.kind === "gate" || item.kind === "custom") {
+      const controls = item.kind === "gate" ? item.controls : 0;
+      let step: Step;
+      try { step = this.buildStep(item.gate, { controls: qs.slice(0, controls), targets: qs.slice(controls) }); } catch (e) { return this.refuse((e as Error).message); }
+      const next = this.placeEntries([[step]], at, item.label);
+      // Tapping tiles fills the row left to right from the chosen cell.
+      if (tapped && this.cursor) this.cursor = { row: this.cursor.row, col: next };
+      this.changed();
+      return true;
+    }
+    this.placing = { item, row, col: at };
+    this.changed();
+    return true;
+  }
+
+  closePlacing() {
+    this.placing = null;
+    this.changed();
+  }
+
+
+  addBroadcast(gate: string, params?: string[], at?: number, col?: number): boolean {
+    if (gate.startsWith(CUSTOM_PREFIX) || baseArity(gate) !== 1) return this.refuse("only 1-qubit gates go on every qubit");
+    let entry: Entry;
+    try { entry = [...Array(this.n).keys()].map((q) => this.buildStep(gate, { targets: [q], params })); } catch (e) { return this.refuse((e as Error).message); }
+    if (col !== undefined) this.placeEntries([entry], col, gate);
+    else this.pushEntry(entry, at);
+    this.changed();
+    return true;
+  }
+
+  /** A block (QFT, QFT†, diffuser, QAOA) on `qubits`, ascending. */
+  addBlock(kind: BlockKind, qubits: number[], params: string[] = [], col?: number): boolean {
+    const qs = [...qubits].sort((a, b) => a - b);
+    const bad = this.qubitsProblem(qs);
+    if (bad) return this.refuse(bad);
+    try { this.placeBlock(kind, qs, params, col); } catch (e) { return this.refuse((e as Error).message); }
+    this.changed();
+    return true;
+  }
+
+  /**
+   * A typed state or matrix (calc/typed.ts) as gate PSIj / Mj on k consecutive
+   * qubits from `first` (k from the text). A state is "reset, then prepare".
+   * Throws with a message for the text field to show.
+   */
+  addTyped(kind: "state" | "matrix", text: string, first: number, col?: number) {
+    const parsed = kind === "state" ? parseState(text) : parseMatrix(text);
+    const k = parsed.k;
+    if (k > this.n) throw new Error(`needs ${k} qubits: the circuit has ${this.n}`);
+    const qs = spanFrom(first, k, this.n);
+    const prefix = kind === "state" ? "PSI" : "M";
+    let j = 1;
+    while (this.customGates.some((d) => d.name === `${prefix}${j}`)) j++;
+    const def = kind === "state" ? stateGate(`PSI${j}`, parsed as ReturnType<typeof parseState>) : matrixGate(`M${j}`, parsed as ReturnType<typeof parseMatrix>);
+    this.customGates = [...this.customGates, def];
+    setCustomGates(this.customGates);
+    this.send({ t: "gates", defs: this.customGates });
+    const entries: Entry[] = [];
+    if (kind === "state") entries.push(qs.map((q) => ({ id: newId(), gateId: "reset", column: this.tape.length, targets: [q], controls: [], clbits: [], params: [] })));
+    const drift = "drift" in parsed && parsed.drift > 1e-12 ? ` (made exactly unitary: it was off by ${parsed.drift.toPrecision(2)})` : "";
+    entries.push([{ id: newId(), gateId: CUSTOM_PREFIX + def.name, column: this.tape.length, targets: qs, controls: [], clbits: [], params: [] }]);
+    const done = () => this.info(`${def.name} on ${qs.map((q) => `q${q}`).join(", ")}${drift}`);
+    if (col !== undefined) {
+      this.placeEntries(entries, col, def.name, done);
+      done();
+    } else entries.forEach((e, k) => this.pushEntry(e, undefined, k === entries.length - 1 ? done : undefined));
+    this.changed();
+  }
+
+  /** The last k steps (default: the whole circuit) become a custom gate G#. Returns its name, or null (with a message). */
+  defineGate(k = this.tape.length): string | null {
+    try {
+      const name = this.defineLast(k);
+      this.changed();
+      return name;
+    } catch (e) {
+      this.refuse((e as Error).message);
+      return null;
+    }
+  }
+
+  private entryAt(i: number): Entry | null {
+    return i >= 0 && i < this.tape.length ? this.tape[i] : null;
+  }
+
+  /**
+   * Replace entry i by `next` (one UNDO): it keeps its column, or takes the
+   * first free one right of it when its new wires are taken there; nothing
+   * else moves. The edited gate stays selected if it was.
+   */
+  private editEntry(i: number, next: Entry, label: string): boolean {
+    const r = repositionEntry(this.n, this.tape, i, next);
+    this.applyEdit(r.tape, label, this.diagSel === i ? r.at : null);
+    return true;
+  }
+
+  /** New parameter expressions for gate i (all its steps). `initialize` takes α, β. */
+  setGateParams(i: number, params: string[]): boolean {
+    const e = this.entryAt(i);
+    if (!e) return false;
+    const gate = e[0].gateId;
+    let next: string[];
+    try {
+      if (gate === "initialize") next = [this.amplitudeParam(params[0] ?? "1", params[1] ?? "0")];
+      else {
+        const defs = e[0].params;
+        if (params.length > defs.length) throw new Error(`${defs.length} parameter${defs.length === 1 ? "" : "s"}`);
+        next = defs.map((p, j) => (params[j] ?? p).trim() || p);
+        for (const p of next) if (!exprOk(p)) throw new Error(`can't read "${p}"`);
+      }
+    } catch (err) {
+      return this.refuse((err as Error).message);
+    }
+    return this.editEntry(i, e.map((s) => ({ ...s, params: [...next] })), "angle");
+  }
+
+  /** New qubits for gate i (a single-step entry): its targets, controls and control states. */
+  setGateQubits(i: number, targets: number[], controls: number[] = [], controlStates?: boolean[]): boolean {
+    const e = this.entryAt(i);
+    if (!e) return false;
+    if (e.length !== 1) return this.refuse("a gate on every qubit: change it back to one qubit first");
+    const s = e[0];
+    if (targets.length !== s.targets.length) return this.refuse(`${s.gateId.toUpperCase()} acts on ${s.targets.length} qubit${s.targets.length > 1 ? "s" : ""}`);
+    const bad = this.qubitsProblem([...controls, ...targets]);
+    if (bad) return this.refuse(bad);
+    if (controls.length && NONUNITARY.has(s.gateId)) return this.refuse("a measurement, reset or preparation can't be controlled");
+    const states = controlStates && controlStates.some((on) => !on) ? controlStates : undefined;
+    return this.editEntry(i, [{ ...s, targets: [...targets], controls: [...controls], controlStates: states, outcome: NONUNITARY.has(s.gateId) && s.targets[0] !== targets[0] ? undefined : s.outcome }], "qubits");
+  }
+
+  /** Move one of gate i's dots to wire q: its target `index`, or its control `index`. Refused if q is already on the gate. */
+  reassignQubit(i: number, role: "target" | "control", index: number, q: number): boolean {
+    const e = this.entryAt(i);
+    if (!e || e.length !== 1) return false;
+    const s = e[0];
+    const own = role === "target" ? s.targets[index] : s.controls[index];
+    if (own === undefined) return false;
+    if (own === q) return true;
+    if ([...s.targets, ...s.controls].includes(q)) return this.refuse(`q${q} is already on this gate`);
+    const targets = role === "target" ? s.targets.map((t, k) => (k === index ? q : t)) : s.targets;
+    const controls = role === "control" ? s.controls.map((c, k) => (k === index ? q : c)) : s.controls;
+    return this.setGateQubits(i, targets, controls, s.controlStates);
+  }
+
+  /** Add wire q as a control of gate i (● or ○ with anti). */
+  addControl(i: number, q: number, anti = false): boolean {
+    const e = this.entryAt(i);
+    if (!e) return false;
+    if (e.some((s) => s.targets.includes(q) || s.controls.includes(q))) return this.refuse(`q${q} is already on this gate`);
+    if (e.some((s) => NONUNITARY.has(s.gateId))) return this.refuse("a measurement, reset or preparation can't be controlled");
+    if (q < 0 || q >= this.n) return this.refuse(`only q0–q${this.n - 1}`);
+    return this.editEntry(i, e.map((s) => {
+      const states = [...(s.controlStates ?? s.controls.map(() => true)), !anti];
+      return { ...s, controls: [...s.controls, q], controlStates: states.some((on) => !on) ? states : undefined };
+    }), "control");
+  }
+
+  /** Remove control q from gate i. */
+  removeControl(i: number, q: number): boolean {
+    const e = this.entryAt(i);
+    if (!e || !e.some((s) => s.controls.includes(q))) return false;
+    return this.editEntry(i, e.map((s): Step => {
+      const k = s.controls.indexOf(q);
+      if (k < 0) return s;
+      const cs = (s.controlStates ?? s.controls.map(() => true)).filter((_, j) => j !== k);
+      return { ...s, controls: s.controls.filter((_, j) => j !== k), controlStates: cs.some((on) => !on) ? cs : undefined };
+    }), "control");
+  }
+
+  /** Add a control on the first free wire (below the gate if it can, else above); drag its dot where it belongs. */
+  addControlAnywhere(i: number): boolean {
+    const e = this.entryAt(i);
+    if (!e) return false;
+    const used = new Set(e.flatMap((s) => [...s.controls, ...s.targets]));
+    const hi = Math.max(...used);
+    const order = [...Array(this.n).keys()].sort((a, b) => (a > hi ? a - hi : this.n + hi - a) - (b > hi ? b - hi : this.n + hi - b));
+    const q = order.find((x) => !used.has(x));
+    if (q === undefined) return this.refuse("every qubit is on this gate already");
+    return this.addControl(i, q);
+  }
+
+  /** Flip control q of gate i between ● (on |1⟩) and ○ (on |0⟩). */
+  toggleControlState(i: number, q: number): boolean {
+    const e = this.entryAt(i);
+    if (!e) return false;
+    return this.editEntry(i, e.map((s) => {
+      const k = s.controls.indexOf(q);
+      if (k < 0) return s;
+      const states = (s.controlStates ?? s.controls.map(() => true)).map((on, j) => (j === k ? !on : on));
+      return { ...s, controlStates: states.some((on) => !on) ? states : undefined };
+    }), "control state");
+  }
+
+  /** Run gate i only if c[clbit] == value (null: always). */
+  setGateCondition(i: number, cond: { clbit: number; value: 0 | 1 } | null): boolean {
+    const e = this.entryAt(i);
+    if (!e) return false;
+    if (cond && (!Number.isInteger(cond.clbit) || cond.clbit < 0 || cond.clbit >= this.n)) return this.refuse(`c0–c${this.n - 1} only`);
+    return this.editEntry(i, e.map((s) => {
+      const { condition: _, ...rest } = s;
+      return cond ? { ...rest, condition: { ...cond } } : rest;
+    }), cond ? "condition" : "no condition");
+  }
+
+  /** Gate i on every qubit (a 1-qubit gate without controls), or back to the one on qubit `keep`. */
+  setBroadcast(i: number, on: boolean, keep = this.sel): boolean {
+    const e = this.entryAt(i);
+    if (!e) return false;
+    const s = e[0];
+    if (on) {
+      if (s.targets.length !== 1 || s.controls.length) return this.refuse("only 1-qubit gates without controls go on every qubit");
+      return this.editEntry(i, [...Array(this.n).keys()].map((q) => ({ ...s, id: q === s.targets[0] ? s.id : newId(), targets: [q], outcome: undefined })), "on every qubit");
+    }
+    const one = e.find((x) => x.targets[0] === keep) ?? s;
+    return this.editEntry(i, [one], "on one qubit");
+  }
+
+  /** A copy of gate i in the next free column after it (a measurement's outcome is sampled afresh). */
+  duplicateGate(i: number): boolean {
+    const e = this.entryAt(i);
+    if (!e) return false;
+    const own = Math.min(...layoutTape(this.n, this.tape).items.filter((it) => it.entry === i).map((it) => it.col));
+    this.placeEntries([e.map(({ outcome: _, pin: __, ...s }) => ({ ...s, id: newId() }))], own + 1, "duplicate");
+    this.changed();
+    return true;
+  }
+
+  /** Gate i replaced by its inverse (U†). */
+  invertGate(i: number): boolean {
+    const e = this.entryAt(i);
+    if (!e) return false;
+    if (e.some((s) => NONUNITARY.has(s.gateId))) return this.refuse("a measurement, reset or preparation has no inverse");
+    if (e.some((s) => s.gateId.startsWith(CUSTOM_PREFIX))) return this.refuse("a custom gate can't be inverted here (use LAB → Circuit tools → Inverse U†)");
+    const next: Entry = [];
+    for (const s of e) {
+      const inv = invert(s.gateId, s.params);
+      if (!inv) return this.refuse(`${s.gateId.toUpperCase()} has no closed-form inverse here`);
+      inv.forEach((g, k) => next.push({ ...s, id: k === 0 ? s.id : newId(), gateId: g.gate, params: g.params }));
+    }
+    return this.editEntry(i, next, "invert");
+  }
+
+  /** Delete gate i (everything else keeps its column). */
+  removeGate(i: number): boolean {
+    if (!this.entryAt(i)) return false;
+    this.applyEdit(removeEntries(this.n, this.tape, new Set([i])), `delete step ${i + 1}`, null);
+    return true;
+  }
+
+  /** Set the number of qubits (1–1024; above 20, Clifford circuits in stabilizer mode). */
+  setQubitCount(n: number): boolean {
+    if (!Number.isInteger(n) || n < 1 || n > STAB_MAX) return this.refuse(`1–${STAB_MAX} qubits`);
+    if (n === this.n) return true;
+    this.diagSel = null;
+    this.resize(n);
+    this.changed();
+    return true;
+  }
+
+  undo() {
+    this.diagSel = null;
+    this.send({ t: "undo" }, (r) => this.info(r.op ? `undo ${opLabel(r.op)}` : "nothing to undo"));
+    this.changed();
+  }
+
+  redo() {
+    this.diagSel = null;
+    this.send({ t: "redo" }, (r) => this.info(r.op ? `redo ${opLabel(r.op)}` : "nothing to redo"));
+    this.changed();
+  }
+
+  /** Clear the circuit back to |0…0⟩ (UNDO restores it). */
+  clearCircuit() {
+    this.diagSel = null;
+    this.send({ t: "clear" }, (r) => this.notify(`cleared to |${"0".repeat(r.n)}⟩ (UNDO restores)`));
+    this.changed();
+  }
+
+  /** Save the circuit in memory slot k (1–9). */
+  store(k: number): boolean {
+    if (!Number.isInteger(k) || k < 1 || k > 9) return this.refuse("memory M1–M9");
+    this.memory = { ...this.memory, [k]: { n: this.n, tape: [...this.tape], scope: { ...this.scope } } };
+    this.notify(`M${k} ← ${this.tape.length} steps, n = ${this.n}`);
+    return true;
+  }
+
+  /** Load memory slot k (an undoable replace). */
+  recall(k: number): boolean {
+    const m = this.memory[k];
+    if (!m) return this.refuse(`M${k} is empty`);
+    this.diagSel = null;
+    this.send({ t: "replace", n: m.n, tape: m.tape, scope: m.scope, label: `load M${k}` }, () => this.notify(`loaded M${k}`));
+    this.changed();
+    return true;
+  }
+
+  /** The number of shots the SHOTS view samples (1–1 000 000). */
+  setShots(n: number): boolean {
+    if (!Number.isInteger(n) || n < 1 || n > 1_000_000) return this.refuse("shots 1–1000000");
+    this.shots = n;
+    this.shotSeed++;
+    this.send({ t: "view", req: this.viewReq() });
+    this.requestNoisyView();
+    this.changed();
+    return true;
+  }
+
+  /** Sample the shots again. */
+  rerollShots() {
+    this.shotSeed++;
+    this.send({ t: "view", req: this.viewReq() });
+    this.requestNoisyView();
+    this.changed();
+  }
+
+  // ─── Editing on the diagram's grid (pure edits in grid.ts) ───
+
+  /** The gate (tape entry) selected in the diagram: its dots can be dragged, arrows and Delete act on it. */
   diagSel: number | null = null;
-  /** "± ctrl": the next wire tapped adds or removes a control on the selection. */
-  ctrlPick = false;
+  /** Gates selected with a rectangle: copy, cut, delete, duplicate. */
+  diagSet: Set<number> = new Set();
+  /** Copied gates (this session). */
+  clip: Clip | null = null;
 
   /** Select a gate in the diagram. Its wire becomes the selected qubit too: one selection, not two. */
   selectStep(i: number | null) {
     this.diagSel = i !== null && i >= 0 && i < this.tape.length ? i : null;
-    this.ctrlPick = false;
+    this.diagSet = new Set();
+    this.cursor = null;
     const e = this.diagSel !== null ? this.tape[this.diagSel] : undefined;
     if (e?.[0]?.targets.length) this.sel = e[0].targets[0];
     this.changed();
   }
 
-  /** DEL in the CIRC header: the selected gate when there is one, else the step before the scrub point. */
-  deleteCurrent() {
-    if (this.diagSel !== null) return this.deleteSelected();
-    this.deleteStep();
-  }
-
-  /** The selected gate as it would read with the typed angle (the diagram previews it; = applies it). */
-  selectedPreview(): Entry | null {
-    const e = this.selectedEntry();
-    if (!e || !e[0].params.length || this.entry.length === 0) return null;
-    const args = splitArgs(this.entry);
-    if (args.length > e[0].params.length || args.some((a) => !exprOk(a))) return null;
-    return e.map((s) => ({ ...s, params: s.params.map((p, j) => args[j] ?? p) }));
-  }
-
-  /** Wires a control can go on for the selected gate ("± ctrl" highlights them). */
-  controlCandidates(): Set<number> {
-    const e = this.selectedEntry();
-    const out = new Set<number>();
-    if (!e || e.some((s) => NONUNITARY.has(s.gateId))) return out;
-    for (let q = 0; q < this.n; q++) if (!e.some((s) => s.targets.includes(q))) out.add(q);
-    return out;
-  }
-
-  /** A tap on a wire: toggles a control in "± ctrl", else places the insertion point there (qubit q, before tape index `at`). */
-  tapWire(q: number, at: number) {
-    if (this.diagSel !== null && this.ctrlPick) return this.toggleSelectedControl(q);
+  /** Select the gates drawn in columns c0..c1 on rows r0..r1 (a rectangle dragged on the diagram). */
+  selectBox(c0: number, c1: number, r0: number, r1: number) {
+    const set = entriesIn(layoutTape(this.n, this.tape), Math.min(c0, c1), Math.max(c0, c1), Math.min(r0, r1), Math.max(r0, r1));
     this.diagSel = null;
-    this.ctrlPick = false;
-    if (q >= 0 && q < this.n) this.sel = q;
-    this.setScrub(at);
+    this.cursor = null;
+    this.diagSet = set;
     this.changed();
   }
 
-  toggleCtrlPick() {
-    this.ctrlPick = this.diagSel !== null && !this.ctrlPick;
+  selectAll() {
+    this.diagSel = null;
+    this.diagSet = new Set(this.tape.keys());
     this.changed();
+  }
+
+  /** The selected gates: the rectangle's, else the selected gate. */
+  private selection(): Set<number> {
+    return this.diagSet.size ? this.diagSet : this.diagSel !== null ? new Set([this.diagSel]) : new Set();
+  }
+
+  copySelection(): boolean {
+    const set = this.selection();
+    if (!set.size) return false;
+    this.clip = copyEntries(this.n, this.tape, set);
+    this.notify(`copied ${set.size} gate${set.size > 1 ? "s" : ""}`);
+    this.changed();
+    return true;
+  }
+
+  cutSelection(): boolean {
+    if (!this.copySelection()) return false;
+    return this.deleteSelection();
+  }
+
+  deleteSelection(): boolean {
+    const set = this.selection();
+    if (!set.size) return false;
+    this.diagSet = new Set();
+    this.applyEdit(removeEntries(this.n, this.tape, set), `delete ${set.size} gate${set.size > 1 ? "s" : ""}`, null);
+    return true;
+  }
+
+  /** The copied gates after the circuit's last column. */
+  paste(): boolean {
+    if (!this.clip) return this.refuse("nothing copied");
+    const r = pasteClip(this.n, this.tape, this.clip, newId);
+    if (!r.added) return this.refuse("the copied gates need more qubits");
+    this.applyEdit(r.tape, `paste ${r.added}`, null);
+    this.diagSet = new Set([...r.tape.keys()].filter((k) => k >= this.tape.length));
+    return true;
+  }
+
+  /** The selection repeated after itself, `times` times. */
+  repeatSelection(times = 1): boolean {
+    const set = this.selection();
+    if (!set.size) return false;
+    const clip = copyEntries(this.n, this.tape, set);
+    let tape = this.tape;
+    for (let k = 0; k < times; k++) tape = pasteClip(this.n, tape, clip, newId).tape;
+    this.diagSet = new Set();
+    this.applyEdit(tape, `repeat ${set.size}`, null);
+    return true;
+  }
+
+  /** Quantiom's Insert block: a snippet built for this register, after the circuit's last column. */
+  insertSnippet(id: string): boolean {
+    const sn = SNIPPETS.find((x) => x.id === id);
+    if (!sn) return false;
+    if (this.n < sn.minQubits) return this.refuse(`${sn.label} needs ${sn.minQubits}+ qubits`);
+    if (this.stabilizerMode && id === "trotter-ising") return this.refuse("stabilizer mode: no symbols");
+    const r = pasteClip(this.n, this.tape, { entries: sn.build(this.n) }, newId);
+    this.applyEdit(r.tape, sn.label, null);
+    return true;
+  }
+
+  /** Column ranges drawn folded into one box (the diagram only; this session). */
+  folds: { from: number; to: number }[] = [];
+
+  /** Fold the selection's columns into a box (tap the box to unfold). */
+  foldSelection(): boolean {
+    const set = this.selection();
+    if (!set.size) return false;
+    const cols = layoutTape(this.n, this.tape).items.filter((it) => set.has(it.entry)).map((it) => it.col);
+    const from = Math.min(...cols), to = Math.max(...cols);
+    this.folds = [...this.folds.filter((f) => f.to < from || f.from > to), { from, to }].sort((a, b) => a.from - b.from);
+    this.diagSet = new Set();
+    this.diagSel = null;
+    this.changed();
+    return true;
+  }
+
+  unfold(from: number) {
+    this.folds = this.folds.filter((f) => f.from !== from);
+    this.changed();
+  }
+
+  /** Quantiom's Paste Circuit: OpenQASM text (the clipboard's) loaded as an undoable replace. */
+  pasteCircuit(text: string): boolean {
+    if (!text.trim()) return this.refuse("the clipboard is empty");
+    try {
+      this.loadQasm(text, "pasted circuit");
+    } catch (e) {
+      return this.refuse(`paste: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    this.folds = [];
+    return true;
+  }
+
+  /** A transform running in the analysis worker (Edit/Transform menu), and its label. */
+  transforming: { seq: number; id: string; label: string } | null = null;
+  private tSeq = 1_000_000_000;
+
+  /**
+   * Quantiom's Transform menu, on QC-1's circuit tools (LAB → Circuit tools,
+   * validated against Qiskit): run tool `id` with `opts` in the analysis
+   * worker; its result replaces the circuit (one UNDO) only if the tool
+   * verified it (same operator, or the target reached). Replies come back
+   * through onAnalysis.
+   */
+  transform(id: string, opts: Opts, label: string): boolean {
+    if (this.stabilizerMode) return this.refuse("the circuit tools run up to 20 qubits");
+    if (!this.tape.length && id !== "randclifford") return this.refuse("the circuit is empty");
+    const seq = ++this.tSeq;
+    this.transforming = { seq, id, label };
+    this.notify(`${label}…`);
+    this.engine.analyze({ seq, id, opts });
+    this.changed();
+    return true;
+  }
+
+  private onTransform(r: AnalysisReply) {
+    const t = this.transforming!;
+    this.transforming = null;
+    const p = r.result.proposal;
+    if (r.result.error) this.error(`${t.label}: ${r.result.error}`);
+    else if (!p) this.notify(`${t.label}: ${r.result.notes?.[0] ?? "no change"}`); // e.g. nothing to simplify
+    else if (!p.verified) this.error(`${t.label}: ${p.check}`);
+    else {
+      const before = this.tape.reduce((k, e) => k + e.length, 0), after = p.tape.reduce((k, e) => k + e.length, 0);
+      this.send({ t: "replace", n: p.n, tape: p.tape, scope: { ...this.scope }, label: t.label });
+      this.diagSel = null;
+      this.diagSet = new Set();
+      this.folds = [];
+      // What the tool couldn't rewrite (a transpile's gates without an exact form) is said, not hidden.
+      const left = r.result.notes?.find((x) => x.startsWith("Left as is"));
+      this.notify(`${t.label}: ${before} → ${after} gates · ${p.check}${left ? ` · ${left}` : ""}`);
+    }
+    this.changed();
+  }
+
+  /** Every gate as far left as it can go (the pins dropped). */
+  compactColumns() {
+    this.applyEdit(compact(this.tape), "compact", null);
+  }
+
+  /** Entry i dragged to column `col`, dq wires down (the first free column there or right of it). */
+  moveGate(i: number, col: number, dq: number): boolean {
+    if (!this.entryAt(i)) return false;
+    const r = moveEntry(this.n, this.tape, i, col, dq);
+    if (!r) return this.refuse("no qubit there");
+    this.applyEdit(r.tape, "move", r.at);
+    return true;
+  }
+
+  /** Arrow keys: the selected gate one column left/right (to the nearest free one) or one wire up/down. */
+  nudgeSelected(dcol: number, dq: number): boolean {
+    const i = this.diagSel;
+    if (i === null) return false;
+    const lay = layoutTape(this.n, this.tape);
+    const own = Math.min(...lay.items.filter((it) => it.entry === i).map((it) => it.col));
+    if (dcol < 0) {
+      const e = this.tape[i], rel = shape(this.n, e);
+      for (let c = own - 1; c >= 0; c--) if (freeColumn(lay.items, e, rel, c, i) === c) return this.moveGate(i, c, 0);
+      return this.refuse("no free column to the left");
+    }
+    return this.moveGate(i, own + dcol, dq);
   }
 
   /** Replace the tape (one undoable step) and keep `sel` selected. */
   private applyEdit(tape: Entry[], label: string, sel: number | null) {
+    if (this.scrub !== null) this.setScrub(null);
     this.send({ t: "replace", n: this.n, tape, scope: { ...this.scope }, label });
     this.diagSel = sel;
-    this.ctrlPick = false;
     // The selected qubit follows the gate (moved up or down, dragged to another wire).
     const e = sel !== null ? tape[sel] : undefined;
     if (e?.[0]?.targets.length) this.sel = e[0].targets[0];
     this.changed();
-  }
-
-  private selectedEntry(): Entry | null {
-    return this.diagSel !== null ? this.tape[this.diagSel] ?? null : null;
-  }
-
-  moveSelected(dir: -1 | 1) {
-    const i = this.diagSel;
-    if (i === null) return;
-    const r = dir < 0 ? moveEarlier(this.tape, i) : moveLater(this.tape, i);
-    if (!r) return this.error(dir < 0 ? "already first on its wires" : "already last on its wires");
-    this.applyEdit(r.tape, dir < 0 ? "move earlier" : "move later", r.at);
-  }
-
-  shiftSelected(dq: number) {
-    const e = this.selectedEntry();
-    if (!e || this.diagSel === null) return;
-    const moved = shiftEntry(e, dq, this.n);
-    if (!moved) return this.error("no qubit there");
-    this.applyEdit(this.tape.map((x, k) => (k === this.diagSel ? moved : x)), dq < 0 ? "move up" : "move down", this.diagSel);
-  }
-
-  deleteSelected() {
-    const i = this.diagSel;
-    if (i === null) return;
-    this.applyEdit(this.tape.filter((_, k) => k !== i), `delete step ${i + 1}`, null);
-  }
-
-  /** Drag and drop: entry i to diagram column `col`, dq wires down. */
-  dropStep(i: number, items: Placed[], col: number, dq: number) {
-    const r = dropEntry(this.tape, items, i, col, dq, this.n);
-    if (!r) return this.error("no qubit there");
-    if (r.at === i && dq === 0) return this.selectStep(i);
-    this.applyEdit(r.tape, "move", r.at);
-  }
-
-  private toggleSelectedControl(q: number) {
-    const e = this.selectedEntry();
-    if (!e || this.diagSel === null) return;
-    const next = toggleControl(e, q, (g) => NONUNITARY.has(g));
-    if (!next) return this.error(e.some((s) => s.targets.includes(q)) ? `q${q} is a target` : "this gate can't be controlled");
-    this.applyEdit(this.tape.map((x, k) => (k === this.diagSel ? next : x)), "control", this.diagSel);
-  }
-
-  /** "angle": the typed arguments become the selected gate's parameters. */
-  setSelectedParams() {
-    const e = this.selectedEntry();
-    if (!e || this.diagSel === null) return;
-    const count = e[0].params.length;
-    if (!count) return this.error("this gate has no angle");
-    if (this.entry.length === 0) return this.error("type the angle first");
-    const args = splitArgs(this.entry);
-    if (args.length > count) return this.error(`${count} argument${count > 1 ? "s" : ""} max`);
-    if (args.some((a) => !exprOk(a))) return this.error("syntax error");
-    this.entry = [];
-    this.applyEdit(this.tape.map((x, k) => (k === this.diagSel ? x.map((s) => ({ ...s, params: s.params.map((p, j) => args[j] ?? p) })) : x)), "angle", this.diagSel);
-  }
-
-  /** A gate key while a gate is selected: that gate becomes this one (same qubits; the typed angle, else its own). */
-  private replaceSelectedGate(k: GateKey) {
-    const e = this.selectedEntry();
-    if (!e || this.diagSel === null) return;
-    for (const s of e) {
-      if (s.targets.length !== k.arity) return this.error(`${k.gate.toUpperCase()} acts on ${k.arity} qubit${k.arity > 1 ? "s" : ""}; this gate on ${s.targets.length}`);
-      if (NONUNITARY.has(k.gate) && s.controls.length) return this.error("can't control a non-unitary");
-    }
-    let params = k.params;
-    if (k.params.length && this.entry.length) {
-      const args = splitArgs(this.entry);
-      if (args.length > k.params.length || args.some((a) => !exprOk(a))) return this.error("syntax error");
-      params = k.params.map((d, j) => args[j] ?? d);
-      this.entry = [];
-    }
-    const next: Entry = e.map((s) => ({ ...s, gateId: k.gate, params: [...params], outcome: undefined }));
-    this.applyEdit(this.tape.map((x, kk) => (kk === this.diagSel ? next : x)), `change to ${k.gate.toUpperCase()}`, this.diagSel);
   }
 
   select(q: number) {
@@ -792,22 +1225,6 @@ export class Calculator {
     this.changed();
   }
 
-  press(key: KeyId) {
-    this.message = null;
-    const id = this.shift ? (SHIFTED[key] ?? key) : key;
-    if (key !== "2nd") this.shift = false;
-    try {
-      if (this.param.open && this.paramKey(id)) return this.changed();
-      if (this.mode === "lab" && !this.catalog.open && this.labKey(id)) return this.changed();
-      this.dispatch(id);
-    } catch (e) {
-      this.error(e instanceof Error ? e.message : String(e));
-    }
-    if (key !== "2nd") this.lastKey = id;
-    this.changed();
-  }
-
-  private lastKey = "";
   /** Symbol values set locally (slider, playback) and not yet confirmed by the core. */
   private localScope: Scope = {};
 
@@ -887,27 +1304,6 @@ export class Calculator {
     this.changed();
   }
 
-  /** Keys on the PARAM screen: ◀ ▶ pick a symbol, = sets it from the entry. */
-  private paramKey(id: string): boolean {
-    const len = this.symbols.length;
-    switch (id) {
-      case "left": case "right":
-        if (len) this.param = { ...this.param, index: (this.param.index + (id === "left" ? len - 1 : 1)) % len };
-        return true;
-      case "eq": {
-        const name = this.symbols[this.param.index];
-        if (!name || this.entry.length === 0) return true;
-        const [expr] = splitArgs(this.entry);
-        const v = evalParam(expr, this.scope);
-        this.entry = [];
-        if (Number.isFinite(v)) this.setSymbol(name, v);
-        else this.error("not a number");
-        return true;
-      }
-    }
-    return false;
-  }
-
   togglePlayback(name = "t", hz = this.playback?.hz ?? 0.25) {
     if (this.playback) return this.stopPlayback();
     this.playback = { name, hz, startValue: this.scope[name] ?? 0, startAt: Date.now(), frames: 0, fps: 0 };
@@ -945,21 +1341,6 @@ export class Calculator {
     }, 16);
   }
 
-  /** Memory slot 1–9 from the entry line (STO/RCL argument). */
-  private slotFromEntry(what: string): number | null {
-    if (this.entry.length === 0) {
-      this.error(`enter 1–9, then ${what}`);
-      return null;
-    }
-    const k = this.takeInt();
-    if (k === null) return null;
-    if (k < 1 || k > 9) {
-      this.error("memory M1–M9");
-      return null;
-    }
-    return k;
-  }
-
   /** Show a status line from outside the key flow (copy / share results). */
   notify(text: string, kind: Message["kind"] = "note") {
     this.message = { text, kind };
@@ -974,100 +1355,16 @@ export class Calculator {
     this.message = { text, kind: "info" };
   }
 
-  /** Consume the entry as an integer; reports an error and returns null otherwise. */
-  private takeInt(): number | null {
-    const [expr] = splitArgs(this.entry);
-    const v = evalParam(expr);
-    this.entry = [];
-    if (!Number.isFinite(v) || Math.abs(v - Math.round(v)) > 1e-9) {
-      this.error("not an integer");
-      return null;
-    }
-    return Math.round(v);
-  }
-
-  /** Keys that behave differently while the CATALOG is open. Returns true if handled. */
-  private catalogKey(id: string): boolean {
-    const len = this.catalogItems.length;
-    switch (id) {
-      case "left": case "n-": this.catalog.index = (this.catalog.index + len - 1) % len; return true;
-      case "right": case "n+": this.catalog.index = (this.catalog.index + 1) % len; return true;
-      case "eq": this.applyCatalog(this.catalog.index); return true;
-      case "cat": this.catalog.open = false; this.catalog.typing = null; return true;
-      case "ac":
-        // Never clears the register from inside the catalog.
-        if (this.entry.length > 0 || this.marks.length > 0 || this.all) return false;
-        this.catalog.open = false;
-        return true;
-    }
-    if (id in GATE_KEYS) this.catalog.open = false;
-    return false;
-  }
-
-  /** Tap on a catalog row: first tap highlights, a tap on the highlighted row applies. */
-  pickCatalog(index: number) {
-    this.message = null;
-    if (index === this.catalog.index) {
-      try {
-        this.applyCatalog(index);
-      } catch (e) {
-        this.error(e instanceof Error ? e.message : String(e));
-      }
-    } else {
-      this.catalog.index = index;
-    }
-    this.changed();
-  }
-
-  /** CATALOG rows: the built-in gates, then the custom gates and DEFINE. */
-  get catalogItems(): CatalogItem[] {
-    return [
-      ...CATALOG,
-      ...this.customGates.map((d): CatalogItem => ({
-        gate: CUSTOM_PREFIX + d.name, label: d.name, group: "CUSTOM", arity: d.k, params: [], argNames: [],
-        note: `${d.tape.length} step${d.tape.length > 1 ? "s" : ""} on ${d.k} qubit${d.k > 1 ? "s" : ""}`,
-      })),
-      {
-        gate: "define", label: "DEFINE", group: "CUSTOM", arity: 1, params: [], argNames: [],
-        note: "the last k steps (entry k, else the whole circuit) as a new gate",
-      },
-    ];
-  }
-
-  private applyCatalog(index: number) {
-    const item = this.catalogItems[index];
-    if (item.gate === "define") this.define();
-    else if (item.gate.startsWith("block:")) this.block(item.gate.slice(6) as BlockKind, item.params);
-    else if (item.gate.startsWith("typed:")) {
-      this.catalog.typing = item.gate.slice(6) as "state" | "matrix";
-      return; // the CATALOG stays open with its text field
-    }
-    else this.gate({ gate: item.gate, arity: item.arity, params: item.params });
-    this.catalog.open = false;
-  }
-
-  /**
-   * An algorithm block (calc/blocks.ts) on the CTRL-marked qubits plus the
-   * selected one, ascending (the first is the most significant), or on every
-   * qubit when nothing is marked. QFT, QFT† and the diffuser are custom gates
-   * (QFT3…), defined on first use; QAOA is two entries taking the entry γ,β.
-   */
-  private block(kind: BlockKind, defaults: string[]) {
-    if (this.marks.some((m) => m.anti)) throw new Error("blocks take CTRL marks, not ○CTRL");
-    const qs = this.marks.length ? [...new Set([...this.marks.map((m) => m.q), this.sel])].sort((a, b) => a - b) : [...Array(this.n).keys()];
-    if (this.pendingIf) throw new Error("IF applies to a single gate");
+  /** An algorithm block on the qubits `qs` (ascending: the first is the most significant); QAOA takes γ, β. Throws with a message. */
+  private placeBlock(kind: BlockKind, qs: number[], params: string[] = [], col?: number) {
     if (kind === "qaoa") {
       if (qs.length < 2) throw new Error("QAOA needs 2+ qubits");
-      const args = this.entry.length ? splitArgs(this.entry) : [];
-      if (args.length > 2) throw new Error("γ,β");
-      for (const a of args) if (!exprOk(a)) throw new Error("syntax error");
-      const [gamma, beta] = [args[0] ?? defaults[0], args[1] ?? defaults[1]];
-      this.entry = [];
-      this.marks = [];
-      for (const e of qaoaLayer(qs, gamma, beta)) {
-        const entry = e.map((s) => ({ ...s, id: newId(), column: this.tape.length }));
-        this.send({ t: "push", entry }, (r) => r.done && this.info(`QAOA layer (γ=${gamma}, β=${beta})`));
-      }
+      const [gamma = "π/4", beta = "π/8"] = params;
+      for (const a of [gamma, beta]) if (!exprOk(a)) throw new Error(`can't read "${a}"`);
+      const entries = qaoaLayer(qs, gamma, beta).map((e) => e.map((s) => ({ ...s, id: newId(), column: this.tape.length })));
+      const done = () => this.info(`QAOA layer (γ=${gamma}, β=${beta})`);
+      if (col !== undefined) this.placeEntries(entries, col, "QAOA layer", done);
+      else for (const e of entries) this.pushEntry(e, undefined, done);
       return;
     }
     const def = blockGate(kind, qs.length);
@@ -1079,63 +1376,13 @@ export class Calculator {
       setCustomGates(this.customGates);
       this.send({ t: "gates", defs: this.customGates });
     }
-    this.marks = [];
-    this.all = false;
     const entry: Entry = [{ id: newId(), gateId: CUSTOM_PREFIX + def.name, column: this.tape.length, targets: qs, controls: [], clbits: [], params: [] }];
-    this.send({ t: "push", entry }, (r) => r.done && this.info(formatEntry(r.done)));
+    if (col !== undefined) this.placeEntries([entry], col, def.name);
+    else this.pushEntry(entry);
   }
 
-  /** Cancel the CATALOG's STATE…/MATRIX… text field. */
-  cancelTyped() {
-    this.catalog.typing = null;
-    this.changed();
-  }
-
-  /**
-   * STATE…/MATRIX… (calc/typed.ts): the typed text becomes gate PSIj or Mj,
-   * placed on the CTRL-marked qubits plus the selected one (ascending), or on
-   * q0…q(k−1). A state is "reset, then prepare". Throws with a message the
-   * text field shows; on success the CATALOG closes.
-   */
-  enterTyped(text: string) {
-    const kind = this.catalog.typing;
-    if (!kind) return;
-    const parsed = kind === "state" ? parseState(text) : parseMatrix(text);
-    const k = parsed.k;
-    const qs = this.marks.length ? [...new Set([...this.marks.map((m) => m.q), this.sel])].sort((a, b) => a - b) : [...Array(k).keys()];
-    if (qs.length !== k) throw new Error(`the ${kind} is on ${k} qubit${k > 1 ? "s" : ""}; ${qs.length} marked`);
-    if (k > this.n) throw new Error(`needs ${k} qubits: set N first`);
-    if (this.marks.some((m) => m.anti)) throw new Error("mark with CTRL, not ○CTRL");
-    const prefix = kind === "state" ? "PSI" : "M";
-    let j = 1;
-    while (this.customGates.some((d) => d.name === `${prefix}${j}`)) j++;
-    const def = kind === "state" ? stateGate(`PSI${j}`, parsed as ReturnType<typeof parseState>) : matrixGate(`M${j}`, parsed as ReturnType<typeof parseMatrix>);
-    this.customGates = [...this.customGates, def];
-    setCustomGates(this.customGates);
-    this.send({ t: "gates", defs: this.customGates });
-    this.marks = [];
-    this.all = false;
-    this.pendingIf = null;
-    const col = this.tape.length;
-    if (kind === "state") {
-      this.send({ t: "push", entry: qs.map((q) => ({ id: newId(), gateId: "reset", column: col, targets: [q], controls: [], clbits: [], params: [] })) });
-    }
-    const entry: Entry = [{ id: newId(), gateId: CUSTOM_PREFIX + def.name, column: col, targets: qs, controls: [], clbits: [], params: [] }];
-    const drift = "drift" in parsed && parsed.drift > 1e-12 ? ` (made exactly unitary: it was off by ${parsed.drift.toPrecision(2)})` : "";
-    this.send({ t: "push", entry }, (r) => r.done && this.info(`${formatEntry(r.done)}${drift}`));
-    this.catalog.typing = null;
-    this.catalog.open = false;
-    this.changed();
-  }
-
-  /** DEFINE: the last k tape entries (entry k, else all) become gate G#. */
-  private define() {
-    let k = this.tape.length;
-    if (this.entry.length > 0) {
-      const v = this.takeInt();
-      if (v === null) return;
-      k = v;
-    }
+  /** The last k tape entries become a custom gate G# (listed under Your gates). Throws with a message. Returns its name. */
+  private defineLast(k: number): string {
     if (k < 1 || k > this.tape.length) throw new Error(this.tape.length ? `k = 1–${this.tape.length}` : "the circuit is empty");
     const entries = this.tape.slice(-k);
     if (entries.some((e) => e.some((s) => NONUNITARY.has(s.gateId)))) throw new Error("a gate can't measure, reset or prepare");
@@ -1145,127 +1392,8 @@ export class Calculator {
     this.customGates = [...this.customGates, def];
     setCustomGates(this.customGates);
     this.send({ t: "gates", defs: this.customGates });
-    this.info(`G${i} = ${k} step${k > 1 ? "s" : ""} on ${def.k} qubit${def.k > 1 ? "s" : ""} (CATALOG)`);
-  }
-
-  private dispatch(id: string) {
-    const n = this.n;
-    if (this.catalog.open && this.catalogKey(id)) return;
-    if (id in TOKENS) {
-      if (this.entry.length < 40) this.entry.push(TOKENS[id]);
-      return;
-    }
-    if (id in GATE_KEYS) return this.diagSel !== null ? this.replaceSelectedGate(GATE_KEYS[id]) : this.gate(GATE_KEYS[id]);
-
-    switch (id) {
-      case "2nd": this.shift = !this.shift; return;
-      case "left": this.sel = (this.sel + n - 1) % n; return;
-      case "right": this.sel = (this.sel + 1) % n; return;
-      case "n-": return this.resize(n - 1);
-      case "n+": return this.resize(n + 1);
-      case "q": {
-        if (this.entry.length === 0) return this.error("enter qubit #, then Q");
-        const v = this.takeInt();
-        if (v === null) return;
-        if (v < 0 || v >= n) return this.error(`q0–q${n - 1} only`);
-        this.sel = v;
-        return;
-      }
-      case "n": {
-        if (this.entry.length === 0) return this.error(`enter 1–${STAB_MAX}, then N (above ${MAX_QUBITS}: Clifford circuits)`);
-        const v = this.takeInt();
-        if (v !== null) this.resize(v);
-        return;
-      }
-      case "ctrl":
-      case "actrl": {
-        const anti = id === "actrl";
-        const i = this.marks.findIndex((m) => m.q === this.sel);
-        if (i >= 0 && this.marks[i].anti === anti) this.marks.splice(i, 1);
-        else if (i >= 0) this.marks[i] = { q: this.sel, anti };
-        else this.marks.push({ q: this.sel, anti });
-        return;
-      }
-      case "all": this.all = !this.all; return;
-      case "cat": this.catalog.open = true; this.catalog.typing = null; return;
-      case "if": {
-        // Entry "k" or "k,v": the next gate runs only if c[k] == v (v = 1 by default).
-        if (this.pendingIf && this.entry.length === 0) {
-          this.pendingIf = null;
-          return this.info("IF off");
-        }
-        const args = splitArgs(this.entry).map((a) => Number(a));
-        const [k, v = 1] = args;
-        if (args.length === 0 || args.length > 2 || !Number.isInteger(k) || k < 0 || k >= n || (v !== 0 && v !== 1)) {
-          return this.error(`IF: enter k or k,v (bit c[k] of q${0}–q${n - 1}, v = 0/1)`);
-        }
-        this.entry = [];
-        this.pendingIf = { clbit: k, value: v };
-        return this.info(`next gate only if c[${k}] = ${v}`);
-      }
-      case "undo":
-        this.diagSel = null; // an undone edit can put another gate at the selected position
-        this.ctrlPick = false;
-        return this.send({ t: "undo" }, (r) => this.info(r.op ? `undo ${opLabel(r.op)}` : "nothing to undo"));
-      case "redo":
-        this.diagSel = null;
-        this.ctrlPick = false;
-        return this.send({ t: "redo" }, (r) => this.info(r.op ? `redo ${opLabel(r.op)}` : "nothing to redo"));
-      case "var": {
-        // Repeated 2ND+, cycles the symbol just inserted: θ → φ → λ → …
-        const last = this.entry[this.entry.length - 1];
-        const i = last ? VARS.indexOf(last.disp) : -1;
-        if (this.lastKey === "var" && i >= 0) this.entry[this.entry.length - 1] = varToken(VARS[(i + 1) % VARS.length]);
-        else if (this.entry.length < 40) this.entry.push(varToken(VARS[0]));
-        return;
-      }
-      case "sto": {
-        const k = this.slotFromEntry("STO");
-        if (k === null) return;
-        this.memory = { ...this.memory, [k]: { n: this.n, tape: [...this.tape], scope: { ...this.scope } } };
-        return this.info(`M${k} ← ${this.tape.length} steps, n=${this.n}`);
-      }
-      case "rcl": {
-        const k = this.slotFromEntry("RCL");
-        if (k === null) return;
-        const m = this.memory[k];
-        if (!m) return this.error(`M${k} is empty`);
-        return this.send({ t: "replace", n: m.n, tape: m.tape, scope: m.scope, label: `RCL M${k}` }, () => this.info(`RCL M${k}`));
-      }
-      case "bs": this.entry.pop(); return;
-      case "ac": {
-        // AC first lets go of a gate selected in the diagram.
-        if (this.diagSel !== null && this.entry.length === 0) return this.selectStep(null);
-        if (this.param.open && this.entry.length === 0) {
-          this.closeParams();
-          return;
-        }
-        if (this.entry.length > 0 || this.marks.length > 0 || this.all || this.pendingIf) {
-          this.entry = [];
-          this.marks = [];
-          this.all = false;
-          this.pendingIf = null;
-          return;
-        }
-        return this.send({ t: "clear" }, (r) => this.info(`|${"0".repeat(r.n)}⟩ (UNDO restores)`));
-      }
-      case "eq":
-        // With a gate selected in the diagram and an angle typed, = sets that gate's angle.
-        if (this.diagSel !== null && this.entry.length > 0 && this.selectedEntry()?.[0].params.length) return this.setSelectedParams();
-        return this.send({ t: "repeat" }, (r) => r.done && this.info(formatEntry(r.done)));
-    }
-  }
-
-  /** The entry as `initialize` amplitudes: α,β (real) or Reα,Imα,Reβ,Imβ. */
-  private amplitudes(): string {
-    const args = splitArgs(this.entry);
-    if (this.entry.length === 0 || (args.length !== 2 && args.length !== 4)) throw new Error("enter α,β then |ψ⟩");
-    const v = args.map((a) => evalParam(a));
-    if (v.some((x) => !Number.isFinite(x))) throw new Error("syntax error");
-    const [ar, ai, br, bi] = v.length === 2 ? [v[0], 0, v[1], 0] : v;
-    const norm = Math.hypot(ar, ai, br, bi);
-    if (norm < 1e-12) throw new Error("zero state");
-    return `(${[ar, ai, br, bi].map((x) => x / norm).join(", ")})`;
+    this.info(`G${i} = ${k} step${k > 1 ? "s" : ""} on ${def.k} qubit${def.k > 1 ? "s" : ""}`);
+    return `G${i}`;
   }
 
   private resize(n: number) {
@@ -1311,53 +1439,6 @@ export class Calculator {
     return this.n > MAX_QUBITS;
   }
 
-  private gate(k: GateKey) {
-    const n = this.n;
-    let params = k.params;
-    if (k.gate === "initialize") {
-      params = [this.amplitudes()];
-    } else if (k.params.length > 0 && this.entry.length > 0) {
-      const args = splitArgs(this.entry);
-      if (args.length > k.params.length) throw new Error(`${k.params.length} argument${k.params.length > 1 ? "s" : ""} max`);
-      for (const a of args) if (!exprOk(a)) throw new Error("syntax error");
-      params = k.params.map((d, i) => args[i] ?? d);
-    }
-    if (NONUNITARY.has(k.gate) && this.marks.length > 0) throw new Error("can't control a non-unitary");
-
-    const controls = this.marks.map((m) => m.q);
-    const controlStates = this.marks.some((m) => m.anti) ? this.marks.map((m) => !m.anti) : undefined;
-    const col = this.tape.length;
-    const cond = this.pendingIf;
-    const mk = (targets: number[], ctrls: number[], states?: boolean[]): Step => ({
-      id: newId(), gateId: k.gate, column: col, targets, controls: ctrls, clbits: [], params,
-      ...(states ? { controlStates: states } : {}),
-      ...(cond ? { condition: { ...cond } } : {}),
-    });
-
-    let entry: Entry;
-    if (k.arity === 1) {
-      if (!this.all && controls.includes(this.sel)) throw new Error(`q${this.sel} is a control`);
-      const targets = this.all ? [...Array(n).keys()].filter((q) => !controls.includes(q)) : [this.sel];
-      if (targets.length === 0) throw new Error("no target left");
-      entry = targets.map((t) => mk([t], controls, controlStates));
-    } else {
-      // The last arity−1 marks are the gate's other qubits; earlier marks are controls.
-      const need = k.arity - 1;
-      if (controls.length < need) {
-        throw new Error(need === 1 ? "CTRL-mark a partner qubit first" : `CTRL-mark ${need} partner qubits first`);
-      }
-      if (this.all) throw new Error("ALL is for 1-qubit gates");
-      const partners = controls.slice(-need);
-      if (partners.includes(this.sel)) throw new Error("partner = target");
-      if (controlStates?.slice(-need).some((on) => !on)) throw new Error("○CTRL can't mark a partner");
-      entry = [mk([...partners, this.sel], controls.slice(0, -need), controlStates?.slice(0, -need))];
-    }
-    if (params !== k.params) this.entry = [];
-    this.marks = [];
-    this.all = false;
-    this.pendingIf = null;
-    this.send({ t: "push", entry }, (r) => r.done && this.info(formatEntry(r.done)));
-  }
 }
 
 /** Short label of an undone/redone operation. */
@@ -1366,3 +1447,7 @@ function opLabel(op: NonNullable<Result["op"]>): string {
 }
 
 export { symbolGlyph };
+
+// Dev server: the app keeps one Calculator for its lifetime, so a hot update of
+// this class would leave the running instance without the new methods. Reload.
+if (import.meta.hot) import.meta.hot.accept(() => location.reload());

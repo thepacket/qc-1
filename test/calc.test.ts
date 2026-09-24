@@ -1,106 +1,98 @@
 import { describe, test, expect } from "vitest";
-import { Calculator, type KeyId } from "../src/calc/calculator";
+import { Calculator } from "../src/calc/calculator";
 import { InlineEngine } from "../src/calc/engine";
 import { Register } from "../src/calc/register";
-import { toExpr, TOKENS } from "../src/calc/entry";
-import { evalParam, formatStep } from "../src/calc/steps";
+import { formatStep } from "../src/calc/steps";
+import { calc, add, cx, stateOf } from "./ed";
 
-const keys = (c: Calculator, ...ks: KeyId[]) => ks.forEach((k) => c.press(k));
-const calc = (saved?: ReturnType<Calculator["save"]>) => new Calculator(new InlineEngine(), saved);
-const stateOf = (c: Calculator) => (c.engine as InlineEngine).core.reg.state;
 const amp = (c: Calculator, i: number) => [stateOf(c)[2 * i], stateOf(c)[2 * i + 1]];
 const close = (a: number, b: number) => expect(a).toBeCloseTo(b, 10);
-
-describe("entry", () => {
-  const e = (...ids: string[]) => toExpr(ids.map((i) => TOKENS[i]));
-  test("implicit multiplication and paren closing", () => {
-    close(evalParam(e("3", "pi", "div", "4")), (3 * Math.PI) / 4);
-    close(evalParam(e("1", "div", "sqrt", "2")), Math.SQRT1_2);
-    close(evalParam(e("2", "sqrt", "2")), 2 * Math.SQRT2);
-    close(evalParam(e("minus", "pi")), -Math.PI);
-  });
-  test("syntax error is NaN", () => {
-    expect(evalParam(e("div", "div"))).toBeNaN();
-  });
-});
 
 describe("calculator", () => {
   test("Bell state: H q0, CTRL q0, q1, X", () => {
     const c = calc();
-    keys(c, "h", "ctrl", "right", "x");
+    add(c, "h", [0]);
+    cx(c, 0, 1);
     close(amp(c, 0)[0], Math.SQRT1_2);
     close(amp(c, 3)[0], Math.SQRT1_2);
     close(amp(c, 1)[0], 0);
     expect(formatStep(c.tape[1][0])).toBe("CX q0→q1");
-    expect(c.marks).toEqual([]);
   });
 
   test("anti-control fires on |0⟩", () => {
     const c = calc();
-    keys(c, "2nd", "ctrl", "right", "x"); // ○X q0→q1 on |00⟩ → |01⟩
+    add(c, "x", [1], { controls: [0], controlStates: [false] }); // ○X q0→q1 on |00⟩ → |01⟩
     close(amp(c, 1)[0], 1);
   });
 
-  test("rotation takes the entry as angle", () => {
+  test("rotation takes its angle", () => {
     const c = calc();
-    keys(c, "pi", "rx"); // RX(π)|0⟩ = −i|1⟩
+    add(c, "rx", [0], { params: ["pi"] }); // RX(π)|0⟩ = −i|1⟩
     const [re, im] = amp(c, 2);
     close(re, 0);
     close(im, -1);
-    expect(c.entry).toEqual([]);
   });
 
-  test("U takes three comma-separated args", () => {
+  test("U takes three args", () => {
     const c = calc();
-    keys(c, "pi", ",", "0", ",", "pi", "2nd", "p"); // U(π,0,π) = X
+    add(c, "u", [0], { params: ["pi", "0", "pi"] }); // U(π,0,π) = X
     close(amp(c, 2)[0], 1);
   });
 
   test("ALL applies to every qubit as one undo unit", () => {
     const c = calc();
-    keys(c, "3", "2nd", "q", "all", "h");
+    c.setQubitCount(3);
+    c.addBroadcast("h");
     for (let i = 0; i < 8; i++) close(amp(c, i)[0], 1 / Math.sqrt(8));
-    keys(c, "undo");
+    c.undo();
     close(amp(c, 0)[0], 1);
     expect(c.tape).toHaveLength(0);
   });
 
-  test("SWAP uses the CTRL mark as partner", () => {
+  test("SWAP exchanges its two qubits", () => {
     const c = calc();
-    keys(c, "x", "ctrl", "right", "swap"); // |10⟩ → |01⟩
+    add(c, "x", [0]);
+    add(c, "swap", [0, 1]); // |10⟩ → |01⟩
     close(amp(c, 1)[0], 1);
   });
 
   test("measurement collapses and replays deterministically on undo", () => {
     const c = calc();
-    keys(c, "h", "ctrl", "right", "x", "meas", "h");
+    add(c, "h", [0]);
+    cx(c, 0, 1);
+    add(c, "measure", [1]);
+    add(c, "h", [1]);
     const o = c.tape[2][0].outcome!;
     const collapsed = o === 1 ? 3 : 0;
-    keys(c, "undo");
+    c.undo();
     close(amp(c, collapsed)[0], 1);
-    keys(c, "2nd", "undo"); // redo
+    c.redo();
     expect(c.tape[3][0].outcome).toBeUndefined();
   });
 
   test("resize keeps the state and refuses to drop a used qubit", () => {
     const c = calc();
-    keys(c, "right", "x", "2nd", "right"); // |01⟩ → n=3 → |010⟩
+    add(c, "x", [1]);
+    c.setQubitCount(3); // |01⟩ → n=3 → |010⟩
     close(amp(c, 2)[0], 1);
-    keys(c, "2nd", "left", "2nd", "left");
+    c.setQubitCount(2);
+    c.setQubitCount(1);
     expect(c.n).toBe(2);
     expect(c.message?.kind).toBe("error");
   });
 
   test("errors leave the state alone", () => {
     const c = calc();
-    keys(c, "swap");
-    expect(c.message?.kind).toBe("error");
+    expect(add(c, "swap", [0])).toBe(false);
+    expect(c.message).toEqual({ kind: "error", text: "SWAP acts on 2 qubits" });
     expect(c.tape).toHaveLength(0);
   });
 
-  test("= repeats the last entry", () => {
+  test("duplicate repeats a gate", () => {
     const c = calc();
-    keys(c, "t", "eq", "eq", "eq", "h");
+    add(c, "t", [0]);
+    for (let i = 0; i < 3; i++) c.duplicateGate(c.tape.length - 1);
+    add(c, "h", [0]);
     // T⁴ = Z; H Z |0⟩ ... Z|0⟩ = |0⟩ so H gives |+⟩
     close(amp(c, 0)[0], Math.SQRT1_2);
     expect(c.tape).toHaveLength(5);
@@ -108,7 +100,9 @@ describe("calculator", () => {
 
   test("save/restore round-trips", () => {
     const c = calc();
-    keys(c, "h", "ctrl", "right", "x", "meas");
+    add(c, "h", [0]);
+    cx(c, 0, 1);
+    add(c, "measure", [1]);
     const d = calc(JSON.parse(JSON.stringify(c.save())));
     expect(Array.from(stateOf(d))).toEqual(Array.from(stateOf(c)));
   });
@@ -163,7 +157,9 @@ describe("engine protocol", () => {
     }
     const eng = new Deferred();
     const c = new Calculator(eng);
-    keys(c, "h", "right", "x", "undo");
+    add(c, "h", [0]);
+    add(c, "x", [1]);
+    c.undo();
     expect(c.tape).toHaveLength(0); // mirror not updated yet
     eng.flush();
     expect(c.tape).toHaveLength(1);
@@ -178,9 +174,11 @@ describe("engine protocol", () => {
     }
     const eng = new Deferred();
     const c = new Calculator(eng);
-    keys(c, "3", "2nd", "q");
+    c.setQubitCount(3);
     eng.flush();
-    keys(c, "2", "q", "2", "2nd", "q", "x"); // shrink to n=2, then X on q2 before the reply
+    c.setQubitCount(2);
+    // X on q2 before the shrink's reply: the UI still sees n = 3, so only the core can refuse it.
+    expect(add(c, "x", [2])).toBe(true);
     eng.flush();
     expect(c.n).toBe(2);
     expect(c.tape).toHaveLength(0);
@@ -189,7 +187,8 @@ describe("engine protocol", () => {
 
   test("view summaries follow the selected mode", () => {
     const c = calc();
-    keys(c, "h", "ctrl", "right", "x");
+    add(c, "h", [0]);
+    cx(c, 0, 1);
     expect(c.view?.mode).toBe("ket");
     c.setMode("bloch");
     expect(c.view?.mode).toBe("bloch");
