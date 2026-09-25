@@ -11,7 +11,7 @@ import { qiskitPython } from "../qasm/toQiskit";
 import { EXAMPLE_CATEGORIES, EXAMPLE_COUNT, describeProgram, loadExample } from "../examples";
 import type { Vec3 } from "../calc/analysis";
 import { ket, num, pct } from "./format";
-import { project } from "./charts/sphere";
+import { project, DEFAULT_CAMERA } from "./charts/sphere";
 import { BitOrder } from "./ResultContext";
 
 type ViewProps<M extends ViewData["mode"]> = { calc: Calculator; data: Extract<ViewData, { mode: M }> };
@@ -507,10 +507,10 @@ export const TYPED_PRESETS: Record<"state" | "matrix", [string, string][]> = {
   matrix: [["H", "1/√2, 1/√2; 1/√2, -1/√2"], ["CZ", "1,0,0,0; 0,1,0,0; 0,0,1,0; 0,0,0,-1"], ["iSWAP", "1,0,0,0; 0,0,i,0; 0,i,0,0; 0,0,0,1"], ["√SWAP", "1,0,0,0; 0,(1+i)/2,(1-i)/2,0; 0,(1-i)/2,(1+i)/2,0; 0,0,0,1"]],
 };
 
-function Sphere({ v, r, labels, className }: { v: Vec3; r: number; labels?: boolean; className?: string }) {
+function Sphere({ v, r, labels, className, camera = DEFAULT_CAMERA }: { v: Vec3; r: number; labels?: boolean; className?: string; camera?: typeof DEFAULT_CAMERA }) {
   const c = r + (labels ? 14 : 2);
   const P = (x: number, y: number, z: number) => {
-    const [sx, sy] = project(x, y, z);
+    const [sx, sy] = project(x, y, z, camera);
     return [c + sx * r, c - sy * r] as const;
   };
   // Equator as runs of points, split where it passes behind the sphere.
@@ -518,7 +518,7 @@ function Sphere({ v, r, labels, className }: { v: Vec3; r: number; labels?: bool
     const runs: string[][] = [[]];
     for (let k = 0; k <= 64; k++) {
       const t = (k / 64) * 2 * Math.PI;
-      const [, , d] = project(Math.cos(t), Math.sin(t), 0);
+      const [, , d] = project(Math.cos(t), Math.sin(t), 0, camera);
       if (d >= 0 === front) runs[runs.length - 1].push(P(Math.cos(t), Math.sin(t), 0).join(","));
       else if (runs[runs.length - 1].length > 0) runs.push([]);
     }
@@ -559,6 +559,47 @@ function Sphere({ v, r, labels, className }: { v: Vec3; r: number; labels?: bool
   );
 }
 
+/** Camera-only interaction: the simulator's vector is never edited. */
+function InteractiveSphere({ v }: { v: Vec3 }) {
+  const [camera, setCamera] = useState(DEFAULT_CAMERA);
+  const drag = useRef<{ id: number; x: number; y: number } | null>(null);
+  const rotate = (dx: number, dy: number) => setCamera(c => ({
+    azimuth: c.azimuth + dx,
+    elevation: Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, c.elevation + dy)),
+  }));
+  return <div className="sphere-controller">
+    <div className="sphere-interactive" role="group" tabIndex={0}
+      aria-label="Interactive Bloch sphere. Drag or use arrow keys to rotate the view. Home resets the view."
+      onPointerDown={e => {
+        if (!e.isPrimary || e.button !== 0) return;
+        e.currentTarget.focus();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      }}
+      onPointerMove={e => {
+        const start = drag.current;
+        if (!start || start.id !== e.pointerId) return;
+        rotate(-(e.clientX - start.x) * 0.01, (e.clientY - start.y) * 0.01);
+        drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      }}
+      onPointerUp={e => {
+        if (drag.current?.id !== e.pointerId) return;
+        drag.current = null;
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+      }}
+      onPointerCancel={() => { drag.current = null; }}
+      onLostPointerCapture={() => { drag.current = null; }}
+      onKeyDown={e => {
+        const moves: Record<string, [number, number]> = { ArrowLeft: [0.1, 0], ArrowRight: [-0.1, 0], ArrowUp: [0, -0.1], ArrowDown: [0, 0.1] };
+        if (e.key === "Home") { e.preventDefault(); e.stopPropagation(); setCamera(DEFAULT_CAMERA); }
+        else if (moves[e.key]) { e.preventDefault(); e.stopPropagation(); rotate(...moves[e.key]); }
+      }}>
+      <Sphere v={v} r={62} labels className="sphere-main" camera={camera} />
+    </div>
+    <div className="sphere-controls"><span className="dim">Drag to rotate · arrow keys</span><button onClick={() => setCamera(DEFAULT_CAMERA)}>Reset view</button></div>
+  </div>;
+}
+
 export function BlochView({ calc, data }: ViewProps<"bloch">) {
   const all = data.vectors;
   if (!all.length) return <div className="view"><p className="dim note">no Bloch vectors</p></div>;
@@ -571,7 +612,7 @@ export function BlochView({ calc, data }: ViewProps<"bloch">) {
   return (
     <div className="view bloch">
       <div className="bloch-main">
-        <Sphere v={v} r={62} labels className="sphere-main" />
+        <InteractiveSphere v={v} />
         <div className="bloch-read">
           <div className="big">q{sel}</div>
           {data.estimate && data.errors ? <>

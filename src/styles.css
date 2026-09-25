@@ -202,7 +202,7 @@ button {
   overflow-y: auto;
   gap: 14px;
 }
-.sphere-main { flex: 0 0 auto; width: min(100%, 360px); height: auto; aspect-ratio: 1; }
+.sphere-main { flex: 0 0 auto; width: min(100%, 260px); height: auto; aspect-ratio: 1; }
 .bloch-read { flex: 0 0 auto; text-align: center; line-height: 1.45; font-variant-numeric: tabular-nums; }
 .bloch-read .big { font-size: 18px; font-weight: 700; }
 .sphere { fill: rgba(255, 255, 255, 0.03); stroke: var(--ink-muted); stroke-width: 1; }
@@ -941,3 +941,11 @@ button {
 .density-table { overflow-x: auto; margin: 12px 0; }
 .density-table table { border-collapse: collapse; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .density-table th, .density-table td { padding: 7px; border: 1px solid #555; text-align: right; }
+
+.sphere-controller { flex: 0 0 auto; width: min(100%, 260px); }
+.sphere-interactive { touch-action: none; cursor: grab; user-select: none; border-radius: 8px; }
+.sphere-interactive:active { cursor: grabbing; }
+.sphere-interactive:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
+.sphere-interactive svg { display: block; width: 100%; }
+.sphere-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; font-size: 11px; }
+.sphere-controls button { padding: 6px; }
