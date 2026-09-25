@@ -2,12 +2,12 @@ import { MAX_QUBITS } from "./register";
 import { STAB_MAX } from "../stab/register";
 import { canonicalName } from "./entry";
 import { bitCount, evalParam, exprOk, formatEntry, NONUNITARY, plainExpr, writesBit, type Entry, type Scope, type Step } from "./steps";
-import { CUSTOM_PREFIX, defineGate, setCustomGates, type CustomGate } from "./custom";
-import { blockGate, qaoaLayer, type BlockKind } from "./blocks";
+import { CUSTOM_PREFIX, defineGate, expandCustom, setCustomGates, type CustomGate } from "./custom";
+import { BLOCK_BY_ID, defaultSettings, describe as describeBlock, type Settings } from "./blockLib";
+import { inverseGates } from "./inverse";
 import { layoutTape } from "./diagram";
-import { SNIPPETS } from "./snippets";
 import {
-  compact, copyEntries, endColumn, entriesIn, freeColumn, moveEntry, pasteClip, placeEntry, removeEntries,
+  compact, copyEntries, endColumn, entriesIn, expandAt, freeColumn, moveEntry, pasteClip, placeEntry, removeEntries,
   repositionEntry, shape, type Clip,
 } from "./grid";
 import { matrixGate, parseComplex, parseMatrix, parseState, stateGate } from "./typed";
@@ -213,10 +213,7 @@ export class Calculator {
     }
     this.send({ t: "view", req: this.viewReq() });
     // Definitions go first: the saved tape may use them.
-    if (this.customGates.length) {
-      setCustomGates(this.customGates);
-      this.send({ t: "gates", defs: this.customGates });
-    }
+    if (this.customGates.length) this.setGates(this.customGates);
     if (ok) {
       this.send({ t: "load", n: saved.n, tape: saved.tape, scope: saved.scope }, () => { this.restoring = false; });
     }
@@ -791,13 +788,36 @@ export class Calculator {
     return true;
   }
 
-  /** A block (QFT, QFT†, diffuser, QAOA) on `qubits`, ascending. */
-  addBlock(kind: BlockKind, qubits: number[], params: string[] = [], col?: number): boolean {
+  /**
+   * A block from the library (blockLib.ts) on `qubits`, ascending (the first
+   * is the least significant, as in Qiskit), with its settings (defaults for
+   * any left out). Most blocks go in as one custom gate step.
+   */
+  addBlock(id: string, qubits: number[], settings: Settings = {}, col?: number): boolean {
     const qs = [...qubits].sort((a, b) => a - b);
     const bad = this.qubitsProblem(qs);
     if (bad) return this.refuse(bad);
-    try { this.placeBlock(kind, qs, params, col); } catch (e) { return this.refuse((e as Error).message); }
+    try { this.placeBlock(id, qs, settings, col); } catch (e) { return this.refuse((e as Error).message); }
     this.changed();
+    return true;
+  }
+
+  /** The block's size from its settings when they fix it (Pauli Evolution, Phase Estimation, Pauli Measurement), else null. Throws with a message. */
+  blockSize(id: string, settings: Settings): number | null {
+    const spec = BLOCK_BY_ID[id];
+    if (!spec?.size) return null;
+    return spec.size({ ...defaultSettings(spec, this.n), ...settings }, (name) => this.customGates.find((d) => d.name === name));
+  }
+
+  /** Custom step i replaced by its steps (UNDO puts the gate back). */
+  expandGate(i: number): boolean {
+    const e = this.entryAt(i);
+    if (!e) return false;
+    const s = e[0];
+    const def = e.length === 1 ? this.customGates.find((d) => CUSTOM_PREFIX + d.name === s.gateId) : undefined;
+    if (!def) return this.refuse("only a block or custom gate expands");
+    const steps = expandCustom(s, def).map((x) => [{ ...x, id: newId(), condition: s.condition }] as Entry);
+    this.applyEdit(expandAt(this.n, this.tape, i, steps), `expand ${def.name}`, null);
     return true;
   }
 
@@ -815,9 +835,7 @@ export class Calculator {
     let j = 1;
     while (this.customGates.some((d) => d.name === `${prefix}${j}`)) j++;
     const def = kind === "state" ? stateGate(`PSI${j}`, parsed as ReturnType<typeof parseState>) : matrixGate(`M${j}`, parsed as ReturnType<typeof parseMatrix>);
-    this.customGates = [...this.customGates, def];
-    setCustomGates(this.customGates);
-    this.send({ t: "gates", defs: this.customGates });
+    this.setGates([...this.customGates, def]);
     const entries: Entry[] = [];
     if (kind === "state") entries.push(qs.map((q) => ({ id: newId(), gateId: "reset", column: this.tape.length, targets: [q], controls: [], clbits: [], params: [] })));
     const drift = "drift" in parsed && parsed.drift > 1e-12 ? ` (made exactly unitary: it was off by ${parsed.drift.toPrecision(2)})` : "";
@@ -996,7 +1014,15 @@ export class Calculator {
     const e = this.entryAt(i);
     if (!e) return false;
     if (e.some((s) => NONUNITARY.has(s.gateId))) return this.refuse("a measurement, reset or preparation has no inverse");
-    if (e.some((s) => s.gateId.startsWith(CUSTOM_PREFIX))) return this.refuse("a custom gate can't be inverted here (use LAB → Circuit tools → Inverse U†)");
+    if (e.length === 1 && e[0].gateId.startsWith(CUSTOM_PREFIX)) {
+      const def = this.customGates.find((d) => CUSTOM_PREFIX + d.name === e[0].gateId);
+      if (!def) return this.refuse(`${e[0].gateId.slice(CUSTOM_PREFIX.length)} isn't defined`);
+      let made: CustomGate[];
+      try { made = inverseGates(def, this.customGates); } catch (err) { return this.refuse((err as Error).message); }
+      const fresh = made.filter((d) => !this.customGates.some((x) => x.name === d.name));
+      if (fresh.length) this.setGates([...this.customGates, ...fresh]);
+      return this.editEntry(i, [{ ...e[0], gateId: CUSTOM_PREFIX + made[0].name }], "invert");
+    }
     const next: Entry = [];
     for (const s of e) {
       const inv = invert(s.gateId, s.params);
@@ -1165,17 +1191,6 @@ export class Calculator {
     return true;
   }
 
-  /** Quantiom's Insert block: a snippet built for this register, after the circuit's last column. */
-  insertSnippet(id: string): boolean {
-    const sn = SNIPPETS.find((x) => x.id === id);
-    if (!sn) return false;
-    if (this.n < sn.minQubits) return this.refuse(`${sn.label} needs ${sn.minQubits}+ qubits`);
-    if (this.stabilizerMode && id === "trotter-ising") return this.refuse("stabilizer mode: no symbols");
-    const r = pasteClip(this.n, this.tape, { entries: sn.build(this.n) }, newId);
-    this.applyEdit(r.tape, sn.label, null);
-    return true;
-  }
-
   /** Column ranges drawn folded into one box (the diagram only; this session). */
   folds: { from: number; to: number }[] = [];
 
@@ -1331,11 +1346,7 @@ export class Calculator {
   loadQasm(src: string, label: string, scope: Scope = {}, guide?: { title: string; intro: string }): string[] {
     const r = importQasm(src, this.customGates);
     this.guide = guide ? { ...guide, captions: stepCaptions(src, r.lines), ids: tapeIds(r.tape) } : null;
-    if (r.gates.length) {
-      this.customGates = [...this.customGates, ...r.gates];
-      setCustomGates(this.customGates);
-      this.send({ t: "gates", defs: this.customGates });
-    }
+    if (r.gates.length) this.setGates([...this.customGates, ...r.gates]);
     this.sel = Math.min(this.sel, r.n - 1);
     this.nc = Math.max(r.nc, bitCount(r.n, r.tape, 0));
     // No confirmation message: the loaded tape speaks for itself (and the entry line stays clear).
@@ -1431,29 +1442,53 @@ export class Calculator {
     this.message = { text, kind: "info" };
   }
 
-  /** An algorithm block on the qubits `qs` (ascending: the first is the least significant, as in Qiskit); QAOA takes γ, β. Throws with a message. */
-  private placeBlock(kind: BlockKind, qs: number[], params: string[] = [], col?: number) {
-    if (kind === "qaoa") {
-      if (qs.length < 2) throw new Error("QAOA needs 2+ qubits");
-      const [gamma = "π/4", beta = "π/8"] = params.map(readExpr);
-      for (const a of [gamma, beta]) if (!exprOk(a)) throw new Error(`can't read "${a}"`);
-      const entries = qaoaLayer(qs, gamma, beta).map((e) => e.map((s) => ({ ...s, id: newId(), column: this.tape.length })));
-      const done = () => this.info(`QAOA layer (γ=${gamma}, β=${beta})`);
-      if (col !== undefined) this.placeEntries(entries, col, "QAOA layer", done);
-      else for (const e of entries) this.pushEntry(e, undefined, done);
+  /** Custom gates defined: here, in the core worker and for the palette. */
+  private setGates(defs: CustomGate[]) {
+    this.customGates = defs;
+    setCustomGates(defs);
+    this.send({ t: "gates", defs });
+  }
+
+  /**
+   * `def` among the custom gates: the same definition already there is reused,
+   * a different one under its name becomes NAME_2, NAME_3…. Returns the name.
+   */
+  private adoptGate(def: CustomGate): string {
+    const bare = (d: CustomGate) => JSON.stringify(d.tape.map((e) => e.map(({ id: _, pin: __, ...s }) => s)));
+    const want = bare(def);
+    for (let j = 1; ; j++) {
+      const name = j === 1 ? def.name : `${def.name}_${j}`;
+      const have = this.customGates.find((d) => d.name === name);
+      if (have && have.k === def.k && bare(have) === want) return name;
+      if (!have) {
+        this.setGates([...this.customGates, { ...def, name }]);
+        return name;
+      }
+    }
+  }
+
+  /** A library block on the qubits `qs` (ascending). Throws with a message. */
+  private placeBlock(id: string, qs: number[], settings: Settings, col?: number) {
+    const spec = BLOCK_BY_ID[id];
+    if (!spec) throw new Error(`no block "${id}"`);
+    const k = qs.length;
+    if (k < spec.minQubits || (spec.maxQubits && k > spec.maxQubits)) throw new Error(`${spec.name}: ${spec.maxQubits === spec.minQubits ? spec.minQubits : `${spec.minQubits}–${spec.maxQubits ?? this.n}`} qubits`);
+    const set = { ...defaultSettings(spec, k), ...settings };
+    for (const d of spec.settings) if (d.kind === "expr") set[d.key] = readExpr(set[d.key]);
+    const lookup = (name: string) => this.customGates.find((d) => d.name === name);
+    const built = spec.build(k, set, lookup);
+    const at = (entries: Entry[], label: string, done?: () => void) => {
+      const placed = entries.map((e) => e.map((s) => ({ ...s, id: newId(), column: this.tape.length, targets: s.targets.map((q) => qs[q]), controls: s.controls.map((q) => qs[q]) })));
+      if (col !== undefined) this.placeEntries(placed, col, label, done);
+      else placed.forEach((e, j) => this.pushEntry(e, undefined, j === placed.length - 1 ? done : undefined));
+    };
+    if ("entries" in built) {
+      at(built.entries, spec.name, () => this.info(`${spec.name} on ${qs.map((q) => `q${q}`).join(", ")}`));
       return;
     }
-    const def = blockGate(kind, qs.length);
-    const same = (a: CustomGate) => JSON.stringify(a.tape.map((e) => e.map(({ id: _, ...s }) => s))) === JSON.stringify(def.tape.map((e) => e.map(({ id: _, ...s }) => s)));
-    const taken = this.customGates.find((d) => d.name === def.name);
-    if (taken && !same(taken)) throw new Error(`${def.name} is another gate here (imported?)`);
-    if (!taken) {
-      this.customGates = [...this.customGates, def];
-      setCustomGates(this.customGates);
-      this.send({ t: "gates", defs: this.customGates });
-    }
-    const entry: Entry = [{ id: newId(), gateId: CUSTOM_PREFIX + def.name, column: this.tape.length, targets: qs, controls: [], clbits: [], params: [] }];
-    if (col !== undefined) this.placeEntries([entry], col, def.name);
+    const name = this.adoptGate({ ...built.gate, about: describeBlock(spec, k, set) });
+    const entry: Entry = [{ id: newId(), gateId: CUSTOM_PREFIX + name, column: this.tape.length, targets: qs, controls: [], clbits: [], params: [] }];
+    if (col !== undefined) this.placeEntries([entry], col, name);
     else this.pushEntry(entry);
   }
 
@@ -1465,9 +1500,7 @@ export class Calculator {
     let i = 1;
     while (this.customGates.some((d) => d.name === `G${i}`)) i++;
     const def = defineGate(`G${i}`, entries);
-    this.customGates = [...this.customGates, def];
-    setCustomGates(this.customGates);
-    this.send({ t: "gates", defs: this.customGates });
+    this.setGates([...this.customGates, def]);
     this.info(`G${i} = ${k} step${k > 1 ? "s" : ""} on ${def.k} qubit${def.k > 1 ? "s" : ""}`);
     return `G${i}`;
   }

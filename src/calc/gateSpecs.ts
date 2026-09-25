@@ -5,7 +5,7 @@
  * and defaults come from the ported gate catalog (sim/gates.ts).
  */
 import { GATES_BY_ID } from "../sim/gates";
-import type { BlockKind } from "./blocks";
+import { BLOCKS, isBlockGate, type Family } from "./blockLib";
 
 export type ParamDef = { name: string; default: string };
 
@@ -28,7 +28,7 @@ export const PALETTE_GROUPS: { id: PaletteGroup; label: string }[] = [
 /** A palette entry. `targets` qubits (+ `controls`) are placed consecutively from the drop wire, controls first. */
 export type PaletteItem =
   | { kind: "gate"; id: string; gate: string; controls: number; targets: number; label: string; name: string; group: PaletteGroup; params: ParamDef[]; note?: string }
-  | { kind: "block"; id: string; block: BlockKind; label: string; name: string; group: "blocks"; params: ParamDef[]; note: string }
+  | { kind: "block"; id: string; block: string; family: Family; label: string; name: string; group: "blocks"; note: string }
   | { kind: "typed"; id: string; typed: "state" | "matrix"; label: string; name: string; group: "typed"; note: string }
   | { kind: "custom"; id: string; gate: string; targets: number; label: string; name: string; group: "custom"; note: string };
 
@@ -72,10 +72,10 @@ export const PALETTE: PaletteItem[] = [
   g("reset", "reset", 0, "measure", "reset", "Reset to |0⟩ (a recorded measurement, then X on 1)."),
   ...["init0", "init1", "initplus", "initminus", "initiplus", "initiminus"].map((id) => g(id, id, 0, "prep", undefined, "Reset, then prepare this state.")),
   g("initialize", "initialize", 0, "prep", "|ψ⟩", "Reset, then α|0⟩ + β|1⟩ (set α, β after placing it)."),
-  { kind: "block", id: "block:qft", block: "qft", label: "QFT", name: "Quantum Fourier transform", group: "blocks", params: [], note: "Qiskit's QFTGate on k consecutive qubits from the drop wire (the first is the least significant)." },
-  { kind: "block", id: "block:iqft", block: "iqft", label: "QFT†", name: "Inverse QFT", group: "blocks", params: [], note: "The read-out of phase estimation." },
-  { kind: "block", id: "block:diff", block: "diff", label: "DIFF", name: "Grover diffuser", group: "blocks", params: [], note: "2|s⟩⟨s| − I on k qubits." },
-  { kind: "block", id: "block:qaoa", block: "qaoa", label: "QAOA", name: "QAOA MaxCut layer", group: "blocks", params: [{ name: "γ", default: "π/4" }, { name: "β", default: "π/8" }], note: "One layer on a ring: RZZ(2γ) per edge, RX(2β) per qubit." },
+  ...BLOCKS.map((b): PaletteItem => ({
+    kind: "block", id: `block:${b.id}`, block: b.id, family: b.family, label: b.name, name: b.name, group: "blocks",
+    note: `${b.note} ${b.qiskit ? `Checked against ${b.qiskit}.` : "A QC-1 definition."}`,
+  })),
   { kind: "typed", id: "typed:state", typed: "state", label: "State…", name: "Type a state", group: "typed", note: "Type |00⟩ + |11⟩ or amplitudes: reset, then prepare it." },
   { kind: "typed", id: "typed:matrix", typed: "matrix", label: "Matrix…", name: "Type a matrix", group: "typed", note: "Type a unitary (rows by ;), up to 16×16: it becomes a gate." },
 ];
@@ -88,13 +88,13 @@ const BASE_GROUP: Record<string, PaletteGroup> = Object.fromEntries(
 /**
  * The palette group a placed step belongs to (its colour on the diagram):
  * one control → Controlled, more → Multi-qubit; blocks and typed gates by
- * their names (QFTk, IQFTk, DIFFk; PSIj, Mj); anything else not in the
+ * their names (QFTk, GROVERk…, see blockLib.ts; PSIj, Mj); anything else not in the
  * palette (imported u_arb…) counts as a rotation.
  */
 export function groupOf(gateId: string, controls: number): PaletteGroup {
   if (gateId.startsWith("custom:")) {
     const name = gateId.slice(7);
-    if (/^(I?QFT|DIFF)\d+$/.test(name)) return "blocks";
+    if (isBlockGate(name)) return "blocks";
     if (/^(PSI|M)\d+$/.test(name)) return "typed";
     return "custom";
   }

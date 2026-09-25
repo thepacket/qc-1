@@ -197,6 +197,22 @@ export function placeEntry(n: number, tape: Entry[], e: Entry, col: number): { t
   return { ...insertPinned(tape, lay, pinned), col: c };
 }
 
+/**
+ * Entry i replaced by `entries` (a custom gate expanded into its steps) from
+ * its own column on, each at the column it takes drawn alone; everything else
+ * keeps its column, except what the longer run pushes right.
+ */
+export function expandAt(n: number, tape: Entry[], i: number, entries: Entry[]): Entry[] {
+  const lay = layoutTape(n, tape);
+  const pinned = pinAll(tape, lay);
+  const own = Math.min(...lay.items.filter((it) => it.entry === i).map((it) => it.col));
+  const alone = layoutTape(n, entries.map((e) => e.map((s) => ({ ...s, pin: undefined }))));
+  const cols = entries.map((e) => e.map(() => 0));
+  for (const it of alone.items) cols[it.entry][it.k] = it.col;
+  const placed = entries.map((e, j) => e.map((s, k) => ({ ...s, pin: own + cols[j][k] })));
+  return [...pinned.slice(0, i), ...placed, ...pinned.slice(i + 1)];
+}
+
 /** The column after the last gate on wires lo..hi (where a tapped tile goes without a chosen cell). */
 export function endColumn(lay: Layout, lo: number, hi: number): number {
   let c = 0;

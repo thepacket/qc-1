@@ -4,7 +4,7 @@ import type { Calculator } from "../calc/calculator";
 import { formatEntry, measuredBit, NONUNITARY, prettyExpr, writesBit } from "../calc/steps";
 import { paramDefs } from "../calc/gateSpecs";
 import { CUSTOM_PREFIX } from "../calc/custom";
-import { SNIPPETS } from "../calc/snippets";
+import { openBlocks } from "./Palette";
 import { exportQasm3 } from "../qasm/fromTape";
 import type { Opts } from "../analysis/types";
 import { ExprField } from "./ExprField";
@@ -85,6 +85,8 @@ export function DiagramMenu({ calc, menu, close }: { calc: Calculator; menu: Men
     const s = e[0];
     const defs = paramDefs(s.gateId);
     const custom = s.gateId.startsWith(CUSTOM_PREFIX);
+    const def = custom ? calc.customGates.find((d) => CUSTOM_PREFIX + d.name === s.gateId) : undefined;
+    const about = def?.about;
     const unitary = !NONUNITARY.has(s.gateId);
     const broadcast = e.length > 1;
     const states = s.controlStates ?? s.controls.map(() => true);
@@ -92,6 +94,7 @@ export function DiagramMenu({ calc, menu, close }: { calc: Calculator; menu: Men
     const bitList = [...Array(calc.bits).keys()];
     body = <>
       <div className="menu-head">{i + 1}: {formatEntry(e)}</div>
+      {about && <div className="menu-about dim">{about}</div>}
       {s.gateId === "initialize" ? (() => {
         const [a, b] = amplitudes(s.params[0] ?? "");
         return <div className="menu-fields">
@@ -115,7 +118,8 @@ export function DiagramMenu({ calc, menu, close }: { calc: Calculator; menu: Men
         </div>
       )}
       <button role="menuitem" onClick={act(() => calc.duplicateGate(i))}>Duplicate</button>
-      <button role="menuitem" disabled={!unitary || custom} onClick={act(() => calc.invertGate(i))}>Invert (†)</button>
+      <button role="menuitem" disabled={!unitary} onClick={act(() => calc.invertGate(i))}>Invert (†)</button>
+      {custom && <button role="menuitem" disabled={!def || broadcast} onClick={act(() => calc.expandGate(i))}>Expand into gates</button>}
       <div className="menu-sep" />
       <button role="menuitem" disabled={!unitary || broadcast || s.controls.length + s.targets.length >= calc.n} onClick={act(() => calc.addControlAnywhere(i))}>Add control</button>
       <button role="menuitem" disabled={last < 0} onClick={act(() => calc.removeControl(i, s.controls[last]))}>Remove control</button>
@@ -219,11 +223,7 @@ function EditTransform({ calc, act }: { calc: Calculator; act: (f: () => unknown
         </div>
         <Item label="Fold selection" hint={sel ? "its columns into one box (tap the box to unfold)" : none} disabled={!sel} onClick={act(() => calc.foldSelection())} />
         <Item label="Select all" disabled={empty} onClick={act(() => calc.selectAll())} />
-        <div className="menu-cat">Insert block</div>
-        {SNIPPETS.map((sn) => (
-          <Item key={sn.id} label={sn.label} hint={calc.n >= sn.minQubits ? sn.hint : `needs ${sn.minQubits}+ qubits`} disabled={calc.n < sn.minQubits}
-            onClick={act(() => calc.insertSnippet(sn.id))} />
-        ))}
+        <Item label="Insert block…" hint="the palette's Blocks: Bell, GHZ, QFT, Grover, ansätze, Pauli evolution, phase estimation…" onClick={act(() => openBlocks())} />
         <div className="menu-cat">Circuit</div>
         <Item label="Clear" hint="remove every gate (UNDO restores)" danger disabled={empty} onClick={act(() => calc.clearCircuit())} />
       </> : <>

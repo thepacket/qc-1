@@ -192,6 +192,13 @@ function uarbDefinitions(tape: Entry[]): Map<string, { name: string; def: string
 const customParams = (def: CustomGate) => [...new Set(def.tape.flat().flatMap(stepSymbols))].sort();
 
 /**
+ * Parameter i of a gate with `count` parameters: p0…p9, or zero-padded
+ * (p00…p11) from 11 on, because Qiskit's importer binds a definition's
+ * parameters in alphabetical order and p10 would come before p2.
+ */
+const pName = (i: number, count: number) => `p${String(i).padStart(String(count - 1).length, "0")}`;
+
+/**
  * The tape as an emitter Circuit. A measurement writes its bit (`c[k] =
  * measure q[i]`, k = `measuredBit`: its own, else c[i]); a conditional step
  * becomes `if (c[k] == v) …`. With any classical step, `bit[m] c` declares
@@ -266,7 +273,7 @@ function gateBody(def: CustomGate, uarb: ReturnType<typeof uarbDefinitions>): st
   const start = lines.findIndex((l) => /^qubit\[\d+\] q;$/.test(l)) + 1;
   const params = customParams(def).map(qasmSymbol);
   return lines.slice(start).filter((l) => l.trim() && !l.startsWith("//") && !l.startsWith("input float"))
-    .map((l) => params.reduce((acc, v, i) => acc.replace(new RegExp(`\\b${v}\\b`, "g"), `p${i}`), l.replace(/q\[(\d+)\]/g, "a$1")))
+    .map((l) => params.reduce((acc, v, i) => acc.replace(new RegExp(`\\b${v}\\b`, "g"), pName(i, params.length)), l.replace(/q\[(\d+)\]/g, "a$1")))
     .join(" ");
 }
 
@@ -283,7 +290,7 @@ export function exportQasm3(n: number, tape: Entry[], nc = n): string {
     ...customs.map((d) => {
       const ps = customParams(d);
       const qs = Array.from({ length: d.k }, (_, j) => `a${j}`).join(", ");
-      return `gate ${d.name}${ps.length ? `(${ps.map((_, i) => `p${i}`).join(", ")})` : ""} ${qs} { ${gateBody(d, uarb)} }`;
+      return `gate ${d.name}${ps.length ? `(${ps.map((_, i) => pName(i, ps.length)).join(", ")})` : ""} ${qs} { ${gateBody(d, uarb)} }`;
     }),
   ];
   // The emitter declares only a fixed list of Greek names; declare every

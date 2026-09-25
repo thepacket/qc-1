@@ -24,7 +24,10 @@ function placed(p: PaletteItem, text = "") {
     const n = c.tape[i][0].params.length;
     if (n && p.gate !== "initialize") c.setGateParams(i, c.tape[i][0].params.map((_, k) => String(0.37 + 0.21 * k)));
   } else if (p.kind === "block") {
-    expect(c.addBlock(p.block, [0, 1, 2], p.block === "qaoa" ? ["0.3", "0.5"] : []), c.message?.text).toBe(true);
+    // Phase Estimation needs an operation: a 1-qubit gate G1 made first.
+    const settings = p.block === "qpe" ? (add(c, "p", [3], { params: ["0.7"] }), c.defineGate(1), { m: "2", gate: "G1" }) : {};
+    const k = c.blockSize(p.block, settings) ?? (p.block === "bell" ? 2 : 3);
+    expect(c.addBlock(p.block, [...Array(k).keys()], settings), c.message?.text).toBe(true);
   } else c.addTyped(p.typed, text, 0);
   expect(c.tape.some((e) => e.some((x) => !old.has(x.id)))).toBe(true);
   return c;

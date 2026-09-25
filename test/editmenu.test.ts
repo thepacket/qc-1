@@ -1,56 +1,12 @@
 import { describe, test, expect } from "vitest";
 import { calc, add, cx, stateOf } from "./ed";
 import { runAnalysis } from "../src/analysis/run";
-import { SNIPPETS } from "../src/calc/snippets";
-import { layoutTape } from "../src/calc/diagram";
-import { exportQasm3 } from "../src/qasm/fromTape";
 import { formatEntry } from "../src/calc/steps";
 
 const withTools = () => calc(null, runAnalysis);
 const probs = (st: Float64Array) => Array.from({ length: st.length / 2 }, (_, i) => st[2 * i] ** 2 + st[2 * i + 1] ** 2);
 
 describe("Edit menu (Quantiom's), on the diagram", () => {
-  test("Insert block: every snippet builds for 2–5 qubits and lands after the circuit's last column", () => {
-    for (const sn of SNIPPETS) {
-      for (let n = 2; n <= 5; n++) {
-        const c = calc();
-        c.setQubitCount(n);
-        add(c, "x", [0]);
-        expect(c.insertSnippet(sn.id)).toBe(true);
-        const lay = layoutTape(n, c.tape);
-        const first = Math.min(...lay.items.filter((it) => it.entry >= 1).map((it) => it.col));
-        expect(first).toBe(1);
-        expect(c.tape.length).toBe(1 + sn.build(n).length);
-      }
-    }
-  });
-
-  test("Bell pair and GHZ make the states they name; QFT then inverse QFT is the identity", () => {
-    const c = calc();
-    c.setQubitCount(3);
-    c.insertSnippet("ghz");
-    const p = probs(stateOf(c));
-    expect(p[0]).toBeCloseTo(0.5, 12);
-    expect(p[7]).toBeCloseTo(0.5, 12);
-    const d = calc();
-    d.setQubitCount(3);
-    add(d, "x", [0]);
-    add(d, "h", [2]);
-    const before = Float64Array.from(stateOf(d));
-    d.insertSnippet("qft");
-    d.insertSnippet("iqft");
-    const after = stateOf(d);
-    for (let i = 0; i < before.length; i++) expect(after[i]).toBeCloseTo(before[i], 12);
-  });
-
-  test("the Trotter Ising layer brings its symbols J and h", () => {
-    const c = calc();
-    c.setQubitCount(3);
-    c.insertSnippet("trotter-ising");
-    expect(c.symbols.sort()).toEqual(["J", "h"]);
-    expect(exportQasm3(c.n, c.tape)).toContain("input float J;");
-  });
-
   test("Repeat selection ×N and Fold keep the circuit; folding is the drawing only", () => {
     const c = calc();
     c.setQubitCount(2);

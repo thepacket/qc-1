@@ -10,7 +10,15 @@ import type { Entry, Step } from "./steps";
  * The registry is per worker: the core and analysis workers each hold a
  * copy, set from the calculator (core command `gates`, analysis snapshots).
  */
-export type CustomGate = { name: string; k: number; tape: Entry[] };
+export type CustomGate = {
+  name: string;
+  k: number;
+  tape: Entry[];
+  /** What it is, for the long-press menu (a block's name and settings); not exported. */
+  about?: string;
+  /** The gate this one is the inverse of (NAME_DG → NAME). */
+  inverseOf?: string;
+};
 
 export const CUSTOM_PREFIX = "custom:";
 

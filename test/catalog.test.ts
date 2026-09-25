@@ -2,11 +2,13 @@ import { describe, test, expect } from "vitest";
 import { Calculator } from "../src/calc/calculator";
 import { InlineEngine } from "../src/calc/engine";
 import { exportQasm3 } from "../src/qasm/fromTape";
-import { formatStep } from "../src/calc/steps";
+import { formatEntry, formatStep } from "../src/calc/steps";
 import { calc, add, cx, stateOf as state } from "./ed";
 
 const amp = (c: Calculator, i: number) => [state(c)[2 * i], state(c)[2 * i + 1]];
 const close = (a: number, b: number) => expect(a).toBeCloseTo(b, 10);
+const stateOf = state;
+const probs = (st: Float64Array) => Array.from({ length: st.length / 2 }, (_, i) => st[2 * i] ** 2 + st[2 * i + 1] ** 2);
 
 describe("gates without their own key", () => {
   test("GPI takes its angle", () => {
@@ -171,13 +173,76 @@ describe("algorithm blocks", () => {
     expect(v.rows.filter((r) => r.re ** 2 + r.im ** 2 > 1e-12).map((r) => r.i)).toEqual([1]); // back to |001⟩ (X on q0)
   });
 
-  test("a block's qubits go in ascending order; QAOA takes γ,β as two steps", () => {
+  test("a block's qubits go in ascending order; QAOA is one gate with symbols γ₀, β₀", () => {
     const c = calc();
     c.setQubitCount(4);
     c.addBlock("diff", [3, 0, 2]);
     expect(c.tape.at(-1)![0].targets).toEqual([0, 2, 3]);
-    c.addBlock("qaoa", [0, 1, 2, 3], ["π/8", "π/4"]);
-    expect(c.tape.slice(-2).map((e) => e.map((s) => s.gateId))).toEqual([["rzz", "rzz", "rzz", "rzz"], ["rx", "rx", "rx", "rx"]]);
-    expect(c.tape.at(-2)![0].params[0]).toBe("2*(π/8)");
+    c.addBlock("qaoa", [0, 1, 2, 3]);
+    expect(c.tape.at(-1)!.map(formatStep)).toEqual(["QAOA4 q0,q1,q2,q3"]);
+    expect(c.symbols.sort()).toEqual(["beta_0", "gamma_0"]);
+  });
+
+  test("the same block reuses its gate; other settings make NAME_2; the menu head describes it", () => {
+    const c = calc();
+    c.setQubitCount(3);
+    c.addBlock("grover", [0, 1, 2], { marked: "101" });
+    c.addBlock("grover", [0, 1, 2], { marked: "101" });
+    c.addBlock("grover", [0, 1, 2], { marked: "110" });
+    expect(c.tape.map((e) => e[0].gateId)).toEqual(["custom:GROVER3", "custom:GROVER3", "custom:GROVER3_2"]);
+    expect(c.customGates.find((d) => d.name === "GROVER3_2")!.about).toBe("Grover Operator · 3 qubits · marked 110 · iterations 2");
+  });
+
+  test("Grover on |+++⟩ with 101 marked finds it", () => {
+    const c = calc();
+    c.setQubitCount(3);
+    for (const q of [0, 1, 2]) add(c, "h", [q]);
+    c.addBlock("grover", [0, 1, 2], { marked: "101", iterations: "2" });
+    const p = probs(stateOf(c));
+    expect(p[0b101]).toBeGreaterThan(0.94);
+  });
+
+  test("Expand puts the block's gates in its place; UNDO puts the block back", () => {
+    const c = calc();
+    c.setQubitCount(2);
+    c.addBlock("bell", [0, 1], { variant: "psi-" });
+    const before = Float64Array.from(stateOf(c));
+    expect(c.expandGate(0)).toBe(true);
+    expect(c.tape.map(formatEntry)).toEqual(["H q0", "X q1", "CX q0→q1", "Z q1"]);
+    const after = stateOf(c);
+    for (let i = 0; i < before.length; i++) expect(after[i]).toBeCloseTo(before[i], 14);
+    c.undo();
+    expect(c.tape.map(formatEntry)).toEqual(["BELL2 q0,q1"]);
+  });
+
+  test("Invert: QFT3 ↔ IQFT3, other blocks NAME_DG, and inverting that gives NAME back", () => {
+    const c = calc();
+    c.setQubitCount(3);
+    c.addBlock("qft", [0, 1, 2]);
+    c.invertGate(0);
+    expect(c.tape[0][0].gateId).toBe("custom:IQFT3");
+    c.invertGate(0);
+    expect(c.tape[0][0].gateId).toBe("custom:QFT3");
+    add(c, "ry", [1], { params: ["0.4"] });
+    const want = Float64Array.from(stateOf(c));
+    c.addBlock("realamp", [0, 1, 2], { reps: "1" });
+    c.symbols.forEach((s, j) => c.setSymbol(s, 0.3 + 0.2 * j));
+    c.addBlock("realamp", [0, 1, 2], { reps: "1" });
+    c.invertGate(3);
+    expect(c.tape[3][0].gateId).toBe("custom:REALAMP3_DG");
+    const got = stateOf(c); // QFT, RY, U, U† = QFT, RY, exactly (phase included)
+    want.forEach((x, i) => expect(got[i]).toBeCloseTo(x, 12));
+    c.invertGate(3);
+    expect(c.tape[3][0].gateId).toBe("custom:REALAMP3");
+  });
+
+  test("Pauli Evolution brings the symbol t; Pauli Measurement is steps that end in a measurement", () => {
+    const c = calc();
+    c.setQubitCount(3);
+    c.addBlock("pevo", [0, 1], { h: "1*XX + 0.5*ZI" });
+    expect(c.symbols).toEqual(["t"]);
+    c.addBlock("paulimeas", [0, 1, 2], { pauli: "ZZ" });
+    expect(c.tape.at(-1)!.map(formatStep)[0]).toMatch(/^M q2/);
+    expect(c.tape.length).toBe(1 + 4); // reset, two CX, measure
   });
 });

@@ -748,6 +748,13 @@ button {
 }
 .tile:active { filter: brightness(1.2); }
 .tile.long { font-size: 12px; } /* State…, Matrix…, reset, custom names: still fit the tile */
+.palette-families button { height: 24px; font-size: 11px; }
+.palette-tiles.palette-blocks { display: flex; flex-wrap: wrap; height: auto; min-height: calc(2 * 44px + 6px); overflow: visible; }
+.tile.wide { width: 118px; height: 44px; white-space: normal; font-size: 12px; line-height: 1.15; text-align: center; }
+.sheet-field { display: flex; flex-direction: column; gap: 4px; flex-basis: 100%; }
+.sheet-row input.sheet-wide { width: 100%; box-sizing: border-box; }
+.sheet-field > label { display: flex; }
+.sheet-row select { font: 13px var(--mono); color: var(--ink); background: #111110; border: 1px solid var(--grid); border-radius: 5px; padding: 3px 4px; }
 .tile:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
 .tile-pauli { background: var(--g-pauli); }
 .tile-rotation { background: var(--g-rotation); }
@@ -862,6 +869,7 @@ button {
 .menu-field { display: flex; align-items: center; gap: 5px; color: var(--ink-dim); }
 .menu-field input, .diagram-menu select { height: 30px; padding: 0 6px; font: 13px var(--mono); color: var(--ink); background: #111110; border: 1px solid var(--grid); border-radius: 5px; }
 .menu-field input { width: 8em; }
+.diagram-menu .menu-about { padding: 0 10px 4px; font-size: 11px; line-height: 1.3; }
 .expr-keys { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 4px; }
 .expr-keys button { min-width: 34px; height: 32px; padding: 0 7px; font: 15px var(--mono); color: var(--ink); background: var(--lcd-hi); border: 1px solid var(--grid); border-radius: 5px; touch-action: manipulation; }
 .expr-keys button:active { background: var(--series-1); color: #fff; }
