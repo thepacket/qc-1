@@ -7,7 +7,7 @@ import { BLOCK_BY_ID, defaultSettings, describe as describeBlock, type Settings 
 import { inverseGates } from "./inverse";
 import { layoutTape } from "./diagram";
 import {
-  compact, copyEntries, endColumn, entriesIn, expandAt, freeColumn, moveEntry, pasteClip, placeEntry, removeEntries,
+  compact, copyEntries, endColumn, entriesIn, expandAt, freeColumn, groupEntries, moveEntry, pasteClip, placeEntry, removeEntries,
   repositionEntry, shape, type Clip,
 } from "./grid";
 import { matrixGate, parseComplex, parseMatrix, parseState, stateGate } from "./typed";
@@ -1490,6 +1490,29 @@ export class Calculator {
     const entry: Entry = [{ id: newId(), gateId: CUSTOM_PREFIX + name, column: this.tape.length, targets: qs, controls: [], clbits: [], params: [] }];
     if (col !== undefined) this.placeEntries([entry], col, name);
     else this.pushEntry(entry);
+  }
+
+  /** The selected gates become one gate G# (under Your gates) in their place; UNDO takes it back. */
+  saveSelectionAsGate(): string | null {
+    const set = this.selection();
+    if (!set.size) { this.refuse("select gates first (long-press and drag)"); return null; }
+    const idx = [...set].sort((a, b) => a - b);
+    const entries = idx.map((i) => this.tape[i]);
+    if (entries.some((e) => e.some((s) => NONUNITARY.has(s.gateId)))) { this.refuse("a gate can't measure, reset or prepare"); return null; }
+    if (entries.some((e) => e.some((s) => s.condition))) { this.refuse("a gate can't depend on a classical bit"); return null; }
+    let j = 1;
+    while (this.customGates.some((d) => d.name === `G${j}`)) j++;
+    const def = { ...defineGate(`G${j}`, entries), about: `${entries.length} gate${entries.length > 1 ? "s" : ""} saved from the circuit` };
+    const used = [...new Set(entries.flat().flatMap((s) => [...s.controls, ...s.targets]))].sort((a, b) => a - b);
+    const step: Step = { id: newId(), gateId: CUSTOM_PREFIX + def.name, column: 0, targets: used, controls: [], clbits: [], params: [] };
+    const next = groupEntries(this.n, this.tape, set, [step]);
+    if (!next) { this.refuse("other gates sit between the selected ones: select them too, or move them"); return null; }
+    this.setGates([...this.customGates, def]);
+    this.diagSet = new Set();
+    this.diagSel = null;
+    this.applyEdit(next, `save ${def.name}`, null);
+    this.info(`${def.name} = ${entries.length} gate${entries.length > 1 ? "s" : ""} on ${used.map((q) => `q${q}`).join(", ")} (Your gates)`);
+    return def.name;
   }
 
   /** The last k tape entries become a custom gate G# (listed under Your gates). Throws with a message. Returns its name. */

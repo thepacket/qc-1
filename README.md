@@ -1,7 +1,7 @@
 # QC-1 — Quantum Calculator One
 
-A pocket quantum calculator for your phone. Key in gates and watch the state
-change at once, like a pocket calculator for qubits. It's a web app you can
+A quantum circuit simulator for your phone. Drag gates from a palette onto
+the circuit diagram and watch the state change at once. It's a web app you can
 install to your home screen, and it works offline.
 
 **Live:** https://qc1.fly.dev
@@ -11,22 +11,30 @@ install to your home screen, and it works offline.
 - **Up to 20 qubits** on a statevector, simulated in your browser (Web
   Workers). Above 20 and up to **1024 qubits**, Clifford circuits run on a
   stabilizer tableau. Nothing is computed on a server.
-- **A calculator keypad**: H, X, Y, Z, S, T, √X, rotations with typed angles
-  (`3π÷4`), P, U, SWAP, iSWAP, RXX/RYY/RZZ, measurements and reset.
-  Controls and anti-controls come from CTRL marks, and 2ND gives second
-  functions. **CATALOG** has the rest: ECR, fSim, MS, GPi…, relative-phase
-  Toffolis, state preparation, and your own gates (**DEFINE**).
-- **Symbols and the t clock** in angles, with sliders and playback;
-  **STO/RCL** memories; **IF** for classical control after mid-circuit
-  measurements.
-- **Views**: KET, PROB, BLOCH, SHOTS, CIRC (gate list or circuit diagram, a
-  step scrubber, and editing at any step) and **LAB**:
-  119 analyses and tools in 14 categories. They cover state, measurement,
-  phase space and magic, metrology, entanglement, dynamics, operators and
-  spectra, circuit structure, and circuit tools (simplify, transpile, route,
-  compile, inverse, Trotter, state prep, synthesis). They also cover noise,
-  benchmarking (RB, QV, XEB, T1/T2, tomography…), error correction (surface
-  and repetition codes with a union-find decoder) and verification.
+- **Qiskit's bit order** everywhere: q0 is the rightmost bit of kets,
+  bitstrings and Pauli strings, so results read the way Qiskit prints them.
+- **A circuit editor on the diagram**: drag gates from the palette into the
+  grid, move them, drag control dots, long-press for a gate's angles, controls
+  and conditions, or for the Edit and Transform menus. Every OpenQASM 3
+  standard gate is in the palette, plus state preparation, typed states and
+  matrices, and your own gates. A classical register of its own, one lane per
+  bit, for measurements and gates that run only if a bit is set.
+- **A block library checked against Qiskit**: Bell pair, GHZ, uniform
+  superposition, graph states, QFT, marked-state oracles, Grover, Real
+  Amplitudes, Efficient SU(2), QAOA, Pauli evolution, phase estimation, Pauli
+  measurement, arithmetic and more. Each block is named after a Qiskit
+  circuit-library object and equals it exactly; expand it into its gates or
+  invert it.
+- **Symbols and the t clock** in angles (θ₀, γ₁… with keys for them), with
+  sliders and playback; a step-through of the circuit.
+- **Views**: CIRCUIT (the diagram, the steps, the OpenQASM), STATE, PROB,
+  BLOCH, SHOTS and **LAB**: 119 analyses and tools in 21 groups. They cover
+  state, measurement, phase space and magic, metrology, entanglement,
+  dynamics, operators and spectra, circuit structure, and circuit tools
+  (simplify, transpile, route, compile, inverse, Trotter, state prep,
+  synthesis). They also cover noise, benchmarking (RB, QV, XEB, T1/T2,
+  tomography…), error correction (surface and repetition codes with a
+  union-find decoder) and verification.
 - **Noise** with Qiskit Aer's conventions: exact density matrices or
   trajectories, ZNE and PEC, device calibration import.
 - **AI chat** through OpenRouter with your own key: it reads the circuit, runs LAB
@@ -44,11 +52,12 @@ numpy or scipy references. Examples:
 - the 120 examples read by Qiskit (the three above 20 qubits as
   stabilizer states);
 - the generated Qiskit scripts executed;
-- stabilizer states up to 200 qubits.
+- stabilizer states up to 200 qubits;
+- every block against the Qiskit object it is named after.
 
 See [`validation/README.md`](validation/README.md). In the app, LAB →
 Verification & export → **Self-test** replays the references on your device.
-Bugs found in the upstream code this was ported from (24 so far) are listed in
+Bugs found in the upstream code this was ported from (60 so far) are listed in
 [`docs/quantiom-bugs.md`](docs/quantiom-bugs.md).
 
 Help: the **?** button in the app, or [`docs/help`](docs/help/README.md).

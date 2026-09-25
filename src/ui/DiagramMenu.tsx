@@ -221,6 +221,7 @@ function EditTransform({ calc, act }: { calc: Calculator; act: (f: () => unknown
           <input className="menu-num" type="number" inputMode="numeric" min={1} max={100} value={times} aria-label="N"
             onChange={(e) => setTimes(e.target.value)} onKeyDown={stop} />
         </div>
+        <Item label="Save as gate" hint={sel ? "the selected gates become one gate G# (Your gates), in their place" : none} disabled={!sel} onClick={act(() => calc.saveSelectionAsGate())} />
         <Item label="Fold selection" hint={sel ? "its columns into one box (tap the box to unfold)" : none} disabled={!sel} onClick={act(() => calc.foldSelection())} />
         <Item label="Select all" disabled={empty} onClick={act(() => calc.selectAll())} />
         <Item label="Insert block…" hint="the palette's Blocks: Bell, GHZ, QFT, Grover, ansätze, Pauli evolution, phase estimation…" onClick={act(() => openBlocks())} />

@@ -213,6 +213,34 @@ export function expandAt(n: number, tape: Entry[], i: number, entries: Entry[]):
   return [...pinned.slice(0, i), ...placed, ...pinned.slice(i + 1)];
 }
 
+/**
+ * The selected entries `set` replaced by one entry `group` (a gate made of
+ * them), or null when that would change the circuit: some other entry sits
+ * between two selected ones (it follows one on a wire or bit and precedes
+ * another). The other entries keep their columns; the group goes at the
+ * selection's first column, before everything that depended on it.
+ */
+export function groupEntries(n: number, tape: Entry[], set: Set<number>, group: Entry): Entry[] | null {
+  const lay = layoutTape(n, tape);
+  const pinned = pinAll(tape, lay);
+  const rows = (e: Entry) => new Set(e.flatMap((s) => [...s.controls, ...s.targets, ...(writesBit(s) ? [-1 - measuredBit(s)] : []), ...(s.condition ? [-1 - s.condition.clbit] : [])]));
+  const R = tape.map(rows);
+  const shares = (i: number, j: number) => [...R[i]].some((r) => R[j].has(r));
+  // Entries after the selection's first that depend on it, through anything unselected.
+  const reach = new Set<number>();
+  const first = Math.min(...set);
+  for (let j = first + 1; j < tape.length; j++) {
+    if (set.has(j)) continue;
+    for (let i = first; i < j; i++) if ((set.has(i) || reach.has(i)) && shares(i, j)) { reach.add(j); break; }
+  }
+  for (const j of set) for (const r of reach) if (r < j && shares(r, j)) return null;
+  const col = Math.min(...lay.items.filter((it) => set.has(it.entry)).map((it) => it.col));
+  const g = group.map((s) => ({ ...s, pin: col }));
+  const before = pinned.filter((_, i) => !set.has(i) && !reach.has(i));
+  const after = pinned.filter((_, i) => reach.has(i));
+  return [...before, g, ...after];
+}
+
 /** The column after the last gate on wires lo..hi (where a tapped tile goes without a chosen cell). */
 export function endColumn(lay: Layout, lo: number, hi: number): number {
   let c = 0;

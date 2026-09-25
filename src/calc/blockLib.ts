@@ -36,16 +36,18 @@ export type SettingDef = {
   hint?: string;
 };
 
-export type Family = "prepare" | "fourier" | "search" | "variational" | "dynamics" | "estimate" | "measure";
+export type Family = "prepare" | "fourier" | "search" | "arithmetic" | "variational" | "dynamics" | "estimate" | "measure" | "qec";
 
 export const FAMILIES: { id: Family; label: string }[] = [
   { id: "prepare", label: "Prepare" },
   { id: "fourier", label: "Fourier" },
   { id: "search", label: "Search" },
+  { id: "arithmetic", label: "Arithmetic" },
   { id: "variational", label: "Variational" },
   { id: "dynamics", label: "Dynamics" },
   { id: "estimate", label: "Estimate" },
-  { id: "measure", label: "Measure" },
+  { id: "measure", label: "Measure & Test" },
+  { id: "qec", label: "Error Correction" },
 ];
 
 /** A user gate a block can take (Phase Estimation's operation). */
@@ -402,6 +404,86 @@ export const BLOCKS: BlockSpec[] = [
     size: (s) => pauliString(s).length + 1,
     build: (k, s) => ({ entries: pauliMeasurement(k, pauliString(s)) }),
   },
+  {
+    id: "wstate", name: "W State", label: "W", family: "prepare", qiskit: "", prefix: "WSTATE", minQubits: 2,
+    note: "Maps |0…0⟩ to (|0…01⟩ + |0…10⟩ + … + |10…0⟩)/√k: X, then a cascade of controlled RY and CX (QC-1 definition).",
+    settings: [],
+    build: (k) => gate(`WSTATE${k}`, k, wState(k)),
+  },
+  {
+    id: "dicke", name: "Dicke State", label: "Dicke", family: "prepare", qiskit: "", prefix: "DICKE", minQubits: 2,
+    note: "Maps |0…0⟩ to the equal superposition of every basis state with e ones (Bärtschi & Eidenbenz's construction; QC-1 definition).",
+    settings: [{ key: "e", label: "excitations e", kind: "int", default: (k) => String(Math.max(1, k >> 1)), min: 1, max: (k) => k - 1 }],
+    build: (k, s) => gate(`DICKE${k}`, k, dicke(k, int(s, "e", 1, k - 1, "excitations"))),
+  },
+  {
+    id: "addconst", name: "Add Constant", label: "+c", family: "arithmetic", qiskit: "", prefix: "ADDC", minQubits: 1,
+    note: "|x⟩ → |x + c mod 2^k⟩ in the Fourier basis (QFT, phases, QFT†): c = 1 is the increment (QC-1 definition, checked against the permutation).",
+    settings: [{ key: "c", label: "constant c", kind: "int", default: () => "1", min: -(2 ** 20), max: () => 2 ** 20 }],
+    build: (k, s) => gate(`ADDC${k}`, k, addConstant(k, int(s, "c", -(2 ** 20), 2 ** 20, "c"))),
+  },
+  {
+    id: "qftadder", name: "QFT Adder", label: "a+b (QFT)", family: "arithmetic", qiskit: "qiskit.synthesis.adder_qft_d00", prefix: "QADD", minQubits: 2,
+    note: "Draper's adder: registers a (first n qubits) and b (next n), b ← a + b; \"half\" keeps the carry in one more qubit, \"fixed\" is mod 2ⁿ.",
+    settings: [
+      { key: "bits", label: "bits n", kind: "int", default: () => "2", min: 1, max: () => 9 },
+      { key: "kind", label: "kind", kind: "choice", default: () => "half", options: [["half", "half (carry out)"], ["fixed", "fixed (mod 2ⁿ)"]] },
+    ],
+    size: (s) => 2 * int(s, "bits", 1, 9, "bits") + (s.kind === "fixed" ? 0 : 1),
+    build: (k, s) => gate(`QADD${k}`, k, qftAdder(int(s, "bits", 1, 9, "bits"), s.kind === "fixed" ? "fixed" : "half")),
+  },
+  {
+    id: "rippleadder", name: "Ripple-Carry Adder", label: "a+b (ripple)", family: "arithmetic", qiskit: "qiskit.synthesis.adder_ripple_c04", prefix: "RADD", minQubits: 3,
+    note: "Cuccaro (CDKM) adder, b ← a + b with Toffolis: Qiskit's layout, [a, b, cout, helper] (half), [a, b, helper] (fixed), [cin, a, b, cout] (full).",
+    settings: [
+      { key: "bits", label: "bits n", kind: "int", default: () => "2", min: 1, max: () => 9 },
+      { key: "kind", label: "kind", kind: "choice", default: () => "half", options: [["half", "half (carry out)"], ["fixed", "fixed (mod 2ⁿ)"], ["full", "full (carry in and out)"]] },
+    ],
+    size: (s) => 2 * int(s, "bits", 1, 9, "bits") + (s.kind === "fixed" ? 1 : 2),
+    build: (k, s) => gate(`RADD${k}`, k, rippleAdder(int(s, "bits", 1, 9, "bits"), (s.kind as "half" | "fixed" | "full") || "half")),
+  },
+  {
+    id: "comparator", name: "Integer Comparator", label: "x ≥ v", family: "arithmetic", qiskit: "qiskit.circuit.library.IntegerComparatorGate", prefix: "CMP", minQubits: 2,
+    note: "Flips the last qubit when the value x of the others is ≥ v (or < v): |x⟩|r⟩ → |x⟩|r ⊕ [x ≥ v]⟩, no ancillas.",
+    settings: [
+      { key: "value", label: "value v", kind: "int", default: (k) => String(2 ** (k - 2)), min: 0, max: (k) => 2 ** (k - 1) },
+      { key: "geq", label: "compare", kind: "choice", default: () => "geq", options: [["geq", "x ≥ v"], ["lt", "x < v"]] },
+    ],
+    build: (k, s) => gate(`CMP${k}`, k, comparator(k - 1, int(s, "value", 0, 2 ** (k - 1), "v"), s.geq !== "lt")),
+  },
+  {
+    id: "hadamardtest", name: "Hadamard Test", label: "H-test", family: "measure", qiskit: "qiskit.quantum_info.Statevector.expectation_value", prefix: "", minQubits: 2,
+    note: "⟨ψ|U|ψ⟩ with one ancilla (the last qubit, reset first): H, controlled U, H, measure; 1 − 2·P(1) is the real part (with S†: the imaginary part).",
+    settings: [
+      { key: "gate", label: "operation U", kind: "gate", default: () => "" },
+      { key: "part", label: "part", kind: "choice", default: () => "re", options: [["re", "real"], ["im", "imaginary"]] },
+    ],
+    size: (s, gates) => userGate(s, gates).k + 1,
+    build: (k, s, gates) => ({ entries: hadamardTest(k, userGate(s, gates), s.part === "im") }),
+  },
+  {
+    id: "swaptest", name: "Swap Test", label: "Swap test", family: "measure", qiskit: "qiskit.quantum_info.Statevector.expectation_value", prefix: "", minQubits: 3,
+    note: "Compares registers A (first m qubits) and B (next m) with an ancilla (the last qubit, reset first): 1 − 2·P(1) = ⟨SWAP⟩, |⟨a|b⟩|² for product states.",
+    settings: [{ key: "m", label: "qubits per register m", kind: "int", default: () => "1", min: 1, max: () => 9 }],
+    size: (s) => 2 * int(s, "m", 1, 9, "m") + 1,
+    build: (_k, s) => ({ entries: swapTest(int(s, "m", 1, 9, "m")) }),
+  },
+  {
+    id: "repencode", name: "Repetition Encode", label: "Rep encode", family: "qec", qiskit: "", prefix: "REPENC", minQubits: 2,
+    note: "Copies the first qubit into the others: α|0⟩ + β|1⟩ → α|0…0⟩ + β|1…1⟩ (bit flip), or into |+…+⟩, |−…−⟩ (phase flip). QC-1 definition.",
+    settings: [{ key: "variant", label: "code", kind: "choice", default: () => "bit", options: [["bit", "bit flip"], ["phase", "phase flip"]] }],
+    build: (k, s) => gate(`REPENC${k}`, k, repEncode(k, s.variant === "phase")),
+  },
+  {
+    id: "repsyndrome", name: "Repetition Syndrome", label: "Syndrome", family: "qec", qiskit: "qiskit.quantum_info.Statevector.expectation_value", prefix: "", minQubits: 3,
+    note: "One round of syndrome extraction for d data qubits (the first d) with d − 1 ancillas (reset first): ancilla i reads ZᵢZᵢ₊₁ (or XᵢXᵢ₊₁), 1 for a flipped pair.",
+    settings: [
+      { key: "d", label: "data qubits d", kind: "int", default: () => "3", min: 2, max: () => 10 },
+      { key: "variant", label: "code", kind: "choice", default: () => "bit", options: [["bit", "bit flip (ZZ)"], ["phase", "phase flip (XX)"]] },
+    ],
+    size: (s) => 2 * int(s, "d", 2, 10, "d") - 1,
+    build: (_k, s) => ({ entries: repSyndrome(int(s, "d", 2, 10, "d"), s.variant === "phase") }),
+  },
 ];
 
 export const BLOCK_BY_ID: Record<string, BlockSpec> = Object.fromEntries(BLOCKS.map((b) => [b.id, b]));
@@ -419,6 +501,138 @@ export function pauliMeasurement(k: number, p: string): Entry[] {
   for (const q of on) out.push([step("x", [anc], [q])]);
   for (const s of back) out.push([s]);
   out.push([step("measure", [anc])]);
+  return out;
+}
+
+/** W state: X on qubit 0, then an excitation handed along with CRY(θ) and CX. */
+function wState(k: number): Entry[] {
+  const out: Entry[] = [[step("x", [0])]];
+  for (let i = 0; i < k - 1; i++) {
+    out.push([step("ry", [i + 1], [i], [String(2 * Math.acos(Math.sqrt(1 / (k - i))))])]);
+    out.push([step("x", [i], [i + 1])]);
+  }
+  return out;
+}
+
+/**
+ * Dicke state D(k, e) (Bärtschi & Eidenbenz 2019): X on e qubits, then the
+ * split-and-cyclic-shift blocks SCS(l, ·) for l = k … 2. Qubit l in the paper
+ * (1-based, left to right) is local qubit l − 1 here.
+ */
+function dicke(k: number, e: number): Entry[] {
+  const out: Entry[] = [];
+  const q = (l: number) => l - 1;
+  for (let l = k - e + 1; l <= k; l++) out.push([step("x", [q(l)])]);
+  const scs = (n: number, m: number) => {
+    out.push([step("x", [q(n)], [q(n - 1)])]);
+    out.push([step("ry", [q(n - 1)], [q(n)], [String(2 * Math.acos(Math.sqrt(1 / n)))])]);
+    out.push([step("x", [q(n)], [q(n - 1)])]);
+    for (let l = 2; l <= m; l++) {
+      out.push([step("x", [q(n)], [q(n - l)])]);
+      out.push([step("ry", [q(n - l)], [q(n), q(n - l + 1)], [String(2 * Math.acos(Math.sqrt(l / n)))])]);
+      out.push([step("x", [q(n)], [q(n - l)])]);
+    }
+  };
+  for (let n = k; n > e; n--) scs(n, e);
+  for (let n = e; n >= 2; n--) scs(n, n - 1);
+  return out;
+}
+
+/** |x⟩ → |x + c mod 2^k⟩: QFT, a phase 2πc·2^q/2^k on each qubit q, QFT†. */
+function addConstant(k: number, c: number): Entry[] {
+  const m = ((c % 2 ** k) + 2 ** k) % 2 ** k;
+  const phases = range(k).flatMap((q) => {
+    const turns = (m * 2 ** q) % 2 ** k;
+    return turns ? [step("p", [q], [], [`2*π*${turns}/${2 ** k}`])] : [];
+  });
+  return [...qft(k), ...(phases.length ? [phases] : []), ...iqft(k)];
+}
+
+/** Qiskit's adder_qft_d00: QFT on b (and the carry), controlled phases from a, QFT†. */
+function qftAdder(n: number, kind: "half" | "fixed"): Entry[] {
+  const sum = [...range(n).map((j) => n + j), ...(kind === "half" ? [2 * n] : [])];
+  const m = sum.length;
+  const on = (tape: Entry[]) => tape.map((e) => e.map((s) => ({ ...s, targets: s.targets.map((t) => sum[t]), controls: s.controls.map((t) => sum[t]) })));
+  const out: Entry[] = [...on(qft(m))];
+  for (let j = 0; j < n; j++) for (let k = 0; k < m - j; k++) out.push([step("p", [sum[m - 1 - (j + k)]], [j], [`π/${2 ** k}`])]);
+  out.push(...on(iqft(m)));
+  return out;
+}
+
+/** Qiskit's adder_ripple_c04 (Cuccaro, Draper, Kutin, Moulton): MAJ up the registers, the carry out, UMA back down. */
+function rippleAdder(n: number, kind: "half" | "fixed" | "full"): Entry[] {
+  // Qiskit's qubit layout for each kind.
+  const full = kind === "full";
+  const cin = full ? 0 : 2 * n + (kind === "half" ? 1 : 0);
+  const a = (i: number) => (full ? 1 : 0) + i;
+  const b = (i: number) => (full ? 1 : 0) + n + i;
+  const cout = full ? 2 * n + 1 : 2 * n;
+  const out: Entry[] = [];
+  const maj = (x: number, y: number, z: number) => out.push([step("x", [y], [x])], [step("x", [z], [x])], [step("x", [x], [z, y])]);
+  const uma = (x: number, y: number, z: number) => out.push([step("x", [x], [z, y])], [step("x", [z], [x])], [step("x", [y], [z])]);
+  maj(a(0), b(0), cin);
+  for (let i = 0; i < n - 1; i++) maj(a(i + 1), b(i + 1), a(i));
+  if (kind !== "fixed") out.push([step("x", [cout], [a(n - 1)])]);
+  for (let i = n - 2; i >= 0; i--) uma(a(i + 1), b(i + 1), a(i));
+  uma(a(0), b(0), cin);
+  return out;
+}
+
+/**
+ * The last qubit flipped when x (the other n) is ≥ v, or < v: one
+ * multi-controlled X per disjoint bit pattern (x agrees with v above bit i and
+ * differs at i the right way), plus x = v itself for ≥.
+ */
+function comparator(n: number, v: number, geq: boolean): Entry[] {
+  const r = n;
+  const bit = (i: number) => (v >> i) & 1;
+  const out: Entry[] = [];
+  const pattern = (i: number, xi: number) => {
+    const qs = range(n).filter((j) => j >= i);
+    out.push([step("x", [r], qs, [], qs.map((j) => (j === i ? xi === 1 : bit(j) === 1)))]);
+  };
+  if (v >= 2 ** n) { if (!geq) out.push([step("x", [r])]); return out; }
+  for (let i = n - 1; i >= 0; i--) if (bit(i) === (geq ? 0 : 1)) pattern(i, geq ? 1 : 0);
+  if (geq) out.push([step("x", [r], range(n), [], range(n).map((j) => bit(j) === 1))]);
+  return out;
+}
+
+/** Hadamard test: reset the ancilla (last), H, [S†], controlled U, H, measure. */
+function hadamardTest(k: number, U: CustomGate, imag: boolean): Entry[] {
+  const anc = k - 1;
+  return [
+    [step("reset", [anc])], [step("h", [anc])],
+    ...(imag ? [[step("sdg", [anc])]] : []),
+    [step(CUSTOM_PREFIX + U.name, range(U.k), [anc])],
+    [step("h", [anc])], [step("measure", [anc])],
+  ];
+}
+
+/** Swap test on registers 0…m−1 and m…2m−1 with the ancilla 2m. */
+function swapTest(m: number): Entry[] {
+  const anc = 2 * m;
+  return [
+    [step("reset", [anc])], [step("h", [anc])],
+    ...range(m).map((i): Entry => [step("swap", [i, m + i], [anc])]),
+    [step("h", [anc])], [step("measure", [anc])],
+  ];
+}
+
+/** Repetition-code encoder: CX from qubit 0 to each other qubit; H on all for the phase-flip code. */
+function repEncode(k: number, phase: boolean): Entry[] {
+  const out: Entry[] = range(k - 1).map((i) => [step("x", [i + 1], [0])]);
+  if (phase) out.push(range(k).map((q) => step("h", [q])));
+  return out;
+}
+
+/** One round of repetition-code syndrome extraction: ancilla d+i reads ZᵢZᵢ₊₁ (XᵢXᵢ₊₁ in the H basis). */
+function repSyndrome(d: number, phase: boolean): Entry[] {
+  const anc = (i: number) => d + i;
+  const out: Entry[] = [range(d - 1).map((i) => step("reset", [anc(i)]))];
+  if (phase) out.push(range(d).map((q) => step("h", [q])));
+  for (let i = 0; i < d - 1; i++) out.push([step("x", [anc(i)], [i])], [step("x", [anc(i)], [i + 1])]);
+  if (phase) out.push(range(d).map((q) => step("h", [q])));
+  out.push(range(d - 1).map((i) => step("measure", [anc(i)])));
   return out;
 }
 

@@ -89,4 +89,35 @@ describe("Transform menu (Quantiom's), on QC-1's validated circuit tools", () =>
     await Promise.resolve();
     expect(c.tape.length).toBeGreaterThan(0);
   });
+
+  test("Save as gate: the selection becomes one gate G#, the state is the same, UNDO takes it back", () => {
+    const c = calc();
+    c.setQubitCount(3);
+    add(c, "h", [0]);
+    cx(c, 0, 1);
+    add(c, "ry", [2], { params: ["0.3"] });
+    add(c, "t", [1]);
+    const before = Float64Array.from(stateOf(c));
+    c.selectBox(0, 1, 0, 1); // H q0 and CX q0→q1 (columns 0–1, wires 0–1)
+    expect(c.saveSelectionAsGate()).toBe("G1");
+    expect(c.tape.map(formatEntry)).toContain("G1 q0,q1");
+    expect(c.tape.length).toBe(3);
+    const after = stateOf(c);
+    for (let i = 0; i < before.length; i++) expect(after[i]).toBeCloseTo(before[i], 14);
+    c.undo();
+    expect(c.tape.length).toBe(4);
+  });
+
+  test("Save as gate refuses a selection with another gate between its gates", () => {
+    const c = calc();
+    c.setQubitCount(2);
+    add(c, "h", [0]);
+    add(c, "x", [0]);
+    add(c, "z", [0]);
+    c.selectAll();
+    c.diagSet = new Set([0, 2]); // H and Z, with X between them on q0
+    expect(c.saveSelectionAsGate()).toBeNull();
+    expect(c.message?.text).toMatch(/between/);
+    expect(c.tape.length).toBe(3);
+  });
 });

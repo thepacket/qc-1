@@ -19,23 +19,33 @@ must Qiskit's import of QC-1's OpenQASM export:
   QAOA Ansatz            qaoa_ansatz(Σ ZᵢZⱼ over the edges, reps, initial state)
   Pauli Evolution        PauliEvolutionGate(H, T, LieTrotter / SuzukiTrotter)
   Phase Estimation       phase_estimation(m, U)
-  Pauli Measurement      ⟨P⟩ = Statevector.expectation_value(Pauli) against
-                         1 − 2·P(ancilla = 1), on seeded states
+  QFT Adder              adder_qft_d00(n, kind)
+  Ripple-Carry Adder     adder_ripple_c04(n, kind)
+  Integer Comparator     IntegerComparatorGate(n, v, geq)
+  Add Constant           the permutation x → x + c mod 2^k (QC-1 definition)
+  W State, Dicke State,  Qiskit's import of the export, with the image of
+  Repetition Encode      |0…0⟩ (and |1⟩ for the encoder) checked against the
+                         target states (QC-1 definitions)
+  Pauli Measurement,     1 − 2·P(ancilla = 1) on seeded states against
+  Hadamard Test,         Statevector.expectation_value of the Pauli, of U
+  Swap Test,             (real or imaginary part), of SWAP(A, B), of each
+  Repetition Syndrome    ZᵢZᵢ₊₁ (XᵢXᵢ₊₁)
 
 Symbolic parameters are bound to the case's seeded values by name (Qiskit's
 θ[i], β[i], γ[i] ↔ QC-1's theta_i, beta_i, gamma_i).
 """
 import json
 import warnings
+from math import comb
 
 import numpy as np
 from qiskit import QuantumCircuit, qasm3
 from qiskit.circuit.library import (
-    DiagonalGate, GraphStateGate, PauliEvolutionGate, QFTGate, UniformSuperpositionGate, UnitaryGate,
-    efficient_su2, grover_operator, phase_estimation, qaoa_ansatz, real_amplitudes,
+    DiagonalGate, GraphStateGate, IntegerComparatorGate, PauliEvolutionGate, QFTGate, UniformSuperpositionGate,
+    UnitaryGate, efficient_su2, grover_operator, phase_estimation, qaoa_ansatz, real_amplitudes,
 )
 from qiskit.quantum_info import Operator, Pauli, SparsePauliOp, Statevector
-from qiskit.synthesis import LieTrotter, SuzukiTrotter, synth_qft_full
+from qiskit.synthesis import LieTrotter, SuzukiTrotter, adder_qft_d00, adder_ripple_c04, synth_qft_full
 
 from common import OUT, fail, r, write_fixture
 
@@ -139,9 +149,78 @@ def block_operator(c):
         qc = QuantumCircuit(k)
         qc.append(PauliEvolutionGate(op, time=T, synthesis=synth), range(k))
         return Operator(qc.decompose(reps=6)).data
+    if b == "qftadder":
+        return Operator(adder_qft_d00(int(s["bits"]), kind=s["kind"])).data
+    if b == "rippleadder":
+        return Operator(adder_ripple_c04(int(s["bits"]), kind=s["kind"])).data
+    if b == "comparator":
+        g = IntegerComparatorGate(k - 1, int(s["value"]), geq=s["geq"] != "lt")
+        qc = QuantumCircuit(k)
+        qc.append(g, range(k))
+        return Operator(qc).data
+    if b == "addconst":
+        c_ = int(s["c"]) % 2 ** k
+        P = np.zeros((2 ** k, 2 ** k))
+        for x in range(2 ** k):
+            P[(x + c_) % 2 ** k, x] = 1
+        return P
+    if b in ("wstate", "dicke", "repencode"):
+        # QC-1 definitions: the gates as Qiskit reads them from the export (the block alone), and its target states.
+        U = Operator(qasm3.loads(c["qc1"]["alone"])).data
+        dim = 2 ** k
+        if b == "wstate":
+            t = np.zeros(dim)
+            for q in range(k):
+                t[1 << q] = k ** -0.5
+            targets = [(0, t)]
+        elif b == "dicke":
+            e = int(s["e"])
+            t = np.array([1.0 if bin(i).count("1") == e else 0.0 for i in range(dim)]) / comb(k, e) ** 0.5
+            targets = [(0, t)]
+        else:
+            z, o = np.zeros(dim), np.zeros(dim)
+            z[0], o[dim - 1] = 1, 1
+            if s["variant"] == "phase":
+                plus = np.array([1, 1]) / 2 ** 0.5
+                minus = np.array([1, -1]) / 2 ** 0.5
+                z, o = plus, minus
+                for _ in range(k - 1):
+                    z, o = np.kron(plus, z), np.kron(minus, o)
+            targets = [(0, z), (1, o)]
+        for col, t in targets:
+            if np.max(np.abs(U[:, col] - t)) > TOL:
+                fail(f"blocks {c['id']}: basis state {col} doesn't go to the target state")
+        return U
     if b == "qpe":
         U = UnitaryGate(cmat(c["qc1"]["gateMatrix"]))
         return Operator(phase_estimation(int(s["m"]), U)).data
+    raise ValueError(b)
+
+
+def measured_reference(c, psi):
+    """What each measured ancilla's 1 − 2·P(1) must be, from Qiskit's expectation values on the data state."""
+    b, s = c["block"], c["settings"]
+    sv = Statevector(psi)
+    nd = sv.num_qubits
+    if b == "paulimeas":
+        return [float(sv.expectation_value(Pauli(s["pauli"])).real)]
+    if b == "hadamardtest":
+        v = sv.expectation_value(Operator(cmat(c["qc1"]["gateMatrix"])))
+        return [float(v.imag if s["part"] == "im" else v.real)]
+    if b == "swaptest":
+        m = int(s["m"])
+        qc = QuantumCircuit(2 * m)
+        for i in range(m):
+            qc.swap(i, m + i)
+        return [float(sv.expectation_value(Operator(qc)).real)]
+    if b == "repsyndrome":
+        p = "X" if s["variant"] == "phase" else "Z"
+        out = []
+        for i in range(nd - 1):
+            lab = ["I"] * nd
+            lab[i] = lab[i + 1] = p
+            out.append(float(sv.expectation_value(Pauli("".join(reversed(lab)))).real))
+        return out
     raise ValueError(b)
 
 
@@ -170,17 +249,16 @@ def main():
     doc = json.load(open(OUT / "blocks.cases.json"))
     out, worst, count = [], 0.0, 0
     for c in doc["cases"]:
-        if c["block"] == "paulimeas":
-            lab = c["settings"]["pauli"]
-            want = [float(Statevector(np.array(v[0::2]) + 1j * np.array(v[1::2])).expectation_value(Pauli(lab)).real) for v in c["states"]]
+        if "states" in c:
             got = c["qc1"]["values"]
-            err = max(abs(a - b) for a, b in zip(got, want))
+            want = [measured_reference(c, np.array(v[0::2]) + 1j * np.array(v[1::2])) for v in c["states"]]
+            err = max(abs(a - b) for gs, ws in zip(got, want) for a, b in zip(gs, ws))
             worst = max(worst, err)
             if err > TOL:
-                fail(f"blocks {c['id']}: ⟨{lab}⟩ differs by {err:.2e}")
+                fail(f"blocks {c['id']}: the ancillas read {got} instead of {want} (differs by {err:.2e})")
             if c["qc1"]["first"] != "reset" or c["qc1"]["last"] != "measure":
                 fail(f"blocks {c['id']}: expected reset … measure, got {c['qc1']['first']} … {c['qc1']['last']}")
-            out.append({"id": c["id"], "values": [r(x) for x in want]})
+            out.append({"id": c["id"], "values": [[r(x) for x in ws] for ws in want]})
             count += 1
             continue
         mine = cmat(c["qc1"]["unitary"])

@@ -98,16 +98,39 @@ export function cases(): BlockCase[] {
   add("qpe", 4, { m: "2" }, { gate: "two" }, "-two");
   add("qpe", 5, { m: "4" }, { gate: "phase" }, "-m4");
   trio("qpe", 3, { m: "2" }, { gate: "phase" });
-  for (const p of ["Z", "X", "Y", "ZZ", "XY", "YZX", "XIZ", "ZZZZ"]) {
-    const r = rng(p.length * 131 + p.charCodeAt(0));
-    const dim = 1 << p.length;
+  // Blocks that measure: seeded states on the data qubits (the ancillas, on top, start at |0⟩).
+  const measured = (block: string, n: number, data: number, settings: Settings, tag: string, extra: Partial<BlockCase> = {}) => {
+    const r = rng(tag.length * 131 + tag.charCodeAt(tag.length - 1) + n);
+    const dim = 1 << data;
     const states = [0, 1, 2].map(() => {
       const v = Array.from({ length: 2 * dim }, () => r.next() * 2 - 1);
       const norm = Math.hypot(...v);
       return v.map((x) => x / norm);
     });
-    out.push({ id: `paulimeas-${p}`, n: p.length + 1, block: "paulimeas", qubits: k_(p.length + 1), settings: { pauli: p }, mode: "plain", scope: {}, states });
-  }
+    out.push({ id: `${block}-${tag}`, n, block, qubits: k_(n), settings, mode: "plain", scope: {}, states, ...extra });
+  };
+  for (const p of ["Z", "X", "Y", "ZZ", "XY", "YZX", "XIZ", "ZZZZ"]) measured("paulimeas", p.length + 1, p.length, { pauli: p }, p);
+  measured("hadamardtest", 2, 1, { part: "re" }, "p-re", { gate: "phase" });
+  measured("hadamardtest", 2, 1, { part: "im" }, "p-im", { gate: "phase" });
+  measured("hadamardtest", 3, 2, { part: "re" }, "two-re", { gate: "two" });
+  measured("hadamardtest", 3, 2, { part: "im" }, "two-im", { gate: "two" });
+  for (const m of [1, 2, 3]) measured("swaptest", 2 * m + 1, 2 * m, { m: String(m) }, `m${m}`);
+  for (const d of [2, 3, 4]) for (const v of ["bit", "phase"]) measured("repsyndrome", 2 * d - 1, d, { d: String(d), variant: v }, `d${d}-${v}`);
+  // Release 2: prepared states, arithmetic, the encoder.
+  for (const k of [2, 3, 5]) add("wstate", k);
+  trio("wstate", 3);
+  for (const [k, e] of [[2, 1], [3, 1], [3, 2], [4, 2], [5, 2], [5, 3], [6, 3]]) add("dicke", k, { e: String(e) }, {}, `-e${e}`);
+  trio("dicke", 4, { e: "2" });
+  for (const [k, c] of [[1, 1], [2, 1], [3, 5], [4, -3], [4, 11]]) add("addconst", k, { c: String(c) }, {}, `-c${c}`);
+  trio("addconst", 3, { c: "3" });
+  for (const n of [1, 2, 3]) for (const kind of ["half", "fixed"]) add("qftadder", 2 * n + (kind === "half" ? 1 : 0), { bits: String(n), kind }, {}, `-${kind}`);
+  trio("qftadder", 4, { bits: "2", kind: "fixed" });
+  for (const n of [1, 2, 3]) for (const kind of ["half", "fixed", "full"]) add("rippleadder", 2 * n + (kind === "fixed" ? 1 : 2), { bits: String(n), kind }, {}, `-${kind}`);
+  trio("rippleadder", 5, { bits: "2", kind: "fixed" });
+  for (const [k, v, g] of [[2, 1, "geq"], [3, 2, "geq"], [4, 5, "geq"], [4, 0, "geq"], [4, 8, "geq"], [4, 5, "lt"], [5, 11, "lt"], [4, 0, "lt"]] as const) add("comparator", k, { value: String(v), geq: g }, {}, `-${g}${v}`);
+  trio("comparator", 4, { value: "3" });
+  for (const k of [2, 3, 4]) for (const v of ["bit", "phase"]) add("repencode", k, { variant: v }, {}, `-${v}`);
+  trio("repencode", 3, { variant: "phase" });
   // Seeded symbol values, by name.
   for (const c of out) {
     const r = rng(c.id.length * 977 + c.id.charCodeAt(c.id.length - 1));
@@ -123,8 +146,8 @@ export function tapeOf(c: BlockCase): { tape: Entry[]; defs: CustomGate[] } {
   const settings = c.gate ? { ...c.settings, gate: extra[0].name } : c.settings;
   const built = spec.build(c.qubits.length, settings, (name) => extra.find((g) => g.name === name));
   if ("entries" in built) {
-    setCustomGates([]);
-    return { tape: built.entries.map((e) => e.map((s) => ({ ...s, targets: s.targets.map((q) => c.qubits[q]), controls: s.controls.map((q) => c.qubits[q]) }))), defs: [] };
+    setCustomGates(extra);
+    return { tape: built.entries.map((e) => e.map((s) => ({ ...s, targets: s.targets.map((q) => c.qubits[q]), controls: s.controls.map((q) => c.qubits[q]) }))), defs: extra };
   }
   let defs = [...extra, built.gate];
   let name = built.gate.name;
@@ -154,21 +177,39 @@ function symbolsOfCase(c: BlockCase): string[] {
   return [...all].sort();
 }
 
+/** A test gate's matrix, column by column (re/im interleaved). */
+function matrixOf(g: CustomGate): number[][] {
+  setCustomGates([g]);
+  const d = 1 << g.k;
+  return [...Array(d).keys()].map((j) => {
+    const st = new Float64Array(2 * d);
+    st[2 * j] = 1;
+    for (const e of g.tape) for (const s of e) applyStep(st, g.k, s, Math.random, {});
+    return Array.from(st);
+  });
+}
+
 /** QC-1's side: the unitary column by column (column j = the image of basis state j, re/im interleaved), the QASM export, and Pauli Measurement's ⟨P⟩. */
 export function compute(c: BlockCase) {
   const { tape } = tapeOf(c);
-  if (c.block === "paulimeas") {
-    const n = c.n, anc = n - 1;
-    const values = c.states!.map((psi) => {
+  if (c.states) {
+    // The block's steps up to the measurements (the ancillas start at |0⟩), then 1 − 2·P(1) for each measured qubit.
+    const n = c.n;
+    const steps = tape.flat();
+    const read = steps.filter((s) => s.gateId === "measure").map((s) => s.targets[0]);
+    const values = c.states.map((psi) => {
       const st = new Float64Array(2 << n);
-      st.set(psi); // the ancilla (the top qubit) is |0⟩
-      for (const e of tape) for (const s of e) if (s.gateId !== "reset" && s.gateId !== "measure") applyStep(st, n, s, Math.random, c.scope);
-      let p1 = 0;
-      for (let i = 0; i < 1 << n; i++) if ((i >> anc) & 1) p1 += st[2 * i] ** 2 + st[2 * i + 1] ** 2;
-      return 1 - 2 * p1;
+      st.set(psi);
+      for (const s of steps) if (s.gateId !== "reset" && s.gateId !== "measure") applyStep(st, n, s, Math.random, c.scope);
+      return read.map((q) => {
+        let p1 = 0;
+        for (let i = 0; i < 1 << n; i++) if ((i >> q) & 1) p1 += st[2 * i] ** 2 + st[2 * i + 1] ** 2;
+        return 1 - 2 * p1;
+      });
     });
-    const steps = tape.flat().map((s) => s.gateId);
-    return { values, label: c.settings.pauli, first: steps[0], last: steps[steps.length - 1] };
+    const extra: Record<string, unknown> = { values, read, first: steps[0].gateId, last: steps[steps.length - 1].gateId };
+    if (c.gate) extra.gateMatrix = matrixOf(testGate(c.gate));
+    return extra;
   }
   const dim = 1 << c.n;
   const cols: number[][] = [];
@@ -184,16 +225,16 @@ export function compute(c: BlockCase) {
     extra.terms = H.terms.map((t) => [qiskitLabel(t.paulis), t.coefficient]);
   }
   if (c.gate) {
-    const g = testGate(c.gate);
-    setCustomGates([g]);
-    const d = 1 << g.k;
-    extra.gateMatrix = [...Array(d).keys()].map((j) => {
-      const st = new Float64Array(2 * d);
-      st[2 * j] = 1;
-      for (const e of g.tape) for (const s of e) applyStep(st, g.k, s, Math.random, {});
-      return Array.from(st);
-    });
+    extra.gateMatrix = matrixOf(testGate(c.gate));
     tapeOf(c); // registers the block's gates again for the export
+  }
+  if (["wstate", "dicke", "repencode"].includes(c.block)) {
+    // QC-1 definitions: the block alone on its own k qubits, for Qiskit to read.
+    const k = c.qubits.length;
+    const plain = tapeOf({ ...c, mode: "plain" });
+    const alone: Entry[] = [[{ ...plain.tape[0][0], targets: k_(k), controls: [] }]];
+    extra.alone = exportQasm3(k, alone);
+    tapeOf(c);
   }
   return { unitary: cols, qasm: exportQasm3(c.n, tape), ...extra };
 }

@@ -41,7 +41,7 @@ export default defineConfig({
       manifest: {
         name: "Quantum Calculator One",
         short_name: "QC-1",
-        description: "A pocket quantum calculator: key in gates, watch the state.",
+        description: "A quantum circuit simulator for your phone: drag in gates, watch the state.",
         start_url: "/",
         display: "standalone",
         orientation: "portrait",
