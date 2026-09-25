@@ -560,14 +560,18 @@ function Sphere({ v, r, labels, className, camera = DEFAULT_CAMERA }: { v: Vec3;
 }
 
 /** Camera-only interaction: the simulator's vector is never edited. */
-function InteractiveSphere({ v }: { v: Vec3 }) {
+function InteractiveSphere({ v, qubit }: { v: Vec3; qubit: number }) {
   const [camera, setCamera] = useState(DEFAULT_CAMERA);
   const drag = useRef<{ id: number; x: number; y: number } | null>(null);
   const rotate = (dx: number, dy: number) => setCamera(c => ({
     azimuth: c.azimuth + dx,
     elevation: Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, c.elevation + dy)),
   }));
-  return <div className="sphere-controller">
+  return <div className="bloch-sphere-row">
+    <div className="sphere-controls">
+      <div className="bloch-qubit-label">q{qubit}</div>
+      <button onClick={() => setCamera(DEFAULT_CAMERA)}>Reset view</button>
+    </div>
     <div className="sphere-interactive" role="group" tabIndex={0}
       aria-label="Interactive Bloch sphere. Drag or use arrow keys to rotate the view. Home resets the view."
       onPointerDown={e => {
@@ -596,7 +600,6 @@ function InteractiveSphere({ v }: { v: Vec3 }) {
       }}>
       <Sphere v={v} r={62} labels className="sphere-main" camera={camera} />
     </div>
-    <div className="sphere-controls"><span className="dim">Drag to rotate · arrow keys</span><button onClick={() => setCamera(DEFAULT_CAMERA)}>Reset view</button></div>
   </div>;
 }
 
@@ -612,9 +615,8 @@ export function BlochView({ calc, data }: ViewProps<"bloch">) {
   return (
     <div className="view bloch">
       <div className="bloch-main">
-        <InteractiveSphere v={v} />
+        <InteractiveSphere v={v} qubit={sel} />
         <div className="bloch-read">
-          <div className="big">q{sel}</div>
           {data.estimate && data.errors ? <>
             <div>x {num(v.x)} <span className="dim">± {num(data.errors[sel].x)}</span></div>
             <div>y {num(v.y)} <span className="dim">± {num(data.errors[sel].y)}</span></div>
