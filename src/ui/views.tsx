@@ -629,17 +629,17 @@ export function BlochView({ calc, data }: ViewProps<"bloch">) {
             <div className="dim">|r| {num(len)}{len < 0.999 ? " mixed" : ""}</div>
             {len > 1e-3 && <div className="dim">θ {num(theta / Math.PI)}π φ {num(phi / Math.PI)}π</div>}
           </>}
+          {data.estimate && <p className="dim note">Estimated from three experiments of {data.estimate.shots.toLocaleString()} shots: every qubit measured in X, in Y and in Z (the SHOTS sample). |r| can exceed 1 by chance.</p>}
+          {all.length < data.n && <p className="dim note">Bloch vectors for the first {all.length} of {data.n} qubits (each costs O(n²) on the tableau).</p>}
+          <div className="minis">
+            {all.map((b, q) => (
+              <button key={q} className={`mini${q === sel ? " on" : ""}`} onClick={() => calc.select(q)} aria-label={`Select q${q}`}>
+                <Sphere v={b} r={13} />
+                <span>q{q}</span>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
-      {data.estimate && <p className="dim note">Estimated from three experiments of {data.estimate.shots.toLocaleString()} shots: every qubit measured in X, in Y and in Z (the SHOTS sample). |r| can exceed 1 by chance.</p>}
-      {all.length < data.n && <p className="dim note">Bloch vectors for the first {all.length} of {data.n} qubits (each costs O(n²) on the tableau).</p>}
-      <div className="minis">
-        {all.map((b, q) => (
-          <button key={q} className={`mini${q === sel ? " on" : ""}`} onClick={() => calc.select(q)} aria-label={`Select q${q}`}>
-            <Sphere v={b} r={13} />
-            <span>q{q}</span>
-          </button>
-        ))}
       </div>
     </div>
   );

@@ -203,7 +203,9 @@ button {
   gap: 14px;
 }
 .sphere-main { flex: 0 0 auto; width: min(100%, 260px); height: auto; aspect-ratio: 1; }
-.bloch-read { flex: 0 0 auto; text-align: center; line-height: 1.45; font-variant-numeric: tabular-nums; }
+.bloch-read { flex: 0 0 auto; max-width: 100%; text-align: center; line-height: 1.45; font-variant-numeric: tabular-nums; }
+.bloch-read .note { margin-top: 6px; }
+.bloch-read .minis { margin: 6px auto 0; width: max-content; max-width: 100%; }
 .bloch-sphere-row { flex: 0 0 auto; display: grid; grid-template-columns: 64px minmax(0, 260px) 64px; align-items: center; gap: 8px; width: min(100%, 404px); }
 .bloch-qubit-label { font-size: 18px; font-weight: 700; text-align: center; }
 .sphere { fill: rgba(255, 255, 255, 0.03); stroke: var(--ink-muted); stroke-width: 1; }
