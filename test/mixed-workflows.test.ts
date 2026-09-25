@@ -29,7 +29,7 @@ test("dephased Bell mixture: total correlation is 1 bit, coherence zero, purity 
   const density = await runAnalysis("density", ctx, { kept: [0, 1] });
   expect(value(density, "purity Tr ρ²")).toBeCloseTo(0.5, 10);
   expect(density.scalars!.find(s => s.label === "row / column bit order")!.value).toBe("q1 q0");
-  const pureOnly = await runAnalysis("qfi", ctx, {});
+  const pureOnly = await runAnalysis("multiqfi", ctx, {});
   expect(pureOnly.error).toMatch(/assumes a pure state/);
   expect(value(await runAnalysis("totalcorr", { ...ctx, noise: undefined }, {}), "total correlation")).toBeCloseTo(2, 10);
 });

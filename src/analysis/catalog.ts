@@ -169,7 +169,7 @@ ANALYSES.push(
   { id: "qfi", title: "Quantum Fisher information", category: "metrology", mode: "live", maxQubits: 20, inputs: [
       { kind: "choice", key: "axis", label: "axis", fallback: 0, options: [{ label: "Jx", value: 0 }, { label: "Jy", value: 1 }, { label: "Jz", value: 2 }] },
     ],
-    summary: "F_Q = 4 Var(J) for collective rotations: > N witnesses entanglement, N² is the Heisenberg limit." },
+    summary: "Collective-rotation QFI: pure-state variance or mixed-state spectral formula (up to 6 qubits); > N witnesses entanglement." },
   { id: "multiqfi", title: "QFI matrix", category: "metrology", mode: "live", maxQubits: 14, inputs: [],
     summary: "3×3 QFI matrix over Jx, Jy, Jz; its top eigenvalue is the best single-axis QFI." },
   { id: "squeezing", title: "Spin squeezing", category: "metrology", mode: "live", maxQubits: 14, minQubits: 2, inputs: [],

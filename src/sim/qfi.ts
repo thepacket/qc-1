@@ -12,7 +12,7 @@
  *   • separable states:        F_Q ≤ N          (standard quantum limit, SQL)
  *   • k-producible witness:    F_Q > N  ⇒ the state is entangled and useful
  *   • maximal (e.g. GHZ):      F_Q = N²         (Heisenberg limit)
- * so F_Q / N > 1 is a device-independent entanglement witness and quantifies
+ * so F_Q / N > 1 is a collective-generator entanglement witness and quantifies
  * the metrological gain over the shot-noise limit.
  *
  * We compute Gψ exactly by applying the Pauli-sum generator term-by-term
@@ -20,6 +20,8 @@
  * O(|G| · 2ⁿ); fine to the statevector cap.
  */
 
+import { hermitianEig } from "./eig";
+import type { Complex } from "./density";
 import { pauliSparse } from "./pauliMatrix";
 
 export type GeneratorTerm = { coefficient: number; paulis: string };
@@ -31,7 +33,7 @@ export type QfiResult = {
   expG2: number;
   /** Var(G) = ⟨G²⟩ − ⟨G⟩². */
   variance: number;
-  /** F_Q = 4 Var(G). */
+  /** QFI; equals 4 Var(G) only for pure states. */
   qfi: number;
   /** F_Q / N — the metrological gain (separable ≤ 1, witnesses entanglement when > 1). */
   qfiDensity: number;
@@ -97,4 +99,40 @@ export function quantumFisherPure(state: Float64Array, n: number, generator: Gen
     heisenberg: n * n,
     witnessesEntanglement: qfi > n + 1e-9,
   };
+}
+
+/**
+ * F_Q = 2 Σ_ab (λ_a−λ_b)²/(λ_a+λ_b) |⟨a|G|b⟩|².
+ * Zero/zero pairs contribute zero. Unlike the pure formula, incoherent
+ * variance cannot witness entanglement. Reference: doi:10.1038/s41598-017-15323-7, Eq. 9.
+ */
+export function quantumFisherMixed(rho: Complex[][], n: number, generator: GeneratorTerm[]): QfiResult {
+  if (n > 6) throw new Error("Mixed-state QFI supports up to 6 qubits.");
+  const d = 2 ** n;
+  const { values, vectors } = hermitianEig(rho);
+  const weights = values.map(x => Math.max(0, x));
+  const terms = generator.map(t => ({ h: t.coefficient, ...pauliSparse(n, t.paulis) }));
+  let qfi = 0, expG = 0, expG2 = 0;
+  for (let b = 0; b < d; b++) {
+    const re = new Float64Array(d), im = new Float64Array(d);
+    for (const { h, perm, phRe, phIm } of terms) for (let c = 0; c < d; c++) {
+      const v = vectors[b][c], k = perm[c];
+      re[k] += h * (phRe[c] * v.re - phIm[c] * v.im);
+      im[k] += h * (phRe[c] * v.im + phIm[c] * v.re);
+    }
+    for (let c = 0; c < d; c++) expG2 += weights[b] * (re[c] ** 2 + im[c] ** 2);
+    for (let a = 0; a < d; a++) {
+      let gr = 0, gi = 0;
+      for (let c = 0; c < d; c++) {
+        const v = vectors[a][c];
+        gr += v.re * re[c] + v.im * im[c];
+        gi += v.re * im[c] - v.im * re[c];
+      }
+      if (a === b) expG += weights[b] * gr;
+      const sum = weights[a] + weights[b];
+      if (sum > 1e-14) qfi += 2 * (weights[a] - weights[b]) ** 2 / sum * (gr * gr + gi * gi);
+    }
+  }
+  return { expG, expG2, variance: Math.max(0, expG2 - expG ** 2), qfi,
+    qfiDensity: qfi / n, sql: n, heisenberg: n * n, witnessesEntanglement: qfi > n + 1e-9 };
 }

@@ -58,7 +58,18 @@ a labeled 8 × 8 preview; purity uses the entire matrix.
 In Simulation, supported LAB analyses use the noisy ensemble: reduced density,
 mutual information, negativity, concurrence, discord, tripartite information,
 phase disks, expectation and variance, coherence, total correlation, and
-probability-only quantities (up to 8 qubits). Hardware experiment uses sampled
+probability-only quantities (up to 8 qubits). Mixed-state **Quantum Fisher
+information** uses the spectral formula for collective rotations, up to 6
+qubits; it does not equate QFI with four times the variance of a mixture.
+
+Local-density panels extend beyond 8 circuit qubits, up to each panel's own
+limit (at most 20 circuit qubits and 6 kept qubits). They average only the
+requested reduced matrices over noise trajectories. A work budget can reduce
+the trajectory count or refuse an oversized calculation; results report the
+actual count and approximation. Trajectory uncertainty is not included in
+error bars. Full noisy STATE retains its 8-qubit limit.
+
+Hardware experiment uses sampled
 counts or tomography. Pure-state-only panels report their limitation under noise.
 Readout errors affect measurements, not the pre-readout density matrix.
 Reduced density plots label the actual kept-qubit order, including nonadjacent

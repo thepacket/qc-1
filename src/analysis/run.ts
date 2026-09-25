@@ -1,4 +1,4 @@
-import { mixedContext, MIXED_FULL } from "./mixed";
+import { mixedContext, localMixedContext, MIXED_FULL } from "./mixed";
 import { REDUCED, type MeasuredState } from "../sim/density";
 import { isIdeal } from "../noise/model";
 /**
@@ -48,7 +48,7 @@ import { allPauliExpectations } from "../sim/pauliSpectrum";
 import { parsePauliSum } from "../sim/trotter";
 import { pauliSumExpectation } from "../sim/expectation";
 import { observableMoments, shotError } from "../sim/observableVariance";
-import { collectiveSpinGenerator, quantumFisherPure } from "../sim/qfi";
+import { collectiveSpinGenerator, quantumFisherPure, quantumFisherMixed } from "../sim/qfi";
 import { spinSqueezing } from "../sim/spinSqueezing";
 import { multiparameterQFI } from "../sim/multiparamQfi";
 import { quantumGeometricTensor } from "../sim/qgt";
@@ -191,7 +191,8 @@ const RUNS: Record<string, Run> = {
 
   density(ctx, opts) {
     const { n, state } = ctx;
-    const kept = cutOf(opts, "kept", n, [0]).slice(0, 6);
+    const kept = cutOf(opts, "kept", n, [0]);
+    if (kept.length > 6) return { error: "Keep at most 6 qubits for a reduced density matrix." };
     const rho = reducedDensityMatrix(state, n, kept);
     // Basis labels as Qiskit writes them: the first kept qubit is the rightmost bit.
     const labels = [...Array(1 << kept.length).keys()].map((i) => i.toString(2).padStart(kept.length, "0"));
@@ -690,8 +691,12 @@ Object.assign(RUNS, {
 
   qfi(ctx, opts) {
     const axis = (["X", "Y", "Z"] as const)[num("qfi", "axis", opts, ctx.n)];
-    const res = quantumFisherPure(ctx.state, ctx.n, collectiveSpinGenerator(ctx.n, axis));
+    const reduced = (ctx.state as MeasuredState)[REDUCED];
+    const generator = collectiveSpinGenerator(ctx.n, axis);
+    if (reduced && ctx.n > 6) return { error: "Mixed-state QFI supports up to 6 qubits." };
+    const res = reduced ? quantumFisherMixed(reduced(Array.from({ length: ctx.n }, (_, q) => q)), ctx.n, generator) : quantumFisherPure(ctx.state, ctx.n, generator);
     return {
+      notes: [reduced ? "Mixed-state spectral QFI for a unitary collective rotation; generally not 4 Var(J). A value at or below N does not prove separability." : "Pure-state QFI = 4 Var(J). A value at or below N does not prove separability."],
       scalars: [
         { label: `F_Q (J${axis.toLowerCase()})`, value: r3(res.qfi) }, { label: "F_Q / N", value: r3(res.qfiDensity) },
         { label: "SQL (N)", value: res.sql }, { label: "Heisenberg (N²)", value: res.heisenberg },
@@ -1200,6 +1205,13 @@ export function runAnalysis(id: string, ctx: AnalysisContext, opts: Opts, sample
     const supported = FROM_LOCAL.has(id) || FROM_SHOTS.has(id) || MIXED_FULL.has(id);
     if (supported) {
       try {
+        if (id === "qfi" && ctx.n > 6) return { error: "Mixed-state QFI supports up to 6 qubits." };
+        if (FROM_LOCAL.has(id) && ctx.n > 8) {
+          return localMixedContext(ctx, id, opts, runAnalysis).then(async mixed => {
+            const out = await runAnalysis(id, mixed.ctx, opts);
+            return out.error ? out : { ...out, provenance: { method: "Trajectory approximation", detail: mixed.method } };
+          }).catch(e => ({ error: e instanceof Error ? e.message : String(e) }));
+        }
         const mixed = mixedContext(ctx);
         const result = runAnalysis(id, mixed.ctx, opts);
         const describeMixed = (out: AnalysisResult): AnalysisResult => out.error ? out : { ...out, provenance: { method: "Mixed-state analysis", detail: `${mixed.method}; noise model included. Readout errors affect sampled measurements, not this pre-readout density matrix.` } };

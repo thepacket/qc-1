@@ -1,3 +1,4 @@
+import { trajectoryReduced } from "../noise/reduced";
 import { MIXED_FULL } from "./mixed";
 /**
  * LAB panels on a periodic run's measurements (Hardware experiment), as on hardware.
@@ -25,7 +26,7 @@ import { circuitCounts, circuitTomography, needsReplay } from "../calc/experimen
 import {
   drawCounts, IDEAL_DEVICE, linearInversion, mitigateCounts, physical, rhoProbs, rhoProbsNoisy, tomography, TOMO_MAX, type Device,
 } from "../calc/tomography";
-import { densityOk, measurementDevice, noisyShots, runTrajectories } from "../noise/sim";
+import { densityOk, measurementDevice, noisyShots } from "../noise/sim";
 import { noisyStatsParallel } from "../noise/parallel";
 import { isIdeal } from "../noise/model";
 import { reducedDensityMatrix, REDUCED, type Complex, type MeasuredState } from "../sim/density";
@@ -103,33 +104,6 @@ function fullTomography(ctx: AnalysisContext, sample: Sample, noisy: boolean, de
   if (!noisy && needsReplay(ctx.tape)) return circuitTomography(ctx.n, ctx.tape, ctx.scope, Array.from({ length: ctx.n }, (_, q) => q), sample.shots, k => shotRng(sample.seed, EXP.TOMO + k));
   const source = noisy ? { rho: densityOf(ctx, ctx.noise!).rho } : { state: ctx.state };
   return stateTomography(ctx.n, sample.shots, sample.seed, source, device, undefined, !!sample.mitigate)!;
-}
-
-/** Work budget (amplitude operations) for trajectory-averaged reduced density matrices, and the fewest trajectories worth showing. */
-const LOCAL_WORK = 4e8, LOCAL_MIN_T = 16;
-
-/**
- * The noisy reduced ρ of each subset, averaged over trajectories (circuits too
- * big for the model's density matrix: n > 10, or measuring above 8 qubits),
- * with as many trajectories as the work budget allows. Throws when that's too
- * few to be worth showing.
- */
-function trajectoryReduced(ctx: AnalysisContext, subsets: number[][]): { rho: Map<string, Float64Array>; T: number } {
-  const { n } = ctx, m = ctx.noise!, dim = 1 << n;
-  const steps = ctx.tape.flat().length;
-  const perT = dim * (steps + subsets.reduce((a, k) => a + 4 ** k.length, 0));
-  const T = Math.min(m.trajectories, Math.floor(LOCAL_WORK / perT));
-  if (T < LOCAL_MIN_T) {
-    throw new Error(`Too large to measure with noise here: ${subsets.length} qubit subsets on ${n} qubits leave ${T} trajectories in the work budget (${LOCAL_MIN_T} needed). Turn noise off, or switch to Simulation.`);
-  }
-  const acc = new Map(subsets.map((k) => [k.join(","), new Float64Array(2 * 4 ** k.length)]));
-  runTrajectories(n, ctx.tape, ctx.scope, m, (st) => {
-    for (const k of subsets) {
-      const r = reducedDensityMatrix(st, n, k), a = acc.get(k.join(","))!, d = 1 << k.length;
-      for (let i = 0; i < d; i++) for (let j = 0; j < d; j++) { a[2 * (i * d + j)] += r[i][j].re / T; a[2 * (i * d + j) + 1] += r[i][j].im / T; }
-    }
-  }, { trajectories: T, seed: 0x10ca1 });
-  return { rho: acc, T };
 }
 
 /** Local panels: measured reduced density matrices of the subsets they ask for. */
