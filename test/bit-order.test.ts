@@ -6,6 +6,7 @@ import { StabilizerRegister } from "../src/stab/register";
 import { qiskitGenerators } from "../src/calc/order";
 import { exportQasm3 } from "../src/qasm/fromTape";
 import { branchTree } from "../src/calc/branches";
+import { runAnalysis } from "../src/analysis/run";
 
 /**
  * QC-1 writes states as Qiskit does: qubit q is bit q of a basis index, so q0
@@ -31,6 +32,34 @@ describe("Qiskit's bit order", () => {
     add(c, "x", [0]);
     expect(pauliSumExpectation(stateOf(c), 3, parsePauliSumFor("IIZ"))).toBeCloseTo(-1, 12);
     expect(pauliSumExpectation(stateOf(c), 3, parsePauliSumFor("ZII"))).toBeCloseTo(1, 12);
+  });
+
+  test.each(["IIZ", "iiz", "IiZ", "I I Z", " i\tI\nz "])("accepted Pauli spelling %j still targets q0", async (obs) => {
+    const c = calc(); c.setQubitCount(3); add(c, "x", [0]);
+    const ctx = { n: c.n, tape: c.tape, scope: {}, state: stateOf(c) };
+    const result = await runAnalysis("expectation", ctx, { obs });
+    expect(result.error).toBeUndefined();
+    expect(result.scalars!.find(s => s.label === "⟨H⟩")!.value).toBe(-1);
+  });
+
+  test("Pauli sums preserve signed scientific coefficients and display Qiskit term labels", async () => {
+    const c = calc(); c.setQubitCount(3); add(c, "x", [0]);
+    const ctx = { n: c.n, tape: c.tape, scope: {}, state: stateOf(c) };
+    const result = await runAnalysis("expectation", ctx, { obs: "1e-1*i I z - 2E+0*Z i I" });
+    expect(result.error).toBeUndefined();
+    expect(result.scalars!.find(s => s.label === "⟨H⟩")!.value).toBe(-2.1);
+    const bars = result.charts!.find(c => c.kind === "bars")!;
+    expect(bars.labels).toEqual(["IIZ", "ZII"]);
+    expect(bars.values).toEqual([-0.1, -2]);
+  });
+
+  test("Classical Shadows labels identify the observables whose values are shown", async () => {
+    const c = calc(); c.setQubitCount(3); add(c, "x", [0]);
+    const ctx = { n: c.n, tape: c.tape, scope: {}, state: stateOf(c) };
+    const result = await runAnalysis("shadows", ctx, { obs: "iiz + 2*zii" });
+    expect(result.error).toBeUndefined();
+    const table = result.charts!.find(c => c.kind === "table")!;
+    expect(table.rows.map(row => [row[0], row[1], row[4]])).toEqual([["IIZ", 1, -1], ["ZII", 2, 1]]);
   });
 
   test("stabilizer generators and shots, above 20 qubits too, are written as Qiskit writes them", () => {

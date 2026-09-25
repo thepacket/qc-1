@@ -11,6 +11,7 @@ import { mulberry32 } from "../sim/measure";
 import { parsePauliSum } from "../sim/trotter";
 import { pauliSumExpectation } from "../sim/expectation";
 import { NONUNITARY, type Entry } from "../calc/steps";
+import { qiskitLabel } from "../calc/order";
 
 type Run = (ctx: AnalysisContext, opts: Opts) => AnalysisResult;
 const num = (id: string, key: string, opts: Opts, n: number) => inputValue(ANALYSIS_BY_ID[id].inputs.find((s) => s.key === key)!, opts, n);
@@ -120,7 +121,7 @@ export const BENCH_RUNS: Record<string, Run> = {
     const sh = classicalShadows(ctx.n, ctx.state, N);
     const rows = terms.map((t) => {
       const e = sh.estimate(t.paulis);
-      return [t.paulis, t.coefficient, e.mean, e.stderr, pauliSumExpectation(ctx.state, ctx.n, [{ coefficient: 1, paulis: t.paulis }])];
+      return [qiskitLabel(t.paulis), t.coefficient, e.mean, e.stderr, pauliSumExpectation(ctx.state, ctx.n, [{ coefficient: 1, paulis: t.paulis }])];
     });
     const H = sh.estimateSum(terms); // per-snapshot Σ hₖ vₖ: covariances between terms included
     return {
@@ -166,4 +167,3 @@ export const BENCH_RUNS: Record<string, Run> = {
     };
   },
 };
-

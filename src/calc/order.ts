@@ -17,8 +17,11 @@ import type { Circuit, PlacedGate } from "../sim/types";
 export const qiskitLabel = (s: string) => [...s].reverse().join("");
 export const internalLabel = qiskitLabel;
 
-/** A Pauli sum as the user writes it ("0.5*XZI + IIZ": q0 rightmost) with every string in the simulator's order (character q = qubit q), or back. */
-export const internalPauliSum = (text: string) => text.replace(/[IXYZ]+/g, (s) => qiskitLabel(s));
+/** A Pauli sum as the user writes it ("0.5*XZI + IIZ": q0 rightmost) with every string in the simulator's order (character q = qubit q), or back.
+ * Normalize the same whitespace and letter case accepted by parsePauliSum
+ * before reversing complete strings; leave numeric coefficients intact.
+ */
+export const internalPauliSum = (text: string) => text.replace(/\s+/g, "").replace(/[IXYZ]+/gi, (s) => qiskitLabel(s.toUpperCase()));
 export const qiskitPauliSum = internalPauliSum;
 
 /** A signed Pauli string ("+XZI", the tableau's order: qubit 0 first) as Qiskit writes it ("+IZX"). */

@@ -606,7 +606,7 @@ Object.assign(RUNS, {
       ],
       charts: terms.length > 1 ? [{
         kind: "bars", title: "term contributions hₖ⟨Pₖ⟩", signed: true,
-        labels: terms.map((t) => t.paulis), values: terms.map((t) => t.coefficient * pauliSumExpectation(state, n, [{ coefficient: 1, paulis: t.paulis }])),
+        labels: terms.map((t) => qiskitLabel(t.paulis)), values: terms.map((t) => t.coefficient * pauliSumExpectation(state, n, [{ coefficient: 1, paulis: t.paulis }])),
       }] : [],
     };
   },
