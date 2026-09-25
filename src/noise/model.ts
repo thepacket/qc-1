@@ -8,7 +8,10 @@
  *   p2 — depolarizing_error(p2, 2): the 15 non-identity Paulis, p2/16 each
  *   ad — amplitude_damping_error(ad) (T1), after every gate, on each qubit
  *   pd — phase_damping_error(pd) (T2), after every gate, on each qubit
- *   readout — a symmetric bit flip of every measured bit
+ *   readout — P(read 1 | 0): a measured 0 read as 1; readout10 — P(read 0 | 1),
+ *        a measured 1 read as 0 (usually larger: |1⟩ decays during readout).
+ *        Without readout10 the flip is symmetric (both equal readout), as Aer's
+ *        ReadoutError([[1 − p, p], [p, 1 − p]]); with it, [[1 − p₀₁, p₀₁], [p₁₀, 1 − p₁₀]].
  *   crosstalk — after a 2-qubit gate on (a, b), depolarizing_error(crosstalk, 1)
  *        on every other coupling-map neighbour of a and of b
  *
@@ -22,7 +25,7 @@
  * each), i.e. 3/4 of Qiskit's λ; QC-1 uses Qiskit's λ throughout.
  */
 
-export type PerQubitRates = { p1?: number; ad?: number; pd?: number; readout?: number };
+export type PerQubitRates = { p1?: number; ad?: number; pd?: number; readout?: number; readout10?: number };
 
 export type NoiseModel = {
   enabled: boolean;
@@ -33,6 +36,8 @@ export type NoiseModel = {
   ad: number;
   pd: number;
   readout: number;
+  /** P(read 0 | 1); absent: equal to readout (symmetric). */
+  readout10?: number;
   crosstalk: number;
   coupling?: number[][];
   /** Per-qubit overrides (e.g. from a device calibration). */
@@ -71,13 +76,15 @@ export function sanitiseNoise(raw: unknown): NoiseModel {
     readout: clamp(o.readout, 0.5) ?? DEFAULT_NOISE.readout,
     crosstalk: clamp(o.crosstalk) ?? DEFAULT_NOISE.crosstalk,
   };
+  const r10 = clamp(o.readout10, 0.5);
+  if (r10 !== undefined) m.readout10 = r10;
   if (Array.isArray(o.coupling)) {
     m.coupling = (o.coupling as unknown[]).map((row) => (Array.isArray(row) ? row.filter((q): q is number => Number.isInteger(q) && q >= 0 && q < 1024) : []));
   }
   if (Array.isArray(o.perQubit)) {
     m.perQubit = (o.perQubit as unknown[]).map((r) => {
       const x = (r && typeof r === "object" ? r : {}) as Record<string, unknown>;
-      return { p1: clamp(x.p1), ad: clamp(x.ad), pd: clamp(x.pd), readout: clamp(x.readout, 0.5) };
+      return { p1: clamp(x.p1), ad: clamp(x.ad), pd: clamp(x.pd), readout: clamp(x.readout, 0.5), readout10: clamp(x.readout10, 0.5) };
     });
   }
   if (o.perGate && typeof o.perGate === "object") {
@@ -90,13 +97,23 @@ export function sanitiseNoise(raw: unknown): NoiseModel {
 }
 
 /** A rate for qubit q: its override, else the global value. */
-export function rate(m: NoiseModel, key: keyof PerQubitRates, q: number): number {
+export function rate(m: NoiseModel, key: Exclude<keyof PerQubitRates, "readout10">, q: number): number {
   return m.perQubit?.[q]?.[key] ?? m[key];
+}
+
+/**
+ * Qubit q's readout error [P(read 1 | 0), P(read 0 | 1)]. P(1|0) is the
+ * qubit's readout, else the model's; P(0|1) is the qubit's readout10, else the
+ * model's, else equal to P(1|0) (symmetric).
+ */
+export function readoutPair(m: NoiseModel, q: number): [number, number] {
+  const p01 = rate(m, "readout", q);
+  return [p01, m.perQubit?.[q]?.readout10 ?? m.readout10 ?? p01];
 }
 
 /** True when the model does nothing (so the ideal path can be used). */
 export function isIdeal(m: NoiseModel): boolean {
-  const zero = (r?: PerQubitRates) => !r || [r.p1, r.ad, r.pd, r.readout].every((x) => !x);
-  return !m.enabled || (!m.p1 && !m.p2 && !m.ad && !m.pd && !m.readout && !m.crosstalk
+  const zero = (r?: PerQubitRates) => !r || [r.p1, r.ad, r.pd, r.readout, r.readout10].every((x) => !x);
+  return !m.enabled || (!m.p1 && !m.p2 && !m.ad && !m.pd && !m.readout && !m.readout10 && !m.crosstalk
     && (m.perQubit ?? []).every(zero) && Object.values(m.perGate ?? {}).every((x) => !x));
 }

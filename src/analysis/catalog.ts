@@ -449,11 +449,18 @@ export const FROM_SHOTS = new Set(["anticoncentration", "zz", "corrlength", "str
  * benchmarks): an experiment of its own, computed from the circuit.
  */
 export const FROM_TOMOGRAPHY = new Set([
-  "statevector", "ampphase", "phasedisk", "qsphere", "density", "mutualinfo", "negativity", "concurrence", "schmidt", "profile",
-  "page", "renyi", "wigner", "husimi", "magic", "magicspectrum", "charfunction", "majorana", "tripartite", "totalcorr", "chsh",
-  "discord", "contour", "schmidtgap", "entham", "entstats", "mps", "negspectrum", "ptmoments", "threetangle", "expectation", "qfi",
+  "statevector", "ampphase", "qsphere", "schmidt", "profile",
+  "page", "renyi", "wigner", "husimi", "magic", "magicspectrum", "charfunction", "majorana", "totalcorr", "chsh",
+  "contour", "schmidtgap", "entham", "entstats", "mps", "negspectrum", "ptmoments", "threetangle", "expectation", "qfi",
   "multiqfi", "squeezing", "hamspectrum", "krylov", "diagens", "efftemp", "shadows", "stateprep", "plotprogram",
 ].filter((id) => id in ANALYSIS_BY_ID));
+
+/**
+ * Panels that only need the reduced density matrices of a few qubits
+ * (reducedDensityMatrix): with SHOTS → repeat on they see measured, mixed ρ_S,
+ * at any size (local tomography above TOMO_MAX qubits).
+ */
+export const FROM_LOCAL = new Set(["phasedisk", "density", "mutualinfo", "negativity", "concurrence", "discord", "tripartite"]);
 
 /** Default bipartition: the first half of the register. */
 export const defaultCut = (n: number) => [...Array(Math.max(1, Math.floor(n / 2))).keys()];

@@ -4,13 +4,8 @@
  * ported module validated against Qiskit/numpy (test/validated/*).
  */
 import type { AnalysisContext, AnalysisRequest, AnalysisResult, Chart, Opts } from "./types";
-import { ANALYSIS_BY_ID, FROM_SHOTS, FROM_TOMOGRAPHY, defaultCut, inputValue, pauliInput, symbolValue } from "./catalog";
-import { topK, bloch, sampleState } from "../calc/analysis";
-import { sampleStateVector, shotRng, stateTomography } from "../calc/estimate";
-import { TOMO_MAX } from "../calc/tomography";
-import { noisyShots } from "../noise/sim";
-import { noisyStatsParallel } from "../noise/parallel";
-import { isIdeal, rate } from "../noise/model";
+import { ANALYSIS_BY_ID, FROM_LOCAL, FROM_SHOTS, FROM_TOMOGRAPHY, defaultCut, inputValue, pauliInput, symbolValue } from "./catalog";
+import { topK } from "../calc/analysis";
 import { reducedDensityMatrix, purity } from "../sim/density";
 import {
   entanglementSpectrum, entropyProfile, mutualInformationMatrix, vonNeumannEntropy,
@@ -94,7 +89,8 @@ import { computeLightCone } from "../sim/lightcone";
 import { stepSymbols } from "../calc/steps";
 import { symbolGlyph } from "../calc/entry";
 import { TOOL_RUNS } from "./tools";
-import { NOISE_RUNS, densityOf, noisyView } from "./noiseRuns";
+import { NOISE_RUNS, noisyView } from "./noiseRuns";
+import { measuredRun } from "./measured";
 import { BENCH_RUNS } from "./benchRuns";
 import { VERIFY_RUNS } from "./verifyRuns";
 import { QEC_RUNS } from "./qecRuns";
@@ -168,11 +164,11 @@ const RUNS: Record<string, Run> = {
 
   phasedisk(ctx) {
     const { n, state } = ctx;
-    // ρ₁₀ = (x + i y)/2 from the (validated) Bloch vector: its angle is the
-    // relative phase φ of α|0⟩ + β e^{iφ}|1⟩, so |+i⟩ points along +Im.
+    // ρ₁₀ = (x + i y)/2 of each qubit's reduced ρ: its angle is the relative
+    // phase φ of α|0⟩ + β e^{iφ}|1⟩, so |+i⟩ points along +Im (measured ρ too).
     const disks = [...Array(n).keys()].map((q) => {
-      const b = bloch(state, n, q);
-      return { label: `q${q}`, re: b.x / 2, im: b.y / 2 };
+      const rho = reducedDensityMatrix(state, n, [q]);
+      return { label: `q${q}`, re: rho[1][0].re, im: rho[1][0].im };
     });
     return { charts: [{ kind: "disks", disks }] };
   },
@@ -1186,8 +1182,7 @@ Object.assign(RUNS, {
 Object.assign(RUNS, TOOL_RUNS, NOISE_RUNS, BENCH_RUNS, QEC_RUNS, VERIFY_RUNS);
 
 export function runAnalysis(id: string, ctx: AnalysisContext, opts: Opts, sample?: AnalysisRequest["sample"]): AnalysisResult | Promise<AnalysisResult> {
-  if (sample && FROM_SHOTS.has(id)) return fromShots(id, ctx, opts, sample);
-  if (sample && FROM_TOMOGRAPHY.has(id)) return fromTomography(id, ctx, opts, sample);
+  if (sample && (FROM_SHOTS.has(id) || FROM_TOMOGRAPHY.has(id) || FROM_LOCAL.has(id))) return measuredRun(id, ctx, opts, sample, runAnalysis);
   if (id === "__view") {
     return noisyView(ctx, opts).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
   }
@@ -1208,45 +1203,3 @@ export function runAnalysis(id: string, ctx: AnalysisContext, opts: Opts, sample
 /** For tests: every catalog id must have a compute function. */
 export const RUN_IDS = Object.keys(RUNS);
 export type { Chart };
-
-/**
- * A Z-basis panel on a run's shot sample: the same draw as the SHOTS view
- * (ideal: the register's state; noise on: the noisy distribution), as the
- * state Σ √fᵢ |i⟩ that has exactly the sample's frequencies.
- */
-async function fromShots(id: string, ctx: AnalysisContext, opts: Opts, sample: { shots: number; seed: number }): Promise<AnalysisResult> {
-  try {
-    const noisy = ctx.noise && !isIdeal(ctx.noise);
-    const counts = noisy
-      ? noisyShots(ctx.n, (await noisyStatsParallel(ctx.n, ctx.tape, ctx.scope, ctx.noise!)).probs, ctx.noise!, sample.shots, 0x5407 + sample.seed)
-      : sampleState(ctx.state, sample.shots, shotRng(sample.seed));
-    const out = await runAnalysis(id, { ...ctx, state: sampleStateVector(ctx.n, counts, sample.shots) }, opts);
-    const note = `Estimated from ${sample.shots.toLocaleString()} shots${noisy ? " of the noisy circuit" : ""} (SHOTS → repeat): the sample's Z-basis frequencies, as on hardware.`;
-    return { ...out, notes: [note, ...(out.notes ?? [])] };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : String(e) };
-  }
-}
-
-/**
- * A panel that reads the state, on the state the run's tomography
- * reconstructs (all 3ⁿ Pauli settings, `shots` each, from the ideal state or,
- * with noise, the noisy ρ with readout errors): the leading eigenvector of
- * the physical ρ̂. Above TOMO_MAX qubits it isn't measurable this way.
- */
-async function fromTomography(id: string, ctx: AnalysisContext, opts: Opts, sample: { shots: number; seed: number }): Promise<AnalysisResult> {
-  if (ctx.n > TOMO_MAX) {
-    return { error: `Not measurable at this size with shots: state tomography needs 3ⁿ settings (${(3 ** ctx.n).toLocaleString()} at n = ${ctx.n}); QC-1 reconstructs up to ${TOMO_MAX} qubits. Switch SHOTS → repeat off for the exact result.` };
-  }
-  try {
-    const noisy = ctx.noise && !isIdeal(ctx.noise);
-    const readout = noisy ? Array.from({ length: ctx.n }, (_, q) => rate(ctx.noise!, "readout", q)) : [];
-    const source = noisy ? { rho: densityOf(ctx, ctx.noise!).rho } : { state: ctx.state };
-    const tomo = stateTomography(ctx.n, sample.shots, sample.seed, source, readout)!;
-    const out = await runAnalysis(id, { ...ctx, state: tomo.state }, opts);
-    const note = `Reconstructed by state tomography (SHOTS → repeat): ${tomo.settings.toLocaleString()} Pauli settings × ${sample.shots.toLocaleString()} shots${noisy ? " of the noisy circuit" : ""}; this panel sees the leading eigenvector of ρ̂ (weight λ₁ = ${tomo.lambda.toFixed(3)}).`;
-    return { ...out, notes: [note, ...(out.notes ?? [])] };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : String(e) };
-  }
-}

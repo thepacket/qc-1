@@ -16,10 +16,10 @@ import { baseArity, BASE_ARITY, paramDefs, spanFrom, type PaletteItem } from "./
 import { GATES_BY_ID } from "../sim/gates";
 import { stepCaptions } from "../qasm/captions";
 import { DEFAULT_NOISE, isIdeal, sanitiseNoise, type NoiseModel } from "../noise/model";
-import { ANALYSIS_BY_ID, CATEGORIES, FROM_SHOTS, FROM_TOMOGRAPHY, analysesIn, searchAnalyses } from "../analysis/catalog";
+import { ANALYSIS_BY_ID, CATEGORIES, FROM_LOCAL, FROM_SHOTS, FROM_TOMOGRAPHY, analysesIn, searchAnalyses } from "../analysis/catalog";
 
 /** LAB panels that a periodic run's shots feed (Z sample or state tomography). */
-const fromRun = (id: string) => FROM_SHOTS.has(id) || FROM_TOMOGRAPHY.has(id);
+const fromRun = (id: string) => FROM_SHOTS.has(id) || FROM_TOMOGRAPHY.has(id) || FROM_LOCAL.has(id);
 import type { AnalysisMeta } from "../analysis/types";
 import type { AnalysisReply, AnalysisResult, Opts, Proposal } from "../analysis/types";
 import { symbolGlyph } from "./entry";
@@ -82,6 +82,8 @@ export type Saved = {
   /** SHOTS: periodic runs (on/off) and their rate, runs per second. */
   autoShots?: boolean;
   shotRate?: number;
+  /** SHOTS: undo the noise model's readout confusion in the estimates. */
+  mitigateReadout?: boolean;
   /** The noise model (LAB → Noise). */
   noise?: NoiseModel;
   /** Classical bits declared (default: one per qubit). */
@@ -203,6 +205,7 @@ export class Calculator {
       this.mode = saved.mode;
       this.shots = saved.shots;
       if (typeof saved.autoShots === "boolean") this.autoShots = saved.autoShots;
+      if (typeof saved.mitigateReadout === "boolean") this.mitigateReadout = saved.mitigateReadout;
       if (typeof saved.shotRate === "number" && saved.shotRate >= SHOT_RATE[0] && saved.shotRate <= SHOT_RATE[1]) this.shotRate = saved.shotRate;
       if (saved.lab && typeof saved.lab === "object") {
         const l = saved.lab as Partial<LabState>;
@@ -246,7 +249,7 @@ export class Calculator {
 
   save(): Saved {
     return {
-      v: 1, n: this.n, sel: this.sel, mode: this.mode, shots: this.shots, tape: this.tape, autoShots: this.autoShots, shotRate: this.shotRate,
+      v: 1, n: this.n, sel: this.sel, mode: this.mode, shots: this.shots, tape: this.tape, autoShots: this.autoShots, shotRate: this.shotRate, mitigateReadout: this.mitigateReadout,
       lab: this.lab, scope: this.scope, memory: this.memory, gates: this.customGates, noise: this.noise, nc: this.nc,
     };
   }
@@ -524,7 +527,7 @@ export class Calculator {
     // Compare reads a memory slot, which lives here, not in the workers.
     const opts = id === "compare" ? { ...this.labOpts(id), other: this.memory[Number(this.labOpts(id).slot) || 1] } : this.labOpts(id);
     // Periodic runs: a Z-basis panel runs on the run's sample.
-    const sample = this.autoShots && fromRun(id) ? { shots: this.shots, seed: this.shotSeed } : undefined;
+    const sample = this.autoShots && fromRun(id) ? { shots: this.shots, seed: this.shotSeed, mitigate: this.mitigateReadout } : undefined;
     this.engine.analyze({ seq, id, opts, noise: this.noiseOn ? this.noise : undefined, sample });
   }
 
@@ -557,7 +560,7 @@ export class Calculator {
     if (!this.noisyMode) return;
     const seq = ++this.vSeq;
     // Scrubbed: the noisy view is of the circuit up to that step, like the ideal views.
-    this.engine.analyze({ seq, id: "__view", opts: { mode: this.mode, shots: this.shots, seed: this.shotSeed, upTo: this.scrub, estimate: this.estimating }, noise: this.noise });
+    this.engine.analyze({ seq, id: "__view", opts: { mode: this.mode, shots: this.shots, seed: this.shotSeed, upTo: this.scrub, estimate: this.estimating, mitigate: this.mitigateReadout }, noise: this.noise });
   }
 
   cancelAnalysis() {
@@ -1146,6 +1149,17 @@ export class Calculator {
     else this.stopShotLoop();
     // Estimated views switch to exact ones, and back.
     this.send({ t: "view", req: this.viewReq() });
+    this.noisyView = null;
+    this.requestNoisyView();
+    if (this.mode === "lab") this.requestAnalysis();
+    this.changed();
+  }
+
+  /** Undo the readout confusion in the estimates (with noise on); the open tab follows. */
+  mitigateReadout = false;
+
+  setMitigateReadout(on: boolean) {
+    this.mitigateReadout = on;
     this.noisyView = null;
     this.requestNoisyView();
     if (this.mode === "lab") this.requestAnalysis();

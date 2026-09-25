@@ -57,6 +57,14 @@ def rate(m, key, q):
     return per[q][key] if q < len(per) and per[q].get(key) is not None else m[key]
 
 
+def readout_pair(m, q):
+    """[P(read 1 | 0), P(read 0 | 1)]: the second defaults to the first (symmetric)."""
+    per = m.get("perQubit") or []
+    own = per[q].get("readout10") if q < len(per) else None
+    p01 = rate(m, "readout", q)
+    return p01, own if own is not None else m.get("readout10", p01)
+
+
 def twirl(err):
     R = PTM(err).data  # Pauli order I, X, Y, Z
     rxx, ryy, rzz = R[1, 1].real, R[2, 2].real, R[3, 3].real
@@ -110,12 +118,17 @@ def main():
             dx = dy = dz = p1 / 4
             ax, ay, az = twirl(amplitude_damping_error(rate(m, "ad", q)))
             px, py, pz = twirl(phase_damping_error(rate(m, "pd", q)))
-            close([dx + ax + px, dy + ay + py, dz + az + pz, rate(m, "readout", q)], [row[1], row[2], row[3], row[5]], f"{cid} Pauli budget q{q}")
+            close([dx + ax + px, dy + ay + py, dz + az + pz], [row[1], row[2], row[3]], f"{cid} Pauli budget q{q}")
+            p01, p10 = readout_pair(m, q)
+            if p01 == p10:
+                close([p01], [row[5]], f"{cid} Pauli budget q{q} readout")
+            elif row[5] != f"{p01} / {p10}":
+                fail(f"{cid} Pauli budget q{q}: readout {row[5]!r}, expected {p01} / {p10}")
         # Readout: A = ⊗ A_q applied to diag ρ, then inverted.
         A_full = np.array([[1.0]])
         for q in reversed(range(n)):  # Qiskit's order: the highest qubit is the left factor
-            p = rate(m, "readout", q)
-            A_full = np.kron(A_full, np.array([[1 - p, p], [p, 1 - p]]))
+            p01, p10 = readout_pair(m, q)
+            A_full = np.kron(A_full, np.array([[1 - p01, p10], [p01, 1 - p10]]))  # A[read][true]
         measured = A_full @ diag
         mitig = np.clip(np.linalg.solve(A_full, measured), 0, None)
         mitig /= mitig.sum()

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { Calculator } from "../../calc/calculator";
-import { ANALYSIS_BY_ID, FROM_SHOTS, FROM_TOMOGRAPHY, cutDefault, groupsOf, inputValue, pauliValue, symbolValue } from "../../analysis/catalog";
+import { ANALYSIS_BY_ID, FROM_LOCAL, FROM_SHOTS, FROM_TOMOGRAPHY, cutDefault, groupsOf, inputValue, pauliValue, symbolValue } from "../../analysis/catalog";
 import { pauliPresets } from "../../analysis/pauliPresets";
 import { PLOT_PRESETS } from "../../analysis/plotProgram";
 import { symbolGlyph } from "../../calc/entry";
@@ -124,7 +124,7 @@ function AnalysisScreen({ calc, meta }: { calc: Calculator; meta: AnalysisMeta }
             {meta.inputs.map((s) => <Input key={s.key} calc={calc} meta={meta} spec={s} />)}
           </div>
         )}
-        {calc.autoShots && !FROM_SHOTS.has(meta.id) && !FROM_TOMOGRAPHY.has(meta.id) && (
+        {calc.autoShots && !FROM_SHOTS.has(meta.id) && !FROM_TOMOGRAPHY.has(meta.id) && !FROM_LOCAL.has(meta.id) && (
           <p className="dim note">An experiment of its own, computed from the circuit: this panel doesn't read the state, so a periodic run's shots don't change it.</p>
         )}
         {res?.error && <div className="lab-error">E: {res.error}</div>}
@@ -133,7 +133,7 @@ function AnalysisScreen({ calc, meta }: { calc: Calculator; meta: AnalysisMeta }
             {res.scalars.map((s) => (
               <div key={s.label}>
                 <dt>{s.label}</dt>
-                <dd>{typeof s.value === "number" ? fmt(s.value) : s.value}{s.unit && <span className="dim"> {s.unit}</span>}</dd>
+                <dd>{typeof s.value === "number" ? fmt(s.value) : s.value}{s.err !== undefined && <span className="dim"> ± {fmt(s.err)}</span>}{s.unit && <span className="dim"> {s.unit}</span>}</dd>
               </div>
             ))}
           </dl>
@@ -379,7 +379,8 @@ function NoiseSettings({ calc }: { calc: Calculator }) {
     ["p2", "2-qubit depolarizing λ₂", "after each 2-qubit gate (λ₂ on each qubit for 3+)"],
     ["ad", "amplitude damping γ (T1)", "after each gate, on each of its qubits"],
     ["pd", "phase damping γ (T2)", "after each gate, on each of its qubits"],
-    ["readout", "readout flip p", "each measured bit flips with probability p"],
+    ["readout", "readout 0 → 1", "P(read 1 | 0): a measured 0 read as 1"],
+    ["readout10", "readout 1 → 0", "P(read 0 | 1): usually larger (|1⟩ decays during readout); unset = same as 0 → 1"],
     ["crosstalk", "crosstalk λ", "depolarizing on coupling neighbours of a 2-qubit gate"],
     ["trajectories", "trajectories", "when ρ is too big, or the circuit measures"],
   ];
@@ -397,12 +398,12 @@ function NoiseSettings({ calc }: { calc: Calculator }) {
         <div className="cut-picker">
           <span className="dim">preset</span>
           {NOISE_PRESETS.map((p) => (
-            <button key={p.id} className="qb" onClick={() => calc.setNoise({ ...p.rates, perQubit: undefined, perGate: undefined, coupling: undefined, source: p.label })}>{p.label}</button>
+            <button key={p.id} className="qb" onClick={() => calc.setNoise({ ...p.rates, readout10: undefined, perQubit: undefined, perGate: undefined, coupling: undefined, source: p.label })}>{p.label}</button>
           ))}
         </div>
         {m.source && <p className="dim note">rates from {m.source}{m.perQubit ? ` · ${m.perQubit.length} calibrated qubits` : ""}</p>}
         {fields.map(([key, label, note]) => (
-          <NumberRow key={key} label={label} note={note} value={m[key] as number}
+          <NumberRow key={key} label={label} note={note} value={(key === "readout10" ? m.readout10 ?? m.readout : m[key]) as number}
             onCommit={(v) => calc.setNoise({ [key]: key === "trajectories" ? Math.round(v) : v } as Partial<NoiseModel>)} />
         ))}
         <div className="lcd-btns">

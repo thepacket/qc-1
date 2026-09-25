@@ -8,7 +8,9 @@
  *   p1 = 2·max(0, r − r_relax)              r = the qubit's sx gate_error (average
  *                                             infidelity), r_relax the damping's own
  *                                             infidelity; depolarizing λ has r = λ/2
- *   readout = readout_error
+ *   readout = prob_meas1_prep0 (P(read 1 | 0)), readout10 = prob_meas0_prep1
+ *             (P(read 0 | 1)) when the snapshot has them, else readout_error
+ *             for both (symmetric)
  * Two-qubit gates (cx, ecr, cz): depolarizing λ = 4r/3 of their median error
  * (r = 3λ/4 for two qubits), per gate name; rz is virtual (no error).
  *
@@ -65,7 +67,9 @@ export function importIbmBackend(json: string): NoiseModel {
     }
     const r = errorOf(["sx", "x"], [q]);
     const p1 = r === undefined ? undefined : Math.min(1, 2 * Math.max(0, r - dampingInfidelity(ad, pd)));
-    perQubit.push({ p1, ad, pd, readout: prop(qubits[q], "readout_error") });
+    const p01 = prop(qubits[q], "prob_meas1_prep0"), p10 = prop(qubits[q], "prob_meas0_prep1");
+    const sym = prop(qubits[q], "readout_error");
+    perQubit.push({ p1, ad, pd, readout: p01 ?? sym, ...(p10 !== undefined ? { readout10: p10 } : {}) });
   }
 
   const perGate: Record<string, number> = { rz: 0 };

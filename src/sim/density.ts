@@ -10,11 +10,19 @@
 
 export type Complex = { re: number; im: number };
 
+// QC-1: a state may carry its own reduced density matrices, measured ones
+// (SHOTS → repeat: tomography of the kept qubits, mixed); they replace the
+// partial trace of |ψ⟩⟨ψ| for every analysis that goes through here.
+export const REDUCED = Symbol("reduced");
+export type MeasuredState = Float64Array & { [REDUCED]?: (kept: number[]) => Complex[][] };
+
 export function reducedDensityMatrix(
   state: Float64Array,
   n: number,
   kept: number[],
 ): Complex[][] {
+  const measured = (state as MeasuredState)[REDUCED]; // QC-1
+  if (measured) return measured(kept);
   const k = kept.length;
   const dimK = 1 << k;
   const traced: number[] = [];

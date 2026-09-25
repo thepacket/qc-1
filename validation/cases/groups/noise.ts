@@ -16,6 +16,8 @@ export function models(n: number): Record<string, NoiseModel> {
       perGate: { cx: 0.15, h: 0.04 },
     }),
     damping: sanitiseNoise({ enabled: true, p1: 0, p2: 0, ad: 0.2, pd: 0.1, readout: 0 }),
+    // Asymmetric readout: a 1 is misread (0.09) more often than a 0 (0.02), as |1⟩ decays.
+    asymmetric: sanitiseNoise({ enabled: true, p1: 0.02, p2: 0.05, ad: 0.01, pd: 0.01, readout: 0.02, readout10: 0.09 }),
   };
 }
 
@@ -60,6 +62,8 @@ export function classicalCases(): NoiseCase[] {
     for (let q = 0; q < n; q++) tape.push([s("measure", [q])]);
     out.push({ id: `c${k}`, n, tape, model: k % 2 ? "damping" : "global" });
   }
+  out.push({ id: "teleport-asym", n: 3, tape: teleport, model: "asymmetric" });
+  out.push({ id: "ones-asym", n: 3, tape: [[s("x", [0])], [s("x", [2])], [s("h", [1])], [s("measure", [0])], [s("measure", [1])], [s("measure", [2])]], model: "asymmetric" });
   return out;
 }
 

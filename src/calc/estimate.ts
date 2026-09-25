@@ -13,7 +13,7 @@
  */
 import type { ViewData } from "./core";
 import type { Vec3 } from "./analysis";
-import { blochFromCounts, rhoProbs, stateProbs, tomography, TOMO_MAX } from "./tomography";
+import { blochFromCounts, IDEAL_DEVICE, mitigateCounts, qubitP1, rhoProbs, rhoProbsNoisy, stateProbs, tomography, TOMO_MAX, type Basis, type Device } from "./tomography";
 
 /** Most rows listed (as KET_ROWS in core.ts). */
 const ROWS = 4096;
@@ -39,8 +39,10 @@ export type RunSource = {
   z: Map<number, number>;
   /** Each qubit's exact Bloch vector (ideal, or under noise): its X and Y experiments' outcome distributions. */
   bloch: () => Vec3[];
-  /** Readout error rate per qubit (none without noise). */
-  readout: number[];
+  /** How it measures (readout errors, noisy basis changes; ideal without noise). */
+  device: Device;
+  /** Undo the readout confusion on every count before estimating. */
+  mitigate?: boolean;
   seed: number;
   /** State tomography of the run (n ≤ TOMO_MAX), made on demand. */
   tomography: () => { state: Float64Array; lambda: number; settings: number } | null;
@@ -52,8 +54,8 @@ export type RunSource = {
  * is what that experiment gives qubit by qubit (Bloch estimates use no joint
  * statistics).
  */
-function basisExperiment(n: number, coord: number[], shots: number, rng: () => number, readout: number[]): Map<number, number> {
-  const p1 = coord.map((c, q) => { const p = (1 - c) / 2, r = readout[q] ?? 0; return p * (1 - r) + (1 - p) * r; });
+function basisExperiment(n: number, exact: Vec3[], basis: 0 | 1, shots: number, rng: () => number, device: Device): Map<number, number> {
+  const p1 = exact.map((v, q) => qubitP1(v, q, basis, device));
   const out = new Map<number, number>();
   for (let s = 0; s < shots; s++) {
     let x = 0;
@@ -65,12 +67,19 @@ function basisExperiment(n: number, coord: number[], shots: number, rng: () => n
 
 /** STATE, PROB or BLOCH from a run's experiments. */
 export function estimateView(mode: "ket" | "prob" | "bloch", n: number, shots: number, run: RunSource): ViewData {
-  const counts = run.z;
+  const fix = (c: Map<number, number>) => (run.mitigate && run.device.readout.length ? mitigateCounts(c, n, run.device.readout) : c);
+  // PROB needs a distribution: mitigated quasi-counts clipped at 0 and renormalised.
+  const clip = (c: Map<number, number>) => {
+    if (!run.mitigate || !run.device.readout.length) return c;
+    const total = [...c.values()].reduce((a, v) => a + Math.max(0, v), 0) || 1;
+    return new Map([...c].filter(([, v]) => v > 0).map(([i, v]) => [i, (v / total) * shots]));
+  };
+  const counts = clip(fix(run.z));
   if (mode === "bloch") {
     const exact = run.bloch();
-    const x = basisExperiment(n, exact.map((v) => v.x), shots, shotRng(run.seed, EXP.X), run.readout);
-    const y = basisExperiment(n, exact.map((v) => v.y), shots, shotRng(run.seed, EXP.Y), run.readout);
-    const { vectors, errors } = blochFromCounts(n, x, y, counts, shots);
+    const x = basisExperiment(n, exact, 0, shots, shotRng(run.seed, EXP.X), run.device);
+    const y = basisExperiment(n, exact, 1, shots, shotRng(run.seed, EXP.Y), run.device);
+    const { vectors, errors } = blochFromCounts(n, fix(x), fix(y), fix(run.z), shots);
     return { n, mode: "bloch", estimate: { shots, experiments: "X, Y and Z experiments" }, vectors, errors };
   }
   if (mode === "prob") {
@@ -107,8 +116,22 @@ export function sampleStateVector(n: number, counts: Map<number, number>, shots:
  * the pure state or from ρ (noise), with readout errors. Every setting has its
  * own seed within the run.
  */
-export function stateTomography(n: number, shots: number, seed: number, source: { state: Float64Array } | { rho: Float64Array }, readout: number[] = []) {
+export function stateTomography(n: number, shots: number, seed: number, source: { state: Float64Array } | { rho: Float64Array }, device: Device = IDEAL_DEVICE, exp: number = EXP.TOMO, mitigate = false) {
   if (n > TOMO_MAX) return null;
-  const probsOf = "state" in source ? (st: Parameters<typeof stateProbs>[2]) => stateProbs(source.state, n, st) : (st: Parameters<typeof rhoProbs>[2]) => rhoProbs(source.rho, n, st);
-  return tomography(n, shots, probsOf, (k) => shotRng(seed, EXP.TOMO + k), readout);
+  const probsOf = (st: Basis[]) => ("state" in source && !device.superops
+    ? stateProbs(source.state, n, st)
+    : device.superops
+      ? rhoProbsNoisy("rho" in source ? source.rho : outer(source.state), n, st, device.superops)
+      : rhoProbs((source as { rho: Float64Array }).rho, n, st));
+  return tomography(n, shots, probsOf, (k) => shotRng(seed, exp + k), device.readout, mitigate);
+}
+
+/** |ψ⟩⟨ψ| */
+export function outer(st: Float64Array): Float64Array {
+  const d = st.length >> 1, rho = new Float64Array(2 * d * d);
+  for (let i = 0; i < d; i++) for (let j = 0; j < d; j++) {
+    rho[2 * (i * d + j)] = st[2 * i] * st[2 * j] + st[2 * i + 1] * st[2 * j + 1];
+    rho[2 * (i * d + j) + 1] = st[2 * i + 1] * st[2 * j] - st[2 * i] * st[2 * j + 1];
+  }
+  return rho;
 }

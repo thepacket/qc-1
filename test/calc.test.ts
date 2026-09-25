@@ -309,7 +309,7 @@ describe("SHOTS: periodic runs", () => {
     expect(JSON.stringify(c.analysis!.result)).not.toBe(JSON.stringify(first));
     c.openAnalysis("density");
     await new Promise((r) => setTimeout(r, 0));
-    expect(c.analysis!.result!.notes?.[0]).toMatch(/^Reconstructed by state tomography \(SHOTS → repeat\): 9 Pauli settings × 100 shots/);
+    expect(c.analysis!.result!.notes?.[0]).toMatch(/^Measured by state tomography \(SHOTS → repeat\): 9 Pauli settings × 100 shots/);
     c.openAnalysis("resources");
     await new Promise((r) => setTimeout(r, 0));
     expect(c.analysis!.result!.notes?.some((x) => /shots/.test(x))).toBeFalsy();
@@ -326,7 +326,7 @@ describe("SHOTS: periodic runs", () => {
     c.setMode("ket");
     expect(c.view!.estimate?.magnitudes).toBe(true);
     c.setMode("lab");
-    c.openAnalysis("mutualinfo");
+    c.openAnalysis("renyi"); // a full-state panel (local panels like mutual information are measured by local tomography)
     await new Promise((r) => setTimeout(r, 0));
     expect(c.analysis!.result!.error).toMatch(/^Not measurable at this size with shots: state tomography needs 3ⁿ settings \(2,187 at n = 7\)/);
     c.autoShots = false;

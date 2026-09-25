@@ -4,6 +4,7 @@ import type { Stabilizer } from "../sim/stabilizer";
 import { qiskitGenerators } from "./order";
 import { bloch, sampleState, topK, type Vec3 } from "./analysis";
 import { estimateView, shotRng, stateTomography } from "./estimate";
+import { IDEAL_DEVICE } from "./tomography";
 import type { Entry, Scope } from "./steps";
 import type { Op } from "./register";
 import { customGates, setCustomGates, type CustomGate } from "./custom";
@@ -312,7 +313,7 @@ export class Core {
     const sample = () => sampleState(state, req.shots, shotRng(req.shotSeed));
     if (req.estimate && (req.mode === "ket" || req.mode === "prob" || req.mode === "bloch")) {
       return estimateView(req.mode, n, req.shots, {
-        z: sample(), readout: [], seed: req.shotSeed,
+        z: sample(), device: IDEAL_DEVICE, seed: req.shotSeed,
         bloch: () => [...Array(n).keys()].map((q) => bloch(state, n, q)),
         tomography: () => stateTomography(n, req.shots, req.shotSeed, { state }),
       });

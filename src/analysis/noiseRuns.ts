@@ -10,10 +10,11 @@ import { ANALYSIS_BY_ID, defaultCut, inputValue, pauliInput } from "./catalog";
 import { KET_ROWS, SHOT_ROWS, type ViewData } from "../calc/core";
 import { topK } from "../calc/analysis";
 import { estimateView, stateTomography } from "../calc/estimate";
+import { confusion } from "../calc/tomography";
 import { Register } from "../calc/register";
-import { densityOk, noisyDensity, noisyShots, noisyStats, runTrajectories, DENSITY_MAX } from "../noise/sim";
+import { densityOk, measurementDevice, noisyDensity, noisyShots, noisyStats, runTrajectories, DENSITY_MAX } from "../noise/sim";
 import { noisyStatsParallel } from "../noise/parallel";
-import { isIdeal, rate, type NoiseModel } from "../noise/model";
+import { isIdeal, rate, readoutPair, type NoiseModel } from "../noise/model";
 import { noisyExpectation, pec, zne, type ZneFit } from "../noise/mitigation";
 import { hermitianEig } from "../sim/eig";
 import { parsePauliSum } from "../sim/trotter";
@@ -64,7 +65,7 @@ function trajectoryDensity(ctx: AnalysisContext, m: NoiseModel): Float64Array {
  */
 function idealReference(ctx: AnalysisContext, m: NoiseModel): { pure: Float64Array } | { mixed: Float64Array } {
   if (densityOk(ctx.n, ctx.tape)) return { pure: idealState(ctx) };
-  const zero: NoiseModel = { ...m, p1: 0, p2: 0, ad: 0, pd: 0, readout: 0, crosstalk: 0, perQubit: undefined, perGate: undefined };
+  const zero: NoiseModel = { ...m, p1: 0, p2: 0, ad: 0, pd: 0, readout: 0, readout10: undefined, crosstalk: 0, perQubit: undefined, perGate: undefined };
   return { mixed: trajectoryDensity(ctx, zero) };
 }
 const UNCONDITIONAL = "The circuit measures: both states are the unconditional ensemble over measurement outcomes (each branch with its probability), not the recorded outcomes.";
@@ -136,11 +137,11 @@ export async function noisyView(ctx: AnalysisContext, opts: Opts): Promise<Analy
   const seed = Number(opts.seed) || 0;
   if (opts.estimate && mode !== "shots") {
     // What the run's experiments give on the noisy circuit: Z (as SHOTS), X and Y, and tomography of the noisy ρ.
-    const readout = Array.from({ length: n }, (_, q) => rate(m, "readout", q));
+    const device = measurementDevice(m, n);
     view = estimateView(mode, n, shots, {
-      z: noisyShots(n, stats.probs, m, shots, 0x5407 + seed), readout, seed,
+      z: noisyShots(n, stats.probs, m, shots, 0x5407 + seed), device, seed, mitigate: !!opts.mitigate,
       bloch: () => stats.bloch,
-      tomography: () => stateTomography(n, shots, seed, { rho: densityOf({ ...ctx, tape }, m).rho }, readout),
+      tomography: () => stateTomography(n, shots, seed, { rho: densityOf({ ...ctx, tape }, m).rho }, device, undefined, !!opts.mitigate),
     });
   }
   else if (mode === "bloch") view = { n, mode: "bloch", vectors: stats.bloch };
@@ -172,7 +173,8 @@ export function pauliBudget(m: NoiseModel, q: number) {
   });
   const A = twirl(Math.sqrt(1 - ad), Math.sqrt(1 - ad), 1 - ad);
   const P = twirl(Math.sqrt(1 - pd), Math.sqrt(1 - pd), 1);
-  return { depol: { x: p1 / 4, y: p1 / 4, z: p1 / 4 }, amp: A, phase: P, readout: rate(m, "readout", q) };
+  const [r01, r10] = readoutPair(m, q);
+  return { depol: { x: p1 / 4, y: p1 / 4, z: p1 / 4 }, amp: A, phase: P, readout: r01 === r10 ? r01 : `${r01} / ${r10}` };
 }
 
 export const NOISE_RUNS: Record<string, Run> = {
@@ -359,20 +361,9 @@ export const NOISE_RUNS: Record<string, Run> = {
     const n = ctx.n, d = 1 << n;
     const stats = noisyStats(n, ctx.tape, ctx.scope, m);
     // Measured distribution: the readout confusion applied exactly (tensor of per-qubit A_q).
-    const flip = (dist: Float64Array, inverse: boolean) => {
-      let out = Float64Array.from(dist);
-      for (let q = 0; q < n; q++) {
-        const p = rate(m, "readout", q), mask = 1 << q;
-        const [a, b] = inverse ? [(1 - p) / (1 - 2 * p), -p / (1 - 2 * p)] : [1 - p, p];
-        const next = new Float64Array(d);
-        for (let i = 0; i < d; i++) next[i] = a * out[i] + b * out[i ^ mask];
-        out = next;
-      }
-      return out;
-    };
-    if ([...Array(n).keys()].some((q) => rate(m, "readout", q) >= 0.5)) throw new Error("readout error ≥ 0.5 can't be inverted");
-    const measured = flip(stats.probs, false);
-    const mitigated = flip(measured, true);
+    const readout = Array.from({ length: n }, (_, q) => readoutPair(m, q));
+    const measured = confusion(stats.probs, n, readout, false);
+    const mitigated = confusion(measured, n, readout, true);
     const clipped = mitigated.map((x) => Math.max(0, x));
     const z = clipped.reduce((a, b) => a + b, 0);
     const top = [...Array(d).keys()].sort((a, b) => stats.probs[b] - stats.probs[a]).slice(0, 32);
@@ -382,7 +373,7 @@ export const NOISE_RUNS: Record<string, Run> = {
         rows: top.map((i) => [ket(i, n), r4(stats.probs[i]), r4(measured[i]), r4(clipped[i] / z)]),
       }],
       notes: [
-        "Readout error as a confusion matrix A = ⊗ A_q, A_q = [[1−p, p], [p, 1−p]]; mitigation applies A⁻¹, clips negatives and renormalises.",
+        "Readout error as a confusion matrix A = ⊗ A_q, A_q = [[1−p₀₁, p₁₀], [p₀₁, 1−p₁₀]] (p₀₁ = P(read 1 | 0), p₁₀ = P(read 0 | 1)); mitigation applies A⁻¹, clips negatives and renormalises.",
         noteMethod(stats.method === "density" ? "exact density matrix" : `${stats.trajectories} trajectories`),
       ],
     };

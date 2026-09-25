@@ -16,7 +16,8 @@ import { applyKQubit } from "../sim/apply";
 import { mulberry32 } from "../sim/measure";
 import type { Matrix } from "../sim/matrices";
 import { channelsAfter, pauliMatrix, type Channel } from "./channels";
-import { rate, type NoiseModel } from "./model";
+import { readoutPair, type NoiseModel } from "./model";
+import type { Device } from "../calc/tomography";
 
 export const DENSITY_MAX = 10;
 
@@ -81,7 +82,7 @@ function applyChannelDensity(rho: Float64Array, n: number, c: Channel): Float64A
 export function noisyDensity(n: number, tape: Entry[], scope: Scope, m: NoiseModel, initial?: Float64Array): Density {
   if (!densityOk(n, tape)) throw new Error(`density matrix: unitary circuits up to ${DENSITY_MAX} qubits`);
   const d = 1 << n;
-  let rho: Float64Array = new Float64Array(2 * d * d);
+  const rho: Float64Array = new Float64Array(2 * d * d);
   if (initial) {
     // |ψ⟩⟨ψ| of a given starting state
     for (let i = 0; i < d; i++) for (let j = 0; j < d; j++) {
@@ -89,11 +90,42 @@ export function noisyDensity(n: number, tape: Entry[], scope: Scope, m: NoiseMod
       rho[2 * (i * d + j) + 1] = initial[2 * i + 1] * initial[2 * j] - initial[2 * i] * initial[2 * j + 1];
     }
   } else rho[0] = 1;
+  return { n, rho: evolveDensity(rho, n, tape, scope, m) };
+}
+
+/** ρ (any operator: the map is linear) through a unitary tape, each step followed by the model's channels. */
+export function evolveDensity(rho: Float64Array, n: number, tape: Entry[], scope: Scope, m: NoiseModel): Float64Array {
+  const d = 1 << n;
   for (const s of steps(tape)) {
     rho = conjugate(rho, d, (v) => applyStep(v, n, s, Math.random, scope));
     for (const c of channelsAfter(m, s)) rho = applyChannelDensity(rho, n, c);
   }
-  return { n, rho };
+  return rho;
+}
+
+/** Qubit q's own noise, alone: its per-qubit rates as the one qubit of a 1-qubit model (no crosstalk). */
+export function qubitModel(m: NoiseModel, q: number): NoiseModel {
+  return { ...m, perQubit: m.perQubit?.[q] ? [m.perQubit[q]] : undefined, coupling: undefined, crosstalk: 0 };
+}
+
+/**
+ * The noisy measurement-basis change of one qubit as a superoperator on its
+ * 2 × 2 blocks: basis X is H, Y is S† then H (Z: nothing), each gate followed
+ * by the model's noise on that qubit, as on hardware. S[(a′,b′)][(a,b)] maps
+ * |a⟩⟨b| to its image's (a′, b′) entry (complex, re/im interleaved; 4 × 4).
+ */
+export function basisSuperop(m: NoiseModel | null, q: number, basis: 0 | 1 | 2): Float64Array {
+  const gates = basis === 0 ? ["h"] : basis === 1 ? ["sdg", "h"] : [];
+  const tape: Entry[] = gates.map((g) => [{ id: `rot${g}`, gateId: g, column: 0, targets: [0], controls: [], clbits: [], params: [] }]);
+  const model = m ? qubitModel(m, q) : { enabled: false, trajectories: 0, p1: 0, p2: 0, ad: 0, pd: 0, readout: 0, crosstalk: 0 };
+  const S = new Float64Array(2 * 16);
+  for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) {
+    const e = new Float64Array(8);
+    e[2 * (a * 2 + b)] = 1;
+    const out = evolveDensity(e, 1, tape, {}, model);
+    for (let k = 0; k < 4; k++) { S[2 * (k * 4 + a * 2 + b)] = out[2 * k]; S[2 * (k * 4 + a * 2 + b) + 1] = out[2 * k + 1]; }
+  }
+  return S;
 }
 
 // ─── Trajectories ──────────────────────────────────────────────────────
@@ -156,7 +188,8 @@ export function runTrajectories(n: number, tape: Entry[], scope: Scope, m: Noise
         const done = applyStep(state, n, fresh, rng, scope);
         if (s.gateId !== "reset") {
           const q = s.targets[0]; // the readout error is the measured qubit's; the bit is the measurement's own
-          bits[measuredBit(s)] = (done.outcome ?? 0) ^ (rng() < rate(m, "readout", q) ? 1 : 0);
+          const o = done.outcome ?? 0;
+          bits[measuredBit(s)] = o ^ (rng() < readoutPair(m, q)[o] ? 1 : 0);
         }
         continue;
       }
@@ -270,8 +303,16 @@ export function noisyShots(n: number, probs: Float64Array, m: NoiseModel, shots:
     let lo = 0, hi = cdf.length - 1;
     while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] < r) lo = mid + 1; else hi = mid; }
     let x = lo;
-    for (let q = 0; q < n; q++) if (rng() < rate(m, "readout", q)) x ^= 1 << q;
+    for (let q = 0; q < n; q++) if (rng() < readoutPair(m, q)[(x >> q) & 1]) x ^= 1 << q;
     out.set(x, (out.get(x) ?? 0) + 1);
   }
   return out;
+}
+
+/** How the noisy device measures qubits 0…n−1: readout errors, and each qubit's noisy X, Y, Z basis changes. */
+export function measurementDevice(m: NoiseModel, n: number): Device {
+  return {
+    readout: Array.from({ length: n }, (_, q) => readoutPair(m, q)),
+    superops: Array.from({ length: n }, (_, q) => [basisSuperop(m, q, 0), basisSuperop(m, q, 1), basisSuperop(m, q, 2)]),
+  };
 }

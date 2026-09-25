@@ -125,8 +125,8 @@ def main():
             nm.add_all_qubit_quantum_error(e1, names1)
         if names2:
             nm.add_all_qubit_quantum_error(e2, names2)
-        ro = m["readout"]
-        nm.add_all_qubit_readout_error(ReadoutError([[1 - ro, ro], [ro, 1 - ro]]))
+        ro, ro10 = m["readout"], m.get("readout10", m["readout"])  # P(1|0), P(0|1)
+        nm.add_all_qubit_readout_error(ReadoutError([[1 - ro, ro], [ro10, 1 - ro10]]))
         sim = AerSimulator(noise_model=nm, seed_simulator=4242)
         shots = 40000
         counts = sim.run(transpile(qc, sim, optimization_level=0), shots=shots).result().get_counts()

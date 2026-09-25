@@ -75,8 +75,109 @@ export function rhoProbs(rho: Float64Array, n: number, setting: Basis[]): Float6
   return p;
 }
 
-/** N outcomes drawn from `probs`, then each bit flipped with its readout error rate. */
-export function drawCounts(probs: Float64Array, shots: number, rng: () => number, readout: number[] = []): Map<number, number> {
+/**
+ * Readout error per qubit: [P(read 1 | 0), P(read 0 | 1)], as a device's
+ * calibration gives them (the second is usually larger: |1⟩ decays).
+ */
+export type Readout = [number, number][];
+
+/**
+ * How a device measures: per-qubit readout errors and, under noise, each
+ * qubit's noisy basis change (superops[q][basis], basisSuperop in
+ * noise/sim.ts). The ideal device has neither.
+ */
+export type Device = { readout: Readout; superops?: Float64Array[][] };
+export const IDEAL_DEVICE: Device = { readout: [] };
+
+/**
+ * The readout confusion applied to a distribution (inverse: undone), qubit by
+ * qubit: A_q = [[1 − p₀₁, p₁₀], [p₀₁, 1 − p₁₀]] (read ← true), and
+ * A_q⁻¹ = [[1 − p₁₀, −p₁₀], [−p₀₁, 1 − p₀₁]] / (1 − p₀₁ − p₁₀). The inverse can
+ * give negative quasi-probabilities.
+ */
+export function confusion(dist: Float64Array, n: number, readout: Readout, inverse: boolean): Float64Array {
+  let out = Float64Array.from(dist);
+  for (let q = 0; q < n; q++) {
+    const [p01, p10] = readout[q] ?? [0, 0];
+    if (!p01 && !p10) continue;
+    const det = 1 - p01 - p10;
+    if (inverse && det <= 0) throw new Error(`q${q}: readout errors this large can't be undone (p₀₁ + p₁₀ ≥ 1)`);
+    // A[read][true]
+    const A = inverse ? [[(1 - p10) / det, -p10 / det], [-p01 / det, (1 - p01) / det]] : [[1 - p01, p10], [p01, 1 - p10]];
+    const m = 1 << q, next = new Float64Array(out.length);
+    for (let i = 0; i < out.length; i++) {
+      const b = (i >> q) & 1;
+      next[i] = A[b][b] * out[i] + A[b][1 - b] * out[i ^ m];
+    }
+    out = next;
+  }
+  return out;
+}
+
+/** Counts with the readout confusion undone: quasi-counts (may be fractional or negative). */
+export function mitigateCounts(counts: Map<number, number>, n: number, readout: Readout): Map<number, number> {
+  const d = new Float64Array(1 << n);
+  for (const [i, c] of counts) d[i] = c;
+  const out = new Map<number, number>();
+  confusion(d, n, readout, true).forEach((c, i) => { if (Math.abs(c) > 1e-12) out.set(i, c); });
+  return out;
+}
+
+/** P(read 1) of one qubit in state (x, y, z) measured in `basis` on `device`: its basis change, then its readout error. */
+export function qubitP1(v: { x: number; y: number; z: number }, q: number, basis: Basis, device: Device): number {
+  let p1: number;
+  const S = device.superops?.[q]?.[basis];
+  if (S) {
+    // ρ = (I + xX + yY + zZ)/2 through the noisy basis change; P(1) = its (1,1) entry.
+    const rho = [(1 + v.z) / 2, 0, v.x / 2, -v.y / 2, v.x / 2, v.y / 2, (1 - v.z) / 2, 0];
+    let re = 0;
+    for (let l = 0; l < 4; l++) re += S[2 * (3 * 4 + l)] * rho[2 * l] - S[2 * (3 * 4 + l) + 1] * rho[2 * l + 1];
+    p1 = Math.min(1, Math.max(0, re));
+  } else p1 = (1 - (basis === 0 ? v.x : basis === 1 ? v.y : v.z)) / 2;
+  const [p01, p10] = device.readout[q] ?? [0, 0];
+  return p1 * (1 - p10) + (1 - p1) * p01;
+}
+
+/**
+ * Outcome probabilities of ρ measured in a setting on hardware: each qubit's
+ * basis change is `superops[q][basis]` (basisSuperop: the rotation and its
+ * gate noise), then the Z measurement reads the diagonal.
+ */
+export function rhoProbsNoisy(rho: Float64Array, n: number, setting: Basis[], superops: Float64Array[][]): Float64Array {
+  const d = 1 << n;
+  let r = rho;
+  for (let q = 0; q < n; q++) {
+    const S = superops[q][setting[q]];
+    const out = new Float64Array(r.length);
+    const m = 1 << q;
+    for (let i0 = 0; i0 < d; i0++) {
+      if (i0 & m) continue;
+      for (let j0 = 0; j0 < d; j0++) {
+        if (j0 & m) continue;
+        // The 2 × 2 block of qubit q at (i0, j0): entries (a, b) at (i0 | a·m, j0 | b·m).
+        for (let k = 0; k < 4; k++) {
+          const a2 = k >> 1, b2 = k & 1, dst = 2 * ((i0 | (a2 ? m : 0)) * d + (j0 | (b2 ? m : 0)));
+          let re = 0, im = 0;
+          for (let l = 0; l < 4; l++) {
+            const a = l >> 1, b = l & 1, src = 2 * ((i0 | (a ? m : 0)) * d + (j0 | (b ? m : 0)));
+            const sr = S[2 * (k * 4 + l)], si = S[2 * (k * 4 + l) + 1], xr = r[src], xi = r[src + 1];
+            re += sr * xr - si * xi;
+            im += sr * xi + si * xr;
+          }
+          out[dst] = re;
+          out[dst + 1] = im;
+        }
+      }
+    }
+    r = out;
+  }
+  const p = new Float64Array(d);
+  for (let i = 0; i < d; i++) p[i] = Math.max(0, r[2 * (i * d + i)]);
+  return p;
+}
+
+/** N outcomes drawn from `probs`, then each bit read wrong with its readout error (P(1|0) for a 0, P(0|1) for a 1). */
+export function drawCounts(probs: Float64Array, shots: number, rng: () => number, readout: Readout = []): Map<number, number> {
   const cdf = new Float64Array(probs.length);
   let acc = 0;
   for (let i = 0; i < probs.length; i++) cdf[i] = acc += probs[i];
@@ -86,7 +187,10 @@ export function drawCounts(probs: Float64Array, shots: number, rng: () => number
     let lo = 0, hi = cdf.length - 1;
     while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] <= u) lo = mid + 1; else hi = mid; }
     let x = lo;
-    for (let q = 0; q < readout.length; q++) if (readout[q] > 0 && rng() < readout[q]) x ^= 1 << q;
+    for (let q = 0; q < readout.length; q++) {
+      const p = (x >> q) & 1 ? readout[q][1] : readout[q][0];
+      if (p > 0 && rng() < p) x ^= 1 << q;
+    }
     out.set(x, (out.get(x) ?? 0) + 1);
   }
   return out;
@@ -186,10 +290,11 @@ export function leadingState(vector: Complex[]): Float64Array {
  * counts, ρ̂ (linear inversion), the physical ρ, and the leading state with its
  * weight λ₁.
  */
-export function tomography(n: number, shots: number, probsOf: (s: Basis[]) => Float64Array, rngOf: (s: number) => () => number, readout: number[] = []) {
+export function tomography(n: number, shots: number, probsOf: (s: Basis[]) => Float64Array, rngOf: (s: number) => () => number, readout: Readout = [], mitigate = false) {
   const S = settings(n);
   const counts = S.map((s, k) => drawCounts(probsOf(s), shots, rngOf(k), readout));
-  const rhoHat = linearInversion(n, counts, shots);
+  // Mitigated: the readout confusion undone on each setting's counts (quasi-counts) before the inversion.
+  const rhoHat = linearInversion(n, mitigate && readout.length ? counts.map((c) => mitigateCounts(c, n, readout)) : counts, shots);
   const { rho, values, vectors } = physical(rhoHat, 1 << n);
   return { counts, rhoHat, rho, lambda: values[0], state: leadingState(vectors[0]), settings: S.length };
 }

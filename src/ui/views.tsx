@@ -169,6 +169,11 @@ function ShotsBar({ calc }: { calc: Calculator }) {
         onFocus={(e) => { setRate(String(shotRate)); e.target.select(); }} onChange={(e) => setRate(e.target.value)} onBlur={commitRate}
         onKeyDown={keys} /> /s</label>
       {autoShots && <span className="dim" aria-live="off">run {calc.shotRun}</span>}
+      {calc.noiseOn && (
+        <label className="shots-auto" title="Undo the noise model's readout confusion in the estimates (quasi-probabilities)">
+          <input type="checkbox" checked={calc.mitigateReadout} onChange={(e) => calc.setMitigateReadout(e.target.checked)} /> mitigate readout
+        </label>
+      )}
     </div>
   );
 }

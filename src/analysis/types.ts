@@ -50,7 +50,7 @@ export type AnalysisMeta = {
   mode: "live" | "run";
 };
 
-export type Scalar = { label: string; value: number | string; unit?: string };
+export type Scalar = { label: string; value: number | string; unit?: string; /** ± (a measured estimate's bootstrap spread). */ err?: number };
 
 export type HeatScale = "seq" | "div" | "complex";
 
@@ -156,6 +156,6 @@ export type AnalysisContext = { n: number; state: Float64Array; tape: Entry[]; s
 export type AnalysisRequest = {
   seq: number; id: string; opts: Opts; noise?: NoiseModel;
   /** SHOTS → repeat: run a FROM_SHOTS panel on this run's sample (shots, the run's seed). */
-  sample?: { shots: number; seed: number };
+  sample?: { shots: number; seed: number; /** Undo the readout confusion on every count first. */ mitigate?: boolean };
 };
 export type AnalysisReply = { seq: number; rev: number; id: string; result: AnalysisResult; ms: number };

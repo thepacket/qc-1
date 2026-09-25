@@ -13,11 +13,11 @@ export type NaCase = { id: string; n: number; tape: Entry[]; model: string; obs:
 export function cases(): NaCase[] {
   const r = rng(6226);
   const gates = ["h", "x", "sx", "t", "rx", "ry", "rz", "swap", "rzz"];
-  return [2, 3, 3, 4].map((n, k) => ({
-    id: `na${k}`, n, model: ["global", "detailed", "damping", "global"][k],
+  return [2, 3, 3, 4, 3].map((n, k) => ({
+    id: `na${k}`, n, model: ["global", "detailed", "damping", "global", "asymmetric"][k],
     tape: [...productLayer(r, n), ...randomTape(r, n, 5, gates)],
-    obs: ["ZZ + 0.5*XI", "ZIZ - 0.7*XXI + 0.3*IYY", "XXX + ZZI", "ZZZZ - 0.4*XIXI + 0.2*IYIY"][k],
-    cut: [[0], [0], [0, 2], [1, 3]][k],
+    obs: ["ZZ + 0.5*XI", "ZIZ - 0.7*XXI + 0.3*IYY", "XXX + ZZI", "ZZZZ - 0.4*XIXI + 0.2*IYIY", "ZZI - 0.5*XIX"][k],
+    cut: [[0], [0], [0, 2], [1, 3], [1]][k],
   }));
 }
 
