@@ -21,11 +21,11 @@ function state(src: string, scope: Record<string, number> = {}) {
   const p = (i: number) => st[2 * i] ** 2 + st[2 * i + 1] ** 2;
   const marginal = (qs: number[], bits: string) => {
     let s = 0;
-    for (let i = 0; i < dim; i++) if (qs.every((q, k) => ((i >> (n - 1 - q)) & 1) === +bits[k])) s += p(i);
+    for (let i = 0; i < dim; i++) if (qs.every((q, k) => ((i >> q) & 1) === +bits[k])) s += p(i);
     return s;
   };
   const bloch = (q: number) => {
-    const m = 1 << (n - 1 - q);
+    const m = 1 << q;
     let x = 0, y = 0, z = 0;
     for (let i = 0; i < dim; i++) {
       if (i & m) continue;
@@ -44,7 +44,7 @@ const close = (a: number, b: number, digits = 10) => expect(a).toBeCloseTo(b, di
 const THETAS = [0.3, 1.2, 2.5, 4.4];
 
 describe("intro", () => {
-  test("interference: q0 back to 0, q1 ends at 1", () => close(run("interference.qasm").p(0b01), 1));
+  test("interference: q0 back to 0, q1 ends at 1", () => close(run("interference.qasm").p(0b10), 1)); // |q1 q0⟩ = |10⟩
 
   test("Mach–Zehnder: P(0) = cos²(θ/2)", () => {
     for (const theta of THETAS) close(run("mach_zehnder.qasm", { theta }).marginal([0], "0"), Math.cos(theta / 2) ** 2);
@@ -87,13 +87,13 @@ describe("protocols and error correction", () => {
 
   test("bit-flip code: the data end exactly as encoded, wherever the error is", () => {
     const src = source("bitflip_correct.qasm");
-    // syndrome bits (q3 q4 q5) for an error on q0, q1, q2
-    for (const [q, syn] of [[0, "100"], [1, "111"], [2, "010"]] as const) {
+    // syndrome bits as Qiskit writes them (q5 q4 q3) for an error on q0, q1, q2; the data (q2 q1 q0) on the right
+    for (const [q, syn] of [[0, "001"], [1, "111"], [2, "010"]] as const) {
       for (const theta of THETAS) {
         const r = state(src.replace("x q[1];", `x q[${q}];`), { theta });
         const [c, s] = [Math.cos(theta / 2), Math.sin(theta / 2)];
-        close(r.amp(r.idx("000" + syn))[0], c);
-        close(r.amp(r.idx("111" + syn))[0], s);
+        close(r.amp(r.idx(syn + "000"))[0], c);
+        close(r.amp(r.idx(syn + "111"))[0], s);
       }
     }
   });
@@ -118,16 +118,22 @@ describe("decompositions: each ends back in |00⟩ exactly", () => {
 describe("algorithms", () => {
   test("HHL: the q0 = 1 branch holds x ∝ (3, 1), with probability 5/8", () => {
     const r = run("hhl_2x2.qasm");
-    const a = r.amp(r.idx("1000")), b = r.amp(r.idx("1001"));
+    const a = r.amp(r.idx("0001")), b = r.amp(r.idx("1001")); // |q3 q2 q1 q0⟩: q0 = 1, and q0 = q3 = 1
     close(Math.hypot(...a) / Math.hypot(...b), 3);
     close(a[0] * b[1] - a[1] * b[0], 0); // same phase
     close(r.marginal([0], "1"), 5 / 8);
   });
 
-  test("quantum counting: the clock reads 010 or 110, half each", () => {
+  test("Fourier addition: b = 10 + 01 = 11 exactly, a unchanged (bug #60)", () => {
+    close(run("quantum_fourier_addition_4q.qasm").p(0b1101), 1); // |b1 b0 a1 a0⟩ = |11 01⟩
+  });
+
+  test("Draper adder: 2 + 1 = 3", () => close(run("draper_adder.qasm").p(0b11), 1));
+
+  test("quantum counting: the clock reads 010 or 110 (q2 q1 q0), half each", () => {
     const r = run("quantum_counting.qasm");
-    close(r.marginal([0, 1, 2], "010"), 0.5);
-    close(r.marginal([0, 1, 2], "110"), 0.5);
+    close(r.marginal([0, 1, 2], "010"), 0.5); // k = 2: q1 = 1
+    close(r.marginal([0, 1, 2], "011"), 0.5); // k = 6: q1 = q2 = 1 (bits listed for q0, q1, q2)
   });
 });
 

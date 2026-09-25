@@ -44,12 +44,12 @@ export const DEFINITIONS: Record<string, string> = {
   iswap: "gate iswap a, b { s a; s b; h a; cx a, b; cx b, a; h b; }",
   // Quantiom's DCX and ECR act with the qubit roles the other way round from
   // Qiskit's gates of the same name; these follow the simulator's matrices.
-  dcx: "gate dcx a, b { cx b, a; cx a, b; }",
+  dcx: "gate dcx a, b { cx a, b; cx b, a; }",
   rxx: "gate rxx(p0) a, b { h a; h b; cx a, b; rz(p0) b; cx a, b; h a; h b; }",
   ryy: "gate ryy(p0) a, b { rx(pi/2) a; rx(pi/2) b; cx a, b; rz(p0) b; cx a, b; rx(-pi/2) a; rx(-pi/2) b; }",
   rzz: "gate rzz(p0) a, b { cx a, b; rz(p0) b; cx a, b; }",
   rzx: "gate rzx(p0) a, b { h b; cx a, b; rz(p0) b; cx a, b; h b; }",
-  ecr: "gate ecr a, b { rzx(pi/4) b, a; x b; rzx(-pi/4) b, a; }",
+  ecr: "gate ecr a, b { rzx(pi/4) a, b; x a; rzx(-pi/4) a, b; }",
   sqrtswap: "gate sqrtswap a, b { cx b, a; ctrl @ sx a, b; cx b, a; }",
   sqrtswapdg: "gate sqrtswapdg a, b { inv @ sqrtswap a, b; }",
   fsim: "gate fsim(p0, p1) a, b { rxx(p0) a, b; ryy(p0) a, b; cp(-p1) a, b; }",

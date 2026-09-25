@@ -13,17 +13,17 @@
 // states are exchanged within the triplet subspace under XX, YY, ZZ
 // rotations.
 //
-// Here we prepare |10⟩ — a uniform superposition of singlet and Ψ+
-// triplet — and apply ONE Trotter step. Slide t in the Parameters
-// panel (or hit ▶) to watch the populations oscillate between |10⟩
-// and |01⟩ at frequency 2J.
+// Here we prepare |01⟩ (X on q[0], the rightmost bit) — a uniform
+// superposition of singlet and Ψ+ triplet — and apply ONE Trotter step.
+// Slide t in the Parameters panel (or hit ▶) to watch the populations
+// oscillate between |01⟩ and |10⟩ at frequency 2J.
 
 OPENQASM 3.0;
 include "stdgates.inc";
 
 qubit[2] q;
 
-// Initial state |10⟩.
+// Initial state |01⟩.
 x q[0];
 
 // One Trotter step with J = 1 and δt = t (the magic animation symbol).

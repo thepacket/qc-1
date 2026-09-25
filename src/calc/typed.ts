@@ -18,8 +18,8 @@
  */
 import type { CustomGate } from "./custom";
 import { applyStep, evalParam, type Entry, type Step } from "./steps";
-import { statePrepCircuit } from "../sim/statePrep";
-import { synthesizeUnitary, type Cx } from "../sim/unitarySynth";
+import type { Cx } from "../sim/unitarySynth";
+import { prepCircuit, synthUnitary } from "./order";
 import { raiseCircuit } from "./toolCircuit";
 
 export const TYPED_MAX_QUBITS = 4; // matrices (the synthesis is O(4^k))
@@ -59,7 +59,7 @@ export function parseComplex(tok: string): [number, number] | null {
   return Number.isFinite(r) && Number.isFinite(i) ? [r, i] : null;
 }
 
-/** A typed state: k qubits and its normalised amplitudes (q0 is the leftmost bit of a label). */
+/** A typed state: k qubits and its normalised amplitudes, as Qiskit reads them (q0 is the rightmost bit of a label; amplitude i has qubit q as bit q). */
 /** QC-1 (#59): typed text beyond this is refused before any parsing (a 16×16 matrix needs a few kB). */
 export const TYPED_MAX_CHARS = 20_000;
 
@@ -115,7 +115,11 @@ export function parseState(text: string): { k: number; re: number[]; im: number[
   return { k, re: re.map((x) => x / nrm), im: im.map((x) => x / nrm) };
 }
 
-/** A typed matrix: square, 2^k × 2^k, rows by ";" or new lines. Returns rows of [re, im]. */
+/**
+ * A typed matrix: square, 2^k × 2^k, rows by ";" or new lines, in Qiskit's
+ * Operator convention (bit j of the row/column index is the j-th qubit the
+ * gate is placed on). Returns rows of [re, im].
+ */
 export function parseMatrix(text: string): { k: number; U: Cx[][]; drift: number } {
   if (text.length > TYPED_MAX_CHARS) throw new Error(`at most ${TYPED_MAX_CHARS} characters`);
   const rows = text.trim().replace(/−/g, "-").split(/[;\n]+/).map((r) => r.trim()).filter(Boolean)
@@ -175,7 +179,7 @@ function operator(k: number, tape: Entry[]): Float64Array[] {
 
 /** PSIj: a k-qubit gate taking |0…0⟩ to the state, exactly. */
 export function stateGate(name: string, st: { k: number; re: number[]; im: number[] }): CustomGate {
-  const circ = statePrepCircuit(st.re, st.im, st.k);
+  const circ = prepCircuit(st.re, st.im, st.k);
   if (!circ) throw new Error("the state is zero");
   const tape = raiseCircuit(circ);
   const col = operator(st.k, tape)[0];
@@ -194,7 +198,7 @@ export function matrixGate(name: string, m: { k: number; U: Cx[][] }): CustomGat
     const [[a, b], [c, dd]] = m.U;
     tape = [[{ id: `m${seq++}`, gateId: "u_arb", column: 0, targets: [0], controls: [], clbits: [], params: [a.re, a.im, b.re, b.im, c.re, c.im, dd.re, dd.im].map(String) }]];
   } else {
-    const gates = synthesizeUnitary(m.U, m.k);
+    const gates = synthUnitary(m.U, m.k);
     if (!gates) throw new Error("synthesis failed");
     tape = raiseCircuit({ numQubits: m.k, numClbits: 0, gates });
   }

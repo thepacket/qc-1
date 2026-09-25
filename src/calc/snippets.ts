@@ -33,13 +33,15 @@ export const SNIPPETS: Snippet[] = [
     },
   },
   {
-    id: "qft", label: "QFT (all qubits)", hint: "H, controlled phases, bit-reversal swaps", minQubits: 2,
+    id: "qft", label: "QFT (all qubits)", hint: "H, controlled phases, bit-reversal swaps (Qiskit's QFT: q0 least significant)", minQubits: 2,
     build: (n) => {
+      // Quantiom's snippet, on mirrored qubits: in Qiskit's order the most significant qubit comes first.
+      const t = (q: number) => n - 1 - q;
       const out: Entry[] = [];
       let col = 0;
       for (let i = 0; i < n; i++) {
-        out.push(g("h", col++, [], [i]));
-        for (let j = i + 1; j < n; j++) out.push(g("p", col++, [j], [i], [`pi/${2 ** (j - i)}`]));
+        out.push(g("h", col++, [], [t(i)]));
+        for (let j = i + 1; j < n; j++) out.push(g("p", col++, [t(j)], [t(i)], [`pi/${2 ** (j - i)}`]));
       }
       for (let i = 0; i < Math.floor(n / 2); i++) out.push(g("swap", col++, [], [i, n - 1 - i]));
       return out;
@@ -51,9 +53,10 @@ export const SNIPPETS: Snippet[] = [
       const out: Entry[] = [];
       let col = 0;
       for (let i = 0; i < Math.floor(n / 2); i++) out.push(g("swap", col++, [], [i, n - 1 - i]));
+      const t = (q: number) => n - 1 - q;
       for (let i = n - 1; i >= 0; i--) {
-        for (let j = n - 1; j > i; j--) out.push(g("p", col++, [j], [i], [`-pi/${2 ** (j - i)}`]));
-        out.push(g("h", col++, [], [i]));
+        for (let j = n - 1; j > i; j--) out.push(g("p", col++, [t(j)], [t(i)], [`-pi/${2 ** (j - i)}`]));
+        out.push(g("h", col++, [], [t(i)]));
       }
       return out;
     },

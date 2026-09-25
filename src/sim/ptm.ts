@@ -30,10 +30,11 @@ export type PTMResult = {
 const PCHARS = ["I", "X", "Y", "Z"];
 
 function pauliLabel(n: number, k: number): string {
-  // qubit 0 is the most-significant base-4 digit (matches big-endian strings).
+  // QC-1: Qiskit bit order — qubit q is base-4 digit q (Qiskit's Pauli basis order);
+  // character q of the (internal) label is qubit q.
   let s = "";
   for (let q = 0; q < n; q++) {
-    s += PCHARS[(k >> (2 * (n - 1 - q))) & 3];
+    s += PCHARS[(k >> (2 * q)) & 3];
   }
   return s;
 }

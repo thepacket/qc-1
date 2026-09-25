@@ -6,7 +6,7 @@
  * derived quantities against Qiskit/numpy (fixture `noise-analyses`).
  */
 import type { AnalysisContext, AnalysisResult, Opts } from "./types";
-import { ANALYSIS_BY_ID, defaultCut, inputValue, pauliValue } from "./catalog";
+import { ANALYSIS_BY_ID, defaultCut, inputValue, pauliInput } from "./catalog";
 import { KET_ROWS, SHOT_ROWS, type ViewData } from "../calc/core";
 import { topK } from "../calc/analysis";
 import { Register } from "../calc/register";
@@ -96,12 +96,12 @@ function eigenvalues(rho: Float64Array, d: number): number[] {
 
 const entropyOf = (ev: number[]) => -ev.filter((p) => p > 1e-15).reduce((a, p) => a + p * Math.log2(p), 0);
 
-/** Partial trace keeping `keep` (sorted), big-endian. */
+/** Partial trace keeping `keep` (sorted): qubit q is bit q, keep[t] is bit t of ρ (Qiskit's order). */
 export function partialTrace(rho: Float64Array, n: number, keep: number[]): Float64Array {
   const d = 1 << n, k = keep.length, dk = 1 << k;
   const out = new Float64Array(2 * dk * dk);
-  const sub = (i: number) => keep.reduce((a, q, t) => a | (((i >> (n - 1 - q)) & 1) << (k - 1 - t)), 0);
-  const rest = (i: number) => i & ~keep.reduce((a, q) => a | (1 << (n - 1 - q)), 0);
+  const sub = (i: number) => keep.reduce((a, q, t) => a | (((i >> q) & 1) << t), 0);
+  const rest = (i: number) => i & ~keep.reduce((a, q) => a | (1 << q), 0);
   for (let i = 0; i < d; i++) for (let j = 0; j < d; j++) {
     if (rest(i) !== rest(j)) continue;
     const a = sub(i), b = sub(j);
@@ -350,7 +350,7 @@ export const NOISE_RUNS: Record<string, Run> = {
     const flip = (dist: Float64Array, inverse: boolean) => {
       let out = Float64Array.from(dist);
       for (let q = 0; q < n; q++) {
-        const p = rate(m, "readout", q), mask = 1 << (n - 1 - q);
+        const p = rate(m, "readout", q), mask = 1 << q;
         const [a, b] = inverse ? [(1 - p) / (1 - 2 * p), -p / (1 - 2 * p)] : [1 - p, p];
         const next = new Float64Array(d);
         for (let i = 0; i < d; i++) next[i] = a * out[i] + b * out[i ^ mask];
@@ -379,7 +379,7 @@ export const NOISE_RUNS: Record<string, Run> = {
   mitigated(ctx, opts) {
     const m = model(ctx);
     const n = ctx.n;
-    const terms = parsePauliSum(pauliValue(opts, "obs", n));
+    const terms = parsePauliSum(pauliInput(opts, "obs", n));
     if (terms[0].paulis.length !== n) throw new Error(`Pauli strings need ${n} letters`);
     const how = num("mitigated", "method", opts, n);
     const unitary = !ctx.tape.some((e) => e.some((s) => s.condition || ["measure", "measure_x", "measure_y", "reset"].includes(s.gateId) || s.gateId.startsWith("init")));

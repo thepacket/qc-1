@@ -6,9 +6,9 @@ import type { Matrix } from "./matrices";
  * State layout: Float64Array of length 2 * 2^n, with re/im interleaved.
  * State[2*i] is the real part of amplitude i; state[2*i+1] is the imaginary.
  *
- * Big-endian basis convention: qubit 0 is the MSB. The matrix U is indexed
- * by basis states where qubits[0] supplies the most-significant bit of the
- * sub-index, qubits[k-1] the least.
+ * Basis convention (QC-1: Qiskit bit order): qubit q is bit q of the global
+ * index. The local matrix U is indexed by sub-states where qubits[0] supplies
+ * the most-significant bit of the sub-index, qubits[k-1] the least.
  *
  * For each fixed assignment of the n − k "other" qubits, this routine
  * extracts the 2^k-dim subspace, multiplies by U, and writes back. Total
@@ -26,13 +26,13 @@ export function applyKQubit(
     throw new Error(`gate matrix size ${U.length} does not match ${k} qubits`);
   }
 
-  // Bit masks for gate qubits (big-endian: qubit q is bit (n-1-q) of the index).
-  const gateMasks = qubits.map((q) => 1 << (n - 1 - q));
+  // Bit masks for gate qubits. QC-1: Qiskit bit order (qubit q is bit q of the index).
+  const gateMasks = qubits.map((q) => 1 << q);
 
   // List of "other" qubit bit positions, in MSB-first order.
   const otherMasks: number[] = [];
   for (let q = 0; q < n; q++) {
-    if (!qubits.includes(q)) otherMasks.push(1 << (n - 1 - q));
+    if (!qubits.includes(q)) otherMasks.push(1 << q); // QC-1: Qiskit bit order (qubit q is bit q)
   }
   const otherCount = 1 << otherMasks.length;
 

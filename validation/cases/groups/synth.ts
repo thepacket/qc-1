@@ -2,8 +2,8 @@ import { raiseCircuit } from "../../../src/calc/toolCircuit";
 import { lowerTape } from "../../../src/calc/lower";
 import { Register } from "../../../src/calc/register";
 import { buildUnitary } from "../../../src/sim/unitary";
-import { statePrepCircuit } from "../../../src/sim/statePrep";
-import { synthesizeUnitary, type Cx } from "../../../src/sim/unitarySynth";
+import type { Cx } from "../../../src/sim/unitarySynth";
+import { internalPauliSum, prepCircuit, synthUnitary } from "../../../src/calc/order";
 import { buildTrotterCircuit, parsePauliSum, type TrotterOrder } from "../../../src/sim/trotter";
 import { exportQasm3 } from "../../../src/qasm/fromTape";
 import type { Entry } from "../../../src/calc/steps";
@@ -81,7 +81,7 @@ const cplx = (u: { mag: Float64Array; phase: Float64Array }) => ({
 });
 
 export function computePrep(c: PrepCase) {
-  const tape: Entry[] = raiseCircuit(statePrepCircuit(c.re, c.im, c.n)!);
+  const tape: Entry[] = raiseCircuit(prepCircuit(c.re, c.im, c.n)!);
   const reg = new Register(c.n, tape);
   // |⟨target|ψ⟩| with the target normalised.
   const nrm = Math.sqrt(c.re.reduce((s, x, i) => s + x * x + c.im[i] ** 2, 0));
@@ -95,11 +95,12 @@ export function computePrep(c: PrepCase) {
 }
 
 export function computeSynth(c: SynthCase) {
-  const tape: Entry[] = raiseCircuit({ numQubits: c.n, numClbits: 0, gates: synthesizeUnitary(c.U, c.n)! });
+  const tape: Entry[] = raiseCircuit({ numQubits: c.n, numClbits: 0, gates: synthUnitary(c.U, c.n)! });
   return { tape, qasm: exportQasm3(c.n, tape), unitary: cplx(buildUnitary(lowerTape(c.n, tape), {}, [])!), gates: tape.length };
 }
 
 export function computeTrotter(c: TrotterCase) {
-  const tape: Entry[] = raiseCircuit(buildTrotterCircuit(parsePauliSum(c.text), { steps: c.steps, delta: "t", order: c.order }));
+  // The case's Hamiltonian is written as Qiskit writes Pauli strings (q0 rightmost), like a LAB input.
+  const tape: Entry[] = raiseCircuit(buildTrotterCircuit(parsePauliSum(internalPauliSum(c.text)), { steps: c.steps, delta: "t", order: c.order }));
   return { tape, qasm: exportQasm3(c.n, tape), unitary: cplx(buildUnitary(lowerTape(c.n, tape), { t: c.t }, [])!) };
 }

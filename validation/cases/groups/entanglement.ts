@@ -9,11 +9,12 @@ import { renyiSpectrum } from "../../../src/sim/renyiSpectrum";
 import { pageEntropyBits } from "../../../src/sim/pageCurve";
 import { allPauliExpectations } from "../../../src/sim/pauliSpectrum";
 import { paulis, type Pauli } from "../../../src/sim/expectation";
+import { internalLabel } from "../../../src/calc/order";
 import { stateCases, type StateCase } from "../states";
 
 export const cases = (): StateCase[] => stateCases(3003);
 
-/** Subsystems each case is probed on (sorted; QC-1 puts kept[0] as the MSB of ρ). */
+/** Subsystems each case is probed on (sorted; kept[0] is the low bit of ρ, as in Qiskit's partial_trace). */
 export function subsets(n: number): number[][] {
   const s = [[0], [n - 1], [0, 1], [0, n - 1]];
   if (n >= 3) s.push([0, 1, 2], [1, n - 1]);
@@ -54,7 +55,8 @@ export function compute(c: StateCase) {
     renyi: { alphas: renyi.alphas, entropies: renyi.entropies, min: renyi.min, hartley: renyi.hartley },
     negativity: negativityMatrix(state, n)!.neg,
     concurrence: concurrenceMatrix(state, n)!.c,
-    paulis: pauliProbes(n).map((p) => paulis(state, n, p.split("") as Pauli[])),
+    // The probes are Qiskit labels (q0 rightmost), converted at the boundary like a LAB input.
+    paulis: pauliProbes(n).map((p) => paulis(state, n, internalLabel(p).split("") as Pauli[])),
     allPaulis: n <= 3 ? Array.from(allPauliExpectations(state, n)) : null,
   };
 }

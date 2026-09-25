@@ -3,7 +3,7 @@
 //   H = − Σ (X_i X_{i+1} + Y_i Y_{i+1}),  three steps δ = t/3.
 //
 // Uses the (XX + YY)(2δ) gate as the native interaction, so each step is
-// just three two-qubit gates on the chain. Starting from |1010⟩ — a
+// just three two-qubit gates on the chain. Starting from |0101⟩ (X on q[0] and q[2]) — a
 // classical anti-ferromagnet — the spin pattern delocalises with time.
 
 OPENQASM 3.0;

@@ -19,7 +19,7 @@ import qiskit.quantum_info as qi
 from qiskit import qasm3
 from qiskit.quantum_info import Statevector
 
-from common import OUT, be_statevector, fail, r, write_fixture
+from common import OUT, statevector, fail, r, write_fixture
 
 TOL = 1e-9
 QGT_TOL = 1e-8  # QC-1 converges adaptive Richardson differences to ~1e-9 (bug #39); this reference is fixed-step Richardson
@@ -41,7 +41,7 @@ def parse(text):
 
 
 def op(terms):
-    return qi.SparsePauliOp.from_list(terms)  # direct big-endian wrap: no label reversal
+    return qi.SparsePauliOp.from_list(terms)  # Qiskit's labels on Qiskit's vector
 
 
 def ev(sv, o):
@@ -61,7 +61,7 @@ def spin_moments(sv, n):
 
 def state_ref(c):
     n = c["n"]
-    sv = qi.Statevector(be_statevector(c["qasm"]))
+    sv = qi.Statevector(statevector(c["qasm"]))
     out = {"hams": []}
     for text in c["hamTexts"]:
         terms = parse(text)
@@ -109,8 +109,8 @@ def bound(qc, scope):
     return qc.assign_parameters({ps[QNAME.get(k, k)]: v for k, v in scope.items() if QNAME.get(k, k) in ps})
 
 
-def be_state(qc, scope):
-    return Statevector(bound(qc, scope)).reverse_qargs().data
+def state(qc, scope):
+    return Statevector(bound(qc, scope)).data
 
 
 def deriv(qc, scope, sym, h=1e-3):
@@ -119,14 +119,14 @@ def deriv(qc, scope, sym, h=1e-3):
         a, b = dict(scope), dict(scope)
         a[sym] += hh
         b[sym] -= hh
-        return (be_state(qc, a) - be_state(qc, b)) / (2 * hh)
+        return (state(qc, a) - state(qc, b)) / (2 * hh)
     return (4 * d(h / 2) - d(h)) / 3
 
 
 def sym_ref(c, points, grid):
     n, scope, syms = c["n"], c["scope"], c["symbols"]
     qc = qasm3.loads(c["qasm"])
-    psi = be_state(qc, scope)
+    psi = state(qc, scope)
     ds = [deriv(qc, scope, s) for s in syms]
     k = len(syms)
     Q = np.array([[np.vdot(ds[i], ds[j]) - np.vdot(ds[i], psi) * np.vdot(psi, ds[j]) for j in range(k)] for i in range(k)])
@@ -136,16 +136,16 @@ def sym_ref(c, points, grid):
     if "t" in syms:
         path = [[] for _ in range(n)]
         for kk in range(points):
-            sv = qi.Statevector(be_state(qc, {**scope, "t": 2 * math.pi * kk / (points - 1)}))
+            sv = qi.Statevector(state(qc, {**scope, "t": 2 * math.pi * kk / (points - 1)}))
             for q in range(n):
-                lab = lambda a: "".join(a if x == q else "I" for x in range(n))
+                lab = lambda a: "".join(a if x == n - 1 - q else "I" for x in range(n))  # qubit q at position n-1-q
                 path[q].append({"x": ev(sv, qi.Pauli(lab("X"))), "y": ev(sv, qi.Pauli(lab("Y"))), "z": ev(sv, qi.Pauli(lab("Z")))})
         out["bloch"] = path
     else:
         out["bloch"] = None
     prs, r2 = [], []
     for text in c["qc1"]["prefixQasm"]:
-        p = np.abs(be_state(qasm3.loads(text), scope)) ** 2
+        p = np.abs(state(qasm3.loads(text), scope)) ** 2
         ipr = float(min(1.0, max(1 / 2 ** n, np.sum(p ** 2))))
         prs.append(1 / ipr)
         r2.append(-math.log(ipr))
@@ -154,7 +154,7 @@ def sym_ref(c, points, grid):
     row = []
     for i in range(grid):
         x = -math.pi + 2 * math.pi * i / (grid - 1)
-        row.append(ev(qi.Statevector(be_state(qc, {**scope, syms[0]: x})), H))
+        row.append(ev(qi.Statevector(state(qc, {**scope, syms[0]: x})), H))
     out["landscape"] = [row]
     return out
 

@@ -1,8 +1,8 @@
 /**
- * Algorithm blocks for CATALOG: QFT, inverse QFT, Grover diffuser and a QAOA
- * layer on k qubits. Local qubit 0 is the block's most significant qubit
- * (QC-1's big-endian convention): QFT maps |x⟩ to Σ_y e^{2πi x y / 2^k}|y⟩/√2^k
- * with x and y read q0-first.
+ * Algorithm blocks for the palette: QFT, inverse QFT, Grover diffuser and a
+ * QAOA layer on k qubits. They follow Qiskit: QFT is Qiskit's QFTGate on the
+ * block's qubits in order (local qubit 0 is the least significant bit), mapping
+ * |x⟩ to Σ_y e^{2πi x y / 2^k}|y⟩/√2^k with x = Σ x_j 2^j.
  *
  * QFT, QFT† and the diffuser become custom gates (QFT3, IQFT3, DIFF3, …), so a
  * block is one tape step that exports as a `gate` definition. The QAOA layer
@@ -20,12 +20,17 @@ const step = (gateId: string, targets: number[], controls: number[] = [], params
   id: `b${seq++}`, gateId, column: 0, targets, controls, clbits: [], params,
 });
 
-/** QFT on local qubits 0..k−1 (0 most significant), including the final bit-reversal swaps. */
+/**
+ * QFT on local qubits 0..k−1 (0 the least significant bit, as Qiskit's QFTGate):
+ * H on the most significant qubit first, its controlled phases from the lower
+ * ones, and so on down, then the bit-reversal swaps.
+ */
 function qft(k: number): Entry[] {
   const out: Entry[] = [];
+  const top = (j: number) => k - 1 - j; // the j-th most significant qubit
   for (let j = 0; j < k; j++) {
-    out.push([step("h", [j])]);
-    for (let m = j + 1; m < k; m++) out.push([step("p", [j], [m], [`π/${2 ** (m - j)}`])]);
+    out.push([step("h", [top(j)])]);
+    for (let m = j + 1; m < k; m++) out.push([step("p", [top(j)], [top(m)], [`π/${2 ** (m - j)}`])]);
   }
   for (let j = 0; j < k >> 1; j++) out.push([step("swap", [j, k - 1 - j])]);
   return out;

@@ -4,7 +4,7 @@
  * ported module validated against Qiskit/numpy (test/validated/*).
  */
 import type { AnalysisContext, AnalysisResult, Chart, Opts } from "./types";
-import { ANALYSIS_BY_ID, defaultCut, inputValue, pauliValue, symbolValue } from "./catalog";
+import { ANALYSIS_BY_ID, defaultCut, inputValue, pauliInput, symbolValue } from "./catalog";
 import { topK, bloch } from "../calc/analysis";
 import { reducedDensityMatrix, purity } from "../sim/density";
 import {
@@ -55,6 +55,7 @@ import { barrenPlateauDiagnostic, computeLandscape, optimizeExpectation } from "
 import { lowerTape, namedCircuit } from "../calc/lower";
 import { buildUnitary } from "../sim/unitary";
 import { pauliTransferMatrix } from "../sim/ptm";
+import { qiskitLabel } from "../calc/order";
 import { operatorEntanglement } from "../sim/operatorEntanglement";
 import { floquetSpectrum, GAP_RESOLUTION } from "../sim/floquetSpectrum";
 import { hamiltonianSpectrum } from "../sim/hamSpectrum";
@@ -117,7 +118,7 @@ type Run = (ctx: AnalysisContext, opts: Opts) => AnalysisResult | Promise<Analys
 
 /** The observable input, parsed; throws a readable error for bad text. */
 function observable(opts: Opts, n: number, key = "obs") {
-  const text = pauliValue(opts, key, n);
+  const text = pauliInput(opts, key, n);
   const terms = parsePauliSum(text);
   if (terms[0].paulis.length !== n) throw new Error(`Pauli strings need ${n} letters (one per qubit), got ${terms[0].paulis.length}`);
   return terms;
@@ -188,6 +189,7 @@ const RUNS: Record<string, Run> = {
     const { n, state } = ctx;
     const kept = cutOf(opts, "kept", n, [0]).slice(0, 6);
     const rho = reducedDensityMatrix(state, n, kept);
+    // Basis labels as Qiskit writes them: the first kept qubit is the rightmost bit.
     const labels = [...Array(1 << kept.length).keys()].map((i) => i.toString(2).padStart(kept.length, "0"));
     return {
       scalars: [
@@ -794,7 +796,8 @@ Object.assign(RUNS, {
   ptm(ctx) {
     requireUnitary(ctx);
     const res = pauliTransferMatrix(lowerTape(ctx.n, ctx.tape), ctx.scope, [])!;
-    return { charts: [{ kind: "heatmap", scale: "div", min: -1, max: 1, rows: res.labels, cols: res.labels, values: res.R, title: "R_ij (row i = output Pauli)" }] };
+    const labels = res.labels.map(qiskitLabel); // as Qiskit writes Pauli strings (q0 rightmost)
+    return { charts: [{ kind: "heatmap", scale: "div", min: -1, max: 1, rows: labels, cols: labels, values: res.R, title: "R_ij (row i = output Pauli)" }] };
   },
 
   opent(ctx) {

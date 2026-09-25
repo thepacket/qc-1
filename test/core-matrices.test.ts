@@ -69,7 +69,7 @@ describe("known gate identities", () => {
     expect(matClose(matmul(M_X, M_Y), iZ)).toBe(true);
   });
 
-  test("CNOT is the canonical big-endian control-0 target-1 matrix", () => {
+  test("CNOT's local matrix has the control (its first qubit) as the high bit (applyKQubit maps local qubits itself)", () => {
     const cx = buildMatrix("cx", [])!;
     expect(matClose(cx, [
       [[1, 0], [0, 0], [0, 0], [0, 0]],

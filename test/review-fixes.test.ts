@@ -22,7 +22,7 @@ describe("fixes from review", () => {
     const v = c.noisyView!.view!;
     if (v.mode !== "prob") throw new Error(v.mode);
     const p = (i: number) => v.rows.find((r) => r.i === i)?.p ?? 0;
-    expect(p(0b10)).toBeGreaterThan(0.45); // H on q0 only: |00⟩ and |10⟩
+    expect(p(0b01)).toBeGreaterThan(0.45); // H on q0 only: |00⟩ and |01⟩ (q0 rightmost)
     expect(p(0b11)).toBeLessThan(0.05);
   });
 

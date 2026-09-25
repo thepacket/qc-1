@@ -4,6 +4,7 @@ import { applyKQubit } from "../sim/apply";
 import { buildMatrix, controlled, M_H, M_S, M_Sdg, M_U, M_X, type Matrix } from "../sim/matrices";
 import { measureX, measureY, measureZ } from "../sim/measure";
 import { compileExpr } from "../sim/expr";
+import { symbolGlyph, symbolNames } from "./entry";
 
 /**
  * One gate application on the tape. It's a Quantiom-compatible PlacedGate
@@ -286,11 +287,11 @@ export function applyControlled1(
   target: number,
   U: Matrix,
 ): void {
-  const tmask = 1 << (n - 1 - target);
+  const tmask = 1 << target; // qubit q is bit q (Qiskit's order)
   let cmask = 0;
   let cwant = 0;
   controls.forEach((q, i) => {
-    const b = 1 << (n - 1 - q);
+    const b = 1 << q;
     cmask |= b;
     if (controlStates?.[i] !== false) cwant |= b;
   });
@@ -327,23 +328,32 @@ const LABEL: Record<string, string> = {
   initialize: "|ψ⟩",
 };
 
-/** Imported symbols keep their ASCII names; show them as the VAR key's glyphs. */
-const GLYPH: Record<string, string> = {
-  theta: "θ", phi: "φ", lambda: "λ", alpha: "α", beta: "β", gamma: "γ", delta: "δ", tau: "τ", omega: "ω",
-};
-
-/** Pretty-print an expression the way it was keyed in (π/4, 3π/4, √(2)). */
+/** Pretty-print an expression the way it was keyed in (π/4, 3π/4, √(2)); symbols as glyphs (gamma_0 → γ₀). */
 export function prettyExpr(e: string): string {
   return e
     .replace(/\bpi\b/g, "π")
-    .replace(/\b(theta|phi|lambda|alpha|beta|gamma|delta|tau|omega)\b/g, (g) => GLYPH[g])
-    .replace(/(\d|\)|π)\*(π|t\b|[θφλαβγδτω]|sin\(|cos\(|exp\(|sqrt\()/g, "$1$2")
+    .replace(/[A-Za-z_][A-Za-z0-9_]*/g, (id) => (FUNCS.has(id) ? id : symbolGlyph(id)))
+    .replace(/(\d|\)|π)\*(π|t\b|[α-ω]|sin\(|cos\(|exp\(|sqrt\()/g, "$1$2")
     .replace(/(\d|\))\*π/g, "$1π")
     .replace(/(\d|\)|π)\*\(/g, "$1(")
     .replace(/sqrt\(/g, "√(")
     .replace(/\*/g, "×")
     .replace(/\//g, "÷")
     .replace(/-/g, "−");
+}
+
+const FUNCS = new Set(["sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh", "sqrt", "abs", "exp", "ln", "log", "pow"]);
+
+/**
+ * prettyExpr's text (or anything typed like it) back to a parseable expression:
+ * ÷ × − √, γ₀ → gamma_0, and implicit products (2π, 3θ, 2(…), π t).
+ */
+export function plainExpr(text: string): string {
+  const s = symbolNames(text).replace(/÷/g, "/").replace(/[×·]/g, "*").replace(/[−–]/g, "-").replace(/√/g, "sqrt").replace(/π/g, " pi ");
+  const toks = s.match(/(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|[A-Za-z_][A-Za-z0-9_]*|\*\*|[=!<>]=|\S/g) ?? [];
+  const value = (t: string) => /^[\d.]/.test(t) || (/^[A-Za-z_]/.test(t) && !FUNCS.has(t)) || t === ")";
+  const starts = (t: string) => /^[\d.A-Za-z_(]/.test(t);
+  return toks.map((t, i) => (i && value(toks[i - 1]) && starts(t) ? `*${t}` : t)).join("");
 }
 
 /** The gate's name and arguments, without controls or qubits: "RZ(π÷4)", "G1", "|ψ⟩(0.707,0.707)". */

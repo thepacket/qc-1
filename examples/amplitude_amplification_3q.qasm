@@ -2,7 +2,7 @@
 // multi-element marked set.
 //
 // Setup: a 3-qubit register N = 8 with a "marked subspace" containing
-// TWO states: {|001⟩, |110⟩}. Initial uniform superposition has
+// TWO states: {|100⟩, |011⟩} (kets as Qiskit writes them, q[0] rightmost). Initial uniform superposition has
 // 2/8 = 1/4 probability of landing in the marked subspace. One
 // Grover iteration amplifies this toward unity:
 //
@@ -27,13 +27,13 @@ bit[3] c;
 
 h q[0]; h q[1]; h q[2];
 
-// Oracle: phase-flip on |001⟩ and |110⟩.
-// |001⟩ — q[0]=0, q[1]=0, q[2]=1
+// Oracle: phase-flip on |100⟩ and |011⟩.
+// |100⟩ — q[2]=1, q[1]=0, q[0]=0
 x q[0]; x q[1];
 ctrl(2) @ z q[0], q[1], q[2];
 x q[0]; x q[1];
 
-// |110⟩ — q[0]=1, q[1]=1, q[2]=0
+// |011⟩ — q[2]=0, q[1]=1, q[0]=1
 x q[2];
 ctrl(2) @ z q[0], q[1], q[2];
 x q[2];

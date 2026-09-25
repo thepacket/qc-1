@@ -48,7 +48,7 @@ def main():
     for c in doc["prep"]:
         target = np.array(c["re"]) + 1j * np.array(c["im"])
         target /= np.linalg.norm(target)
-        psi = Statevector(qasm3.loads(c["qc1"]["qasm"])).reverse_qargs().data
+        psi = Statevector(qasm3.loads(c["qc1"]["qasm"])).data
         ov = abs(np.vdot(target, psi))
         worst = max(worst, 1 - ov)
         if abs(ov - 1) > TOL:
@@ -59,7 +59,7 @@ def main():
     for c in doc["synth"]:
         d = 1 << c["n"]
         U = np.array([[z["re"] + 1j * z["im"] for z in row] for row in c["U"]])
-        got = Operator(qasm3.loads(c["qc1"]["qasm"])).reverse_qargs().data
+        got = Operator(qasm3.loads(c["qc1"]["qasm"])).data
         e1, e2 = phase_err(U, got), phase_err(U, cmat(c["qc1"]["unitary"], d))
         worst = max(worst, e1, e2)
         if e1 > TOL or e2 > TOL:
@@ -72,11 +72,11 @@ def main():
         synth = LieTrotter(reps=c["steps"]) if c["order"] == 1 else SuzukiTrotter(order=c["order"], reps=c["steps"])
         qc = QuantumCircuit(n)
         qc.append(PauliEvolutionGate(op, time=c["steps"] * c["t"], synthesis=synth), range(n))
-        # A QC-1 label read as a Qiskit label is the big-endian matrix directly.
+        # The case's labels are Qiskit's (q0 rightmost), as QC-1's LAB inputs are.
         ref = Operator(qc.decompose(reps=3)).data
         imp = qasm3.loads(c["qc1"]["qasm"])
         imp = imp.assign_parameters({p: c["t"] for p in imp.parameters})
-        got = Operator(imp).reverse_qargs().data
+        got = Operator(imp).data
         e1, e2 = phase_err(ref, got), phase_err(ref, cmat(c["qc1"]["unitary"], d))
         worst = max(worst, e1, e2)
         if e1 > TOL or e2 > TOL:

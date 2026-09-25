@@ -6,6 +6,7 @@ import type { AnalysisResult } from "../../../src/analysis/types";
 import { models } from "./noise";
 import { productLayer, randomTape, rng } from "../tapes";
 import { parsePauliSum } from "../../../src/sim/trotter";
+import { internalPauliSum } from "../../../src/calc/order";
 
 export type NaCase = { id: string; n: number; tape: Entry[]; model: string; obs: string; cut: number[] };
 
@@ -34,7 +35,7 @@ export function compute(c: NaCase) {
   const readout = NOISE_RUNS.readout(ctx, {}).charts![0] as { rows: (string | number)[][] };
   const dec = NOISE_RUNS.decoherence(ctx, {}).charts![0] as { series: { y: number[] }[] };
   const terms = c.obs;
-  const H = parsePauliSum(terms);
+  const H = parsePauliSum(internalPauliSum(terms)); // the observable is written as Qiskit writes it, like a LAB input
   const znes = Object.fromEntries((["linear", "richardson", "exponential"] as const).map((f) => {
     const z = zne(c.n, c.tape, {}, m, H, f);
     return [f, { value: z.value, samples: z.samples.map((s) => s.value) }];

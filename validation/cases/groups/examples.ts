@@ -4,6 +4,7 @@ import { exportQasm3 } from "../../../src/qasm/fromTape";
 import { setCustomGates } from "../../../src/calc/custom";
 import { MAX_QUBITS, Register } from "../../../src/calc/register";
 import { StabilizerRegister } from "../../../src/stab/register";
+import { qiskitGenerators } from "../../../src/calc/order";
 import { branchTree } from "../../../src/calc/branches";
 import { MEASURE_IDS, NONUNITARY, type Entry } from "../../../src/calc/steps";
 
@@ -45,7 +46,7 @@ export function compute(file: string) {
     // Stabilizer mode: the generators of the state before the final measurements.
     if (!finalMeasurementsOnly(r.tape)) throw new Error(`${file}: above ${MAX_QUBITS} qubits, only final measurements are validated`);
     const unitary = r.tape.map((e) => e.filter((s) => s.gateId !== "measure")).filter((e) => e.length);
-    const generators = new StabilizerRegister(r.n, unitary).tab.stabilizers();
+    const generators = qiskitGenerators(new StabilizerRegister(r.n, unitary).tab.stabilizers());
     return { file, n: r.n, symbols: syms, scope, kind: "stabilizer" as const, generators, exported, notes: r.notes };
   }
   if (finalMeasurementsOnly(r.tape)) {

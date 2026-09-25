@@ -28,7 +28,7 @@ def main():
         expected = []
         for k, (pt, mine) in enumerate(zip(points, c["qc1"])):
             binding = {params[QASM_NAME.get(name, name)]: val for name, val in pt.items() if QASM_NAME.get(name, name) in params}
-            ref = Statevector(qc.assign_parameters(binding)).reverse_qargs().data
+            ref = Statevector(qc.assign_parameters(binding)).data
             for how in ("fresh", "replayed"):
                 err = float(np.max(np.abs(ref - state(mine[how]))))
                 if err > TOL:

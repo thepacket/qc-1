@@ -19,7 +19,8 @@ import { newGateId } from "../calc/ids";
  *
  * Single-qubit Paulis short-circuit to RX/RY/RZ directly.
  *
- * Pauli strings are big-endian: the first character is qubit 0.
+ * Pauli strings are in internal order: the first character is qubit 0
+ * (QC-1 converts Qiskit-order user text with src/calc/order.ts).
  */
 
 export type PauliTerm = { coefficient: number; paulis: string };

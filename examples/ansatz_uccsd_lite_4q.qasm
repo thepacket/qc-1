@@ -24,9 +24,9 @@ qubit[4] q;
 // rotation form, which is why it shows up in nearly every chemistry
 // ansatz from UCCSD to k-UpCCGSD to ADAPT-VQE.
 //
-// Below: Hartree-Fock reference |1100⟩ on q[0..3], one excitation
-// rotation. Slide θ in the Parameter panel to watch the
-// |1100⟩ ↔ |0011⟩ amplitudes oscillate (full state interferes within
+// Below: Hartree-Fock reference |0011⟩ (q[0] and q[1] occupied; q[0] is
+// the rightmost bit, as in Qiskit), one excitation rotation. Slide θ in the
+// Parameter panel to watch the |0011⟩ ↔ |1100⟩ amplitudes oscillate (full state interferes within
 // the particle-conserving subspace).
 
 // Hartree-Fock reference: spin-up orbitals occupied.

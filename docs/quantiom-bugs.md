@@ -67,6 +67,7 @@ Upstream file paths are relative to that project's `client/src/`.
 | 57 | `qasm/import.ts` | Modifier counts expanded without a budget: `pow(1000000000) @ x q;` allocated a billion steps on import (a share link or AI proposal could freeze the page) | external security review | Counts bounded when parsed (and ctrl ≥ 1); every emitted step charged to a per-import budget of 100 000 before allocation, a custom gate at its expanded size (nested definitions double), so pow·pow, broadcasts and nested gates are refused in about a millisecond |
 | 58 | `ui/Markdown.tsx` | A line starting with `#` that isn't a heading (`#`, `#hashtag`) stopped the paragraph loop without being consumed: an infinite loop on the main thread from ordinary chat text | external security review | One `blockStart` test shared by every branch, and a paragraph always takes its first line |
 | 59 | `calc/typed.ts` | The 8-qubit limit was checked after allocating 2^k entries (28 digits: a 268-million-entry array) | external security review | Checked before allocating, in every branch; typed text capped at 20 000 characters |
+| 60 | `examples/quantum_fourier_addition_4q.qasm` | The Fourier-basis "add a" phases were wrong: the program claims b = 01 + 10 = 11 but left |11⟩ with probability 0.43 (found when QC-1 moved to Qiskit's bit order and the example's result was probed) | QC-1 simulation of the program | Phases π·2^(m+j−1) from a's bit m onto b's bit j in Qiskit's QFT basis; b = 11 exactly (checked in test/examples-claims.test.ts) |
 
 ## Quirks in the reference tools (not upstream bugs)
 

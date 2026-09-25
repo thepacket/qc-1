@@ -41,7 +41,7 @@ export function HelpView({ calc }: { calc: Calculator }) {
         <h3>AI chat</h3>
         <p>The <b>AI</b> button opens a chat with a model of your choice through OpenRouter, using your own API key (stored on this device only). It reads the circuit and state and runs LAB analyses; a circuit it suggests comes with APPLY, and UNDO takes it back.</p>
         <h3>Conventions</h3>
-        <p>q0 is the leftmost (most significant) bit of |q0 q1 …⟩. Qiskit prints bitstrings the other way round (q0 rightmost); the exports take care of it. Angles are in radians; RX(θ) = e^(−iθX/2) as in Qiskit.</p>
+        <p>Bit order as in Qiskit: qubit q is bit q of a basis index, so q0 is the <b>rightmost</b> (least significant) character of a ket |q(n−1)…q1 q0⟩, of shot bitstrings and of classical bits (c[k−1]…c[0]). Pauli strings too: <b>IIZ</b> is Z on q0. A typed matrix is read as Qiskit's Operator (its index's bit j is the j-th qubit it is placed on), and QFT blocks are Qiskit's QFTGate. Angles are in radians; RX(θ) = e^(−iθX/2) as in Qiskit. (Circuits and OpenQASM files are the same in any order; before this, QC-1 wrote q0 leftmost, and the DCX and ECR gates had their two qubits' roles swapped relative to Qiskit's.)</p>
         <h3>Checking the numbers</h3>
         <p>Every simulation path and analysis is checked against Qiskit, Qiskit Aer, numpy or scipy references (the repository's validation suite). LAB → Verification &amp; export → Self-test replays those references on this device.</p>
         <p className="dim">QC-1 · MIT license · © 2026 Andre Paquette</p>

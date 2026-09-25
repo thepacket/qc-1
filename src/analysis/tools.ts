@@ -6,7 +6,7 @@
  * themselves are validated against Qiskit (test/validated/tools, synth).
  */
 import type { AnalysisContext, AnalysisResult, Chart, Opts, Proposal } from "./types";
-import { ANALYSIS_BY_ID, inputValue, pauliValue } from "./catalog";
+import { ANALYSIS_BY_ID, inputValue, pauliInput } from "./catalog";
 import { toolCircuit, raiseCircuit } from "../calc/toolCircuit";
 import { equivalent, FULL_MAX } from "../calc/equiv";
 import { circuitResources, type CircuitResources } from "../calc/resources";
@@ -19,8 +19,9 @@ import { routeCircuit, countConnectivityViolations } from "../sim/router";
 import { compileForDevice } from "../sim/compile";
 import { inverseGates } from "../sim/inverse";
 import { buildTrotterCircuit, parsePauliSum } from "../sim/trotter";
-import { statePrepCircuit, parseTargetState } from "../sim/statePrep";
-import { synthesizeUnitary, type Cx } from "../sim/unitarySynth";
+import { parseTargetState } from "../sim/statePrep";
+import { prepCircuit, qiskitGenerators, synthUnitary } from "../calc/order";
+import type { Cx } from "../sim/unitarySynth";
 import { interactionGraph } from "../sim/interaction";
 import { tannerGraph } from "../sim/tanner";
 import { StabilizerRegister } from "../stab/register";
@@ -143,7 +144,7 @@ function opDistance(U: Float64Array[], V: Float64Array[]): number {
 /** Generators of a Clifford tape's state (stabilizer register: every Clifford gate, recorded outcomes); null if not Clifford. */
 export function cliffordGenerators(n: number, tape: Entry[]): string[] | null {
   try {
-    return new StabilizerRegister(n, tape).tab.stabilizers();
+    return qiskitGenerators(new StabilizerRegister(n, tape).tab.stabilizers());
   } catch {
     return null;
   }
@@ -236,7 +237,7 @@ export const TOOL_RUNS: Record<string, Run> = {
   },
 
   trotter(ctx, opts) {
-    const text = pauliValue(opts, "ham", ctx.n);
+    const text = pauliInput(opts, "ham", ctx.n);
     const terms = parsePauliSum(text);
     const n = terms[0].paulis.length;
     if (n > 10) throw new Error("the Hamiltonian acts on more than 10 qubits");
@@ -300,7 +301,7 @@ export const TOOL_RUNS: Record<string, Run> = {
       ({ re, im } = parsed);
     }
     if (n > 8) throw new Error("state preparation is capped at 8 qubits");
-    const circ = statePrepCircuit(re, im, n);
+    const circ = prepCircuit(re, im, n);
     if (!circ) throw new Error("the target is the zero vector");
     const tape = raiseCircuit(circ);
     const reg = new Register(n, tape);
@@ -333,7 +334,7 @@ export const TOOL_RUNS: Record<string, Run> = {
       for (const s of ctx.tape.flat()) applyStep(psi, ctx.n, s, Math.random, ctx.scope, cbits);
       for (let i = 0; i < d; i++) U[i][j] = { re: psi[2 * i], im: psi[2 * i + 1] };
     }
-    const gates = synthesizeUnitary(U, ctx.n);
+    const gates = synthUnitary(U, ctx.n);
     if (!gates) throw new Error("synthesis failed");
     const tape = raiseCircuit({ numQubits: ctx.n, numClbits: 0, gates });
     const syms = ctx.tape.flat().some((s) => stepSymbols(s).length > 0);
@@ -395,7 +396,8 @@ export const TOOL_RUNS: Record<string, Run> = {
     const t = branchTree(ctx.n, ctx.tape, ctx.scope, 8);
     if (t.events === 0) return { scalars: [{ label: "measurements", value: 0 }], notes: ["No measurements or resets: a single branch."] };
     const leaves = [...t.leaves].sort((a, b) => b.p - a.p);
-    const bits = [...Array(ctx.n).keys()].map((q) => `c${q}`).join("");
+    // Classical bits as Qiskit prints them: c[k−1] … c[0].
+    const bits = [...Array(leaves[0]?.cbits.length ?? ctx.n).keys()].reverse().map((q) => `c${q}`).join("");
     return {
       scalars: [{ label: "branches", value: t.leaves.length }, { label: "events on the longest path", value: t.events }],
       charts: [
@@ -415,7 +417,7 @@ export const TOOL_RUNS: Record<string, Run> = {
       };
     }
     return {
-      charts: [{ kind: "table", title: "stabilizer generators (q0 leftmost)", headers: ["", "sign", "Pauli"], rows: g.map((s, i) => [`g${i + 1}`, s[0], s.slice(1)]) }],
+      charts: [{ kind: "table", title: "stabilizer generators (q0 rightmost, as Qiskit)", headers: ["", "sign", "Pauli"], rows: g.map((s, i) => [`g${i + 1}`, s[0], s.slice(1)]) }],
       notes: ["The state is the unique +1 eigenstate of every generator (Aaronson–Gottesman tableau; measurements take their recorded outcomes)."],
     };
   },

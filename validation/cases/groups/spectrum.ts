@@ -5,6 +5,7 @@ import { pauliTransferMatrix } from "../../../src/sim/ptm";
 import { operatorEntanglement } from "../../../src/sim/operatorEntanglement";
 import { floquetSpectrum } from "../../../src/sim/floquetSpectrum";
 import { parsePauliSum } from "../../../src/sim/trotter";
+import { internalPauliSum } from "../../../src/calc/order";
 import { hamiltonianSpectrum } from "../../../src/sim/hamSpectrum";
 import { densityOfStates } from "../../../src/sim/densityOfStates";
 import { levelStatistics } from "../../../src/sim/levelStatistics";
@@ -77,7 +78,8 @@ function perLevel(energies: number[], weights: number[]) {
 }
 
 export function computeHam(h: ReturnType<typeof hamCases>[number], state: CircCase) {
-  const terms = parsePauliSum(h.text);
+  // The case's Hamiltonian is written as Qiskit writes Pauli strings (q0 rightmost), like a LAB input.
+  const terms = parsePauliSum(internalPauliSum(h.text));
   const spec = hamiltonianSpectrum(terms, h.n)!;
   const psi = new Register(state.n, state.tape).state;
   const de = diagonalEnsemble(terms, psi, h.n)!;

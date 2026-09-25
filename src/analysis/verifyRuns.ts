@@ -4,7 +4,8 @@
  * fixtures, replayed on this device).
  */
 import type { AnalysisContext, AnalysisResult, Chart, Opts } from "./types";
-import { ANALYSIS_BY_ID, inputValue, pauliValue } from "./catalog";
+import { ANALYSIS_BY_ID, inputValue, pauliInput } from "./catalog";
+import { qiskitGenerators } from "../calc/order";
 import { Register } from "../calc/register";
 import { equivalent } from "../calc/equiv";
 import { circuitResources } from "../calc/resources";
@@ -108,7 +109,7 @@ export const VERIFY_RUNS: Record<string, Run> = {
           return [magic(allPauliExpectations(psi, n), n).m2];
         }
         default: {
-          const terms = parsePauliSum(pauliValue(opts, "obs", n));
+          const terms = parsePauliSum(pauliInput(opts, "obs", n));
           if (terms[0].paulis.length !== n) throw new Error(`Pauli strings need ${n} letters`);
           return [pauliSumExpectation(psi, n, terms)];
         }
@@ -196,7 +197,7 @@ export const VERIFY_RUNS: Record<string, Run> = {
       const fx = (await import("../../test/fixtures/stabilizer.json")).default as unknown as { cases: { n: number; tape: Entry[]; generators: string[] }[] };
       const { StabilizerRegister } = await import("../stab/register");
       let bad = 0;
-      for (const c of fx.cases) if (new StabilizerRegister(c.n, c.tape).tab.stabilizers().join() !== c.generators.join()) bad++;
+      for (const c of fx.cases) if (qiskitGenerators(new StabilizerRegister(c.n, c.tape).tab.stabilizers()).join() !== c.generators.join()) bad++;
       report("stabilizer mode vs Qiskit", fx.cases.length, bad, 0);
     }
     setCustomGates([]);

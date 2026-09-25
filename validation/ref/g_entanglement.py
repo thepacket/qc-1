@@ -6,17 +6,15 @@ concurrence, Pauli expectation values), otherwise from numpy on the same
 reduced density matrices. The Page formula is also checked against a
 Monte-Carlo average over Haar-random states.
 
-Endianness: QC-1 vectors are big-endian. Building qi.Statevector from that
-vector directly makes Qiskit qubit j = QC-1 qubit n-1-j, so tracing out
-QC-1 qubits T means tracing Qiskit qubits {n-1-t}; the remaining matrix
-then matches QC-1's row order when the kept set is sorted.
+Bit order: QC-1 uses Qiskit's (qubit q = bit q), so QC-1 qubit j is Qiskit
+qubit j and partial traces take the kept qubits as they are.
 """
 import json
 
 import numpy as np
 import qiskit.quantum_info as qi
 
-from common import OUT, be_statevector, fail, qc1_state, r, write_fixture
+from common import OUT, statevector, fail, qc1_state, r, write_fixture
 
 TOL = 1e-9
 # Concurrence takes square roots of eigenvalues that are ~0 for most states,
@@ -25,7 +23,7 @@ TOLS = {"concurrence": 1e-7}
 
 
 def ptrace(sv, n, kept):
-    traced = [n - 1 - q for q in range(n) if q not in kept]
+    traced = [q for q in range(n) if q not in kept]
     return qi.partial_trace(sv, traced) if traced else qi.DensityMatrix(sv)
 
 
@@ -43,16 +41,9 @@ def renyi(evals, a):
     return float(np.log2(np.sum(ev ** a)) / (1 - a))
 
 
-def pauli_label(p):
-    # The big-endian vector is wrapped as qi.Statevector directly, so Qiskit
-    # qubit j is QC-1 qubit n-1-j, and a Qiskit label's k-th character (from
-    # the left) is Qiskit qubit n-1-k = QC-1 qubit k. No reversal needed.
-    return p
-
-
 def reference(case):
     n = case["n"]
-    psi = be_statevector(case["qasm"])
+    psi = statevector(case["qasm"])
     if np.max(np.abs(psi - qc1_state_from_tape(case))) > TOL:
         fail(f"{case['id']}: statevector mismatch before analysis")
     sv = qi.Statevector(psi)
@@ -75,7 +66,7 @@ def reference(case):
     conc = np.zeros((n, n))
     for i in range(n):
         for j in range(i + 1, n):
-            dm2 = ptrace(sv, n, [i, j])  # Qiskit subsystem 0 = QC-1 qubit j
+            dm2 = ptrace(sv, n, [i, j])  # subsystem 0 = qubit i
             mi[i, j] = mi[j, i] = max(0.0, float(qi.mutual_information(dm2, base=2)))
             nv = float(qi.negativity(dm2, [0]))
             neg[i, j] = neg[j, i] = max(0.0, float(np.log2(2 * nv + 1)))
@@ -99,16 +90,13 @@ def reference(case):
     out["negativity"] = neg.tolist()
     out["concurrence"] = conc.tolist()
     probes = q_probes(n)
-    out["paulis"] = [float(sv.expectation_value(qi.Pauli(pauli_label(p))).real) for p in probes]
+    out["paulis"] = [float(sv.expectation_value(qi.Pauli(p)).real) for p in probes]  # the probes are Qiskit labels
     if n <= 3:
         # QC-1 indexes all 4^n strings in base 4, digit q (LSB first) = qubit q, I/X/Y/Z = 0..3.
         allp = []
         for idx in range(4 ** n):
-            s, x = "", idx
-            for _ in range(n):
-                s += "IXYZ"[x & 3]
-                x >>= 2
-            allp.append(float(sv.expectation_value(qi.Pauli(pauli_label(s))).real))
+            s = "".join("IXYZ"[(idx >> (2 * q)) & 3] for q in reversed(range(n)))  # Qiskit's label: q0 rightmost
+            allp.append(float(sv.expectation_value(qi.Pauli(s)).real))
         out["allPaulis"] = allp
     else:
         out["allPaulis"] = None
@@ -127,7 +115,7 @@ def qc1_state_from_tape(case):
     # The dump doesn't carry QC-1's statevector for this group; the gates/random
     # fixtures already pin the simulator, so compare Qiskit with itself here and
     # rely on the analysis comparison below. (Kept as a hook for clarity.)
-    return be_statevector(case["qasm"])
+    return statevector(case["qasm"])
 
 
 def compare(path, a, b, bad, tol=TOL):

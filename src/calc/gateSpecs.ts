@@ -72,7 +72,7 @@ export const PALETTE: PaletteItem[] = [
   g("reset", "reset", 0, "measure", "reset", "Reset to |0⟩ (a recorded measurement, then X on 1)."),
   ...["init0", "init1", "initplus", "initminus", "initiplus", "initiminus"].map((id) => g(id, id, 0, "prep", undefined, "Reset, then prepare this state.")),
   g("initialize", "initialize", 0, "prep", "|ψ⟩", "Reset, then α|0⟩ + β|1⟩ (set α, β after placing it)."),
-  { kind: "block", id: "block:qft", block: "qft", label: "QFT", name: "Quantum Fourier transform", group: "blocks", params: [], note: "On k consecutive qubits from the drop wire (the first is the most significant)." },
+  { kind: "block", id: "block:qft", block: "qft", label: "QFT", name: "Quantum Fourier transform", group: "blocks", params: [], note: "Qiskit's QFTGate on k consecutive qubits from the drop wire (the first is the least significant)." },
   { kind: "block", id: "block:iqft", block: "iqft", label: "QFT†", name: "Inverse QFT", group: "blocks", params: [], note: "The read-out of phase estimation." },
   { kind: "block", id: "block:diff", block: "diff", label: "DIFF", name: "Grover diffuser", group: "blocks", params: [], note: "2|s⟩⟨s| − I on k qubits." },
   { kind: "block", id: "block:qaoa", block: "qaoa", label: "QAOA", name: "QAOA MaxCut layer", group: "blocks", params: [{ name: "γ", default: "π/4" }, { name: "β", default: "π/8" }], note: "One layer on a ring: RZZ(2γ) per edge, RX(2β) per qubit." },

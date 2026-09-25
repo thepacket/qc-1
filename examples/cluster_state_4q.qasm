@@ -11,8 +11,8 @@
 // and CNOTs propagate "down" the chain via measurement and classical
 // feedback. The unmeasured tail of the chain holds the output state.
 //
-// The 4-qubit linear cluster encodes a single logical qubit at the
-// rightmost position; the three measurement steps on q[0..2] each apply
+// The 4-qubit linear cluster encodes a single logical qubit at the end of
+// the chain (q[3]); the three measurement steps on q[0..2] each apply
 // one stage of a single-qubit unitary on the encoded state in q[3].
 //
 // Open the Bloch panel after loading: every individual qubit's reduced

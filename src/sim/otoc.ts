@@ -35,7 +35,7 @@ export type OtocResult = {
 function applyPauli1(re: Float64Array, im: Float64Array, n: number, qubit: number, p: Pauli) {
   if (p === "I") return;
   const dim = 1 << n;
-  const mask = 1 << (n - 1 - qubit);
+  const mask = 1 << qubit; // QC-1: Qiskit bit order (qubit q is bit q)
   if (p === "Z") {
     for (let i = 0; i < dim; i++) if (i & mask) { re[i] = -re[i]; im[i] = -im[i]; }
     return;

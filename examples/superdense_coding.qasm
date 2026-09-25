@@ -5,8 +5,9 @@
 //   Setup: Alice holds q[0], Bob holds q[1]. They share a Bell pair.
 //   Encode: Alice applies Z if a=1, then X if b=1, on her qubit.
 //   Send:   Alice sends q[0] to Bob (modeled as a no-op here).
-//   Decode: Bob applies CNOT(0,1) then H on q[0] and measures both qubits;
-//           the measurement outcome reads the original two bits.
+//   Decode: Bob applies CNOT(0,1) then H on q[0] and measures both qubits:
+//           c[0] = a and c[1] = b, so the counts read "01" here (Qiskit's
+//           order, c[1] c[0]).
 
 OPENQASM 3.0;
 include "stdgates.inc";

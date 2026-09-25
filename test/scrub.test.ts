@@ -26,7 +26,7 @@ describe("TAPE step-scrubber", () => {
     expect(ket(c)).toEqual([0]);
     expect(c.view!.at).toBe(0);
     c.setScrub(1);
-    expect(ket(c)).toEqual([0, 2]);
+    expect(ket(c)).toEqual([0, 1]); // H on q0: |00⟩ + |01⟩ (q0 rightmost)
     c.setScrub(99); // past the end = live
     expect(c.scrub).toBeNull();
     expect(c.view!.at).toBeUndefined();
@@ -40,7 +40,7 @@ describe("TAPE step-scrubber", () => {
     const outcome = c.tape[1][0].outcome!;
     for (let k = 0; k < 5; k++) {
       c.setScrub(2);
-      expect(ket(c)).toEqual([outcome << 1]);
+      expect(ket(c)).toEqual([outcome]); // q0 is bit 0
       c.setScrub(null);
     }
   });
@@ -67,7 +67,7 @@ describe("TAPE step-scrubber", () => {
     c.deleteStep();
     expect(c.tape.map(formatEntry)).toEqual(["H q0", "Z q0"]);
     expect(c.scrub).toBe(1);
-    expect(ket(c)).toEqual([0, 2]);
+    expect(ket(c)).toEqual([0, 1]); // H on q0: |00⟩ + |01⟩
     c.setScrub(null);
     c.deleteStep();
     expect(c.tape.map(formatEntry)).toEqual(["H q0"]);
@@ -120,7 +120,7 @@ describe("TAPE step-scrubber", () => {
     for (let i = 0; i < 9; i++) q0(c, "x");
     for (let k = 0; k <= 9; k++) {
       c.setScrub(k);
-      expect(ket(c)).toEqual([k % 2 ? 2 : 0]);
+      expect(ket(c)).toEqual([k % 2 ? 1 : 0]); // X on q0: |01⟩
     }
   });
 });

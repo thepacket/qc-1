@@ -34,9 +34,12 @@ uv pip install --python validation/.venv/bin/python -r validation/requirements.t
 
 ## Conventions
 
-- QC-1 is **big-endian** (qubit 0 = most significant bit). Qiskit is
-  little-endian: compare with `Statevector(...).reverse_qargs()` and reverse
-  Pauli labels.
+- QC-1 uses **Qiskit's bit order** (qubit q = bit q of a basis index, q0
+  rightmost in kets, bitstrings and Pauli labels), so Qiskit's vectors,
+  operators, density matrices, labels and counts compare with QC-1's
+  directly: never reverse anything. A case that feeds Pauli text to the
+  simulator converts it with `internalPauliSum` (src/calc/order.ts), as the
+  LAB inputs do.
 - Where a quantity has competing conventions (log base, PTM normalisation,
   depolarising parameter, Wigner definition), QC-1 follows Qiskit's and says
   so in the analysis help.

@@ -88,7 +88,7 @@ def main():
     for w in c["qv"]:
         n = w["width"]
         for text, hop in zip(w["qasm"], w["hops"]):
-            ideal = np.abs(Statevector(qasm3.loads(text)).reverse_qargs().data) ** 2
+            ideal = np.abs(Statevector(qasm3.loads(text)).data) ** 2
             med = np.median(ideal)
             noisy = np.real(np.diag(rho_of(text, n, m)))
             close(np.sum(noisy[ideal > med]), hop, f"QV width {n} heavy output")
@@ -97,7 +97,7 @@ def main():
     n = x["n"]
     for cs, vals in zip(x["qasm"], x["perCircuit"]):
         for text, v in zip(cs, vals):
-            ideal = np.abs(Statevector(qasm3.loads(text)).reverse_qargs().data) ** 2
+            ideal = np.abs(Statevector(qasm3.loads(text)).data) ** 2
             noisy = np.real(np.diag(rho_of(text, n, m)))
             D = 1 << n
             den = np.sum((ideal - 1 / D) ** 2)
@@ -115,13 +115,13 @@ def main():
     close([(1 + np.sqrt(1 - gpd) ** (k + 1)) / 2 for k in t["delays"]], t["pd"]["ramsey"], "Ramsey curve (pure dephasing)")
     close(-2 / np.log(1 - gpd), t["pd"]["T2"], "T2 fit", 1e-6)
     close(-2 / np.log(1 - gpd), t["pd"]["T2echo"], "T2 echo fit", 1e-6)
-    # Process tomography: R_ij = Tr(P_i Λ(P_j)) / d, labels big-endian (reversed for Qiskit's little-endian matrices).
+    # Process tomography: R_ij = Tr(P_i Λ(P_j)) / d in Qiskit's Pauli basis order (base-4 digit q = qubit q).
     for tm in c["tomography"]:
         n = tm["n"]
         qc = qasm3.loads(tm["qasm"])
         d = 1 << n
-        labels = ["".join("IXYZ"[(k >> (2 * (n - 1 - q))) & 3] for q in range(n)) for k in range(4 ** n)]
-        P = [SparsePauliOp(l[::-1]).to_matrix() for l in labels]
+        labels = ["".join("IXYZ"[(k >> (2 * (n - 1 - p))) & 3] for p in range(n)) for k in range(4 ** n)]  # Qiskit labels
+        P = [SparsePauliOp(l).to_matrix() for l in labels]
         U = Operator(qc).data
         ideal = [[np.real(np.trace(P[i] @ U @ P[j] @ U.conj().T)) / d for j in range(4 ** n)] for i in range(4 ** n)]
         noisy = [[np.real(np.trace(P[i] @ channel(qc, n, m, P[j]))) / d for j in range(4 ** n)] for i in range(4 ** n)]

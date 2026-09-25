@@ -29,16 +29,17 @@ def bind(qc, scope):
 
 
 def state(qc, scope):
-    return Statevector(bind(qc, scope)).reverse_qargs().data
+    return Statevector(bind(qc, scope)).data
 
 
 def unitary(qc, scope):
-    return Operator(bind(qc, scope)).reverse_qargs().data
+    return Operator(bind(qc, scope)).data
 
 
 def op1(n, q, p):
+    """P on qubit q (Qiskit's order: the left Kronecker factor is the highest qubit)."""
     m = np.array([[1.0 + 0j]])
-    for k in range(n):
+    for k in reversed(range(n)):
         m = np.kron(m, PAULI[p if k == q else "I"])
     return m
 
@@ -48,7 +49,7 @@ def zexp(psi, n, q):
 
 
 def S_half(psi, n, A):
-    ev = np.linalg.eigvalsh(qi.partial_trace(qi.Statevector(psi), [n - 1 - q for q in range(n) if q not in A]).data)
+    ev = np.linalg.eigvalsh(qi.partial_trace(qi.Statevector(psi), [q for q in range(n) if q not in A]).data)
     ev = ev[ev > 1e-12]
     return float(-np.sum(ev * np.log2(ev)))
 
@@ -139,7 +140,7 @@ def reference(c, P):
             if slope > vel + 1e-9 * max(1.0, abs(vel)):  # ties keep the earliest time (as QC-1)
                 vel, at = slope, tsc[k]
         out["velocity"] = {"entropy": ent, "velocity": vel, "velocityAt": at, "maxEntropy": max(ent + [0])}
-        out["negdyn"] = [float(math.log2(2 * qi.negativity(qi.Statevector(p), [n - 1 - q for q in half]) + 1)) for p in states]
+        out["negdyn"] = [float(math.log2(2 * qi.negativity(qi.Statevector(p), list(half)) + 1)) for p in states]
         C, reF = otoc_curve(qc, sc, n, 0, n - 1, P["otoc"])
         out["otoc"] = {"C": C, "reF": reF}
         grid = []
@@ -175,7 +176,7 @@ def reference(c, P):
         aq = list(range(min(5, math.ceil(n / 2))))
         asym = []
         for p in prefix:
-            rho = qi.partial_trace(qi.Statevector(p), [n - 1 - q for q in range(n) if q not in aq]).data
+            rho = qi.partial_trace(qi.Statevector(p), [q for q in range(n) if q not in aq]).data
             d = rho.shape[0]
             proj = np.array([[rho[i, j] if bin(i).count("1") == bin(j).count("1") else 0 for j in range(d)] for i in range(d)])
             ent_ = lambda m: (lambda e: float(-np.sum(e * np.log2(e))))(np.clip(np.linalg.eigvalsh(m), 0, None)[np.linalg.eigvalsh(m) > 1e-12])

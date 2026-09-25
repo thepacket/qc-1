@@ -38,7 +38,7 @@ export function temporalAutocorrelation(
   if (n < 1 || n > maxQubits) return null;
   if (qubit < 0 || qubit >= n) return null;
   const dim = 1 << n;
-  const mask = 1 << (n - 1 - qubit);
+  const mask = 1 << qubit; // QC-1: Qiskit bit order (qubit q is bit q)
   const z = new Int8Array(dim);
   for (let a = 0; a < dim; a++) z[a] = a & mask ? -1 : 1;
 

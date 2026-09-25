@@ -24,6 +24,7 @@ import { reducedDensityMatrix } from "../sim/density";
 
 export type PlotProgramInput = {
   n: number; dim: number;
+  /** Indexed by basis state in Qiskit's order: qubit q is bit q of the index. */
   ampRe: number[]; ampIm: number[]; prob: number[];
   /** Per-qubit ρ, row-major re/im [ρ00, ρ01, ρ10, ρ11]. */
   rho1: { re: number[]; im: number[] }[];

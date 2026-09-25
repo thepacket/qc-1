@@ -12,7 +12,7 @@ describe("session report", () => {
     c.setScrub(1);
     c.toggleReport();
     expect(c.reportOpen).toBe(true);
-    expect(c.reportKet?.rows.map((r) => r.i)).toEqual([0, 2]); // X·H|0⟩ = |+⟩ on q0 (n = 2): |00⟩, |10⟩; the live state, not the scrubbed one
+    expect(c.reportKet?.rows.map((r) => r.i)).toEqual([0, 1]); // X·H|0⟩ = |+⟩ on q0 (n = 2): |00⟩, |01⟩ (q0 rightmost); the live state, not the scrubbed one
     c.toggleReport();
     expect(c.reportOpen).toBe(false);
     expect(c.view?.mode).toBe("tape");

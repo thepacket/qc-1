@@ -11,8 +11,8 @@ const close = (a: number, b: number) => expect(a).toBeCloseTo(b, 10);
 describe("gates without their own key", () => {
   test("GPI takes its angle", () => {
     const c = calc();
-    add(c, "gpi", [0], { params: ["pi/2"] }); // GPI(π/2)|0⟩ = e^{iπ/2}|1⟩ = i|1⟩ on q0
-    const [re, im] = amp(c, 2);
+    add(c, "gpi", [0], { params: ["pi/2"] }); // GPI(π/2)|0⟩ = e^{iπ/2}|1⟩ = i|1⟩ on q0 (index 1)
+    const [re, im] = amp(c, 1);
     close(re, 0);
     close(im, 1);
   });
@@ -20,7 +20,7 @@ describe("gates without their own key", () => {
   test("INIT1 prepares |1⟩", () => {
     const c = calc();
     add(c, "init1", [0]);
-    close(amp(c, 2)[0], 1);
+    close(amp(c, 1)[0], 1);
   });
 
   test("a 2-qubit gate keeps its qubit order", () => {
@@ -53,17 +53,17 @@ describe("gates without their own key", () => {
     add(c, "h", [0]);
     cx(c, 0, 1); // Bell pair
     add(c, "initminus", [0]);
-    // q0 is now |−⟩ and q1 collapsed to the reset outcome o: (|0o⟩ − |1o⟩)/√2
+    // q0 is now |−⟩ and q1 collapsed to the reset outcome o: (|o0⟩ − |o1⟩)/√2 as |q1 q0⟩
     const o = c.tape[2][0].outcome!;
-    close(amp(c, o)[0], Math.SQRT1_2);
-    close(amp(c, 2 + o)[0], -Math.SQRT1_2);
+    close(amp(c, 2 * o)[0], Math.SQRT1_2);
+    close(amp(c, 2 * o + 1)[0], -Math.SQRT1_2);
   });
 
   test("|ψ⟩ takes α,β, normalises, and matches its QASM (reset; U)", () => {
     const c = calc();
     add(c, "initialize", [0], { params: ["3", "4"] });
     close(amp(c, 0)[0], 0.6);
-    close(amp(c, 2)[0], 0.8);
+    close(amp(c, 1)[0], 0.8);
     const q = exportQasm3(c.n, c.tape);
     expect(q).toContain("reset q[0];");
     expect(q).toMatch(/U\(1\.8545\d+, 0, 0\) q\[0\];/);
@@ -73,7 +73,7 @@ describe("gates without their own key", () => {
     const c = calc();
     add(c, "initialize", [0], { params: ["i", "1"] }); // α = i, β = 1  →  (|0⟩ − i|1⟩)/√2 up to phase
     close(amp(c, 0)[0], Math.SQRT1_2);
-    close(amp(c, 2)[1], -Math.SQRT1_2);
+    close(amp(c, 1)[1], -Math.SQRT1_2);
   });
 
   test("state prep can't be controlled", () => {
@@ -99,7 +99,7 @@ describe("custom gates (DEFINE)", () => {
     expect(c.tape[0][0].targets).toEqual([1, 2]);
     const v = c.view!;
     if (v.mode !== "ket") throw new Error(v.mode);
-    expect(v.rows.map((r) => r.i).sort()).toEqual([0b000, 0b011]);
+    expect(v.rows.map((r) => r.i).sort()).toEqual([0b000, 0b110]); // |q2 q1 q0⟩: |000⟩ and |110⟩
     // Exported as a gate definition and one call.
     const q = exportQasm3(c.n, c.tape);
     expect(q).toContain("gate G1 a0, a1 { h a0; cx a0, a1; }");
@@ -142,7 +142,7 @@ describe("IF: classical condition", () => {
       // q2's reduced state is RY(0.8)|0⟩ whatever was measured.
       const st = (c.engine as InlineEngine).core.reg.state;
       let p1 = 0;
-      for (let i = 0; i < 8; i++) if (i & 1) p1 += st[2 * i] ** 2 + st[2 * i + 1] ** 2;
+      for (let i = 0; i < 8; i++) if (i & 4) p1 += st[2 * i] ** 2 + st[2 * i + 1] ** 2; // q2 is bit 2
       expect(p1).toBeCloseTo(Math.sin(0.4) ** 2, 10);
     }
   });
@@ -168,7 +168,7 @@ describe("algorithm blocks", () => {
     c.addBlock("iqft", [0, 1, 2]);
     const v = c.view!;
     if (v.mode !== "ket") throw new Error(v.mode);
-    expect(v.rows.filter((r) => r.re ** 2 + r.im ** 2 > 1e-12).map((r) => r.i)).toEqual([4]); // back to |100⟩
+    expect(v.rows.filter((r) => r.re ** 2 + r.im ** 2 > 1e-12).map((r) => r.i)).toEqual([1]); // back to |001⟩ (X on q0)
   });
 
   test("a block's qubits go in ascending order; QAOA takes γ,β as two steps", () => {

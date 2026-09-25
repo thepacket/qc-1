@@ -9,8 +9,8 @@ and numpy/scipy, never by translating the ported code:
   Wigner: standard Wootters phase-point operators, as explicit matrices
   Majorana stars: numpy.roots of the Majorana polynomial
 
-The big-endian QC-1 vector is wrapped as qi.Statevector directly, so Qiskit
-qubit j is QC-1 qubit n-1-j and Pauli labels need no reversal.
+QC-1 uses Qiskit's bit order, so its vector is Qiskit's directly: qubit q is
+Qiskit qubit q, and Pauli labels are Qiskit's (q0 rightmost).
 """
 import json
 import math
@@ -19,15 +19,15 @@ import numpy as np
 import qiskit.quantum_info as qi
 from scipy.optimize import minimize
 
-from common import OUT, be_statevector, fail, r, write_fixture
+from common import OUT, statevector, fail, r, write_fixture
 
 TOL = 1e-9
 # Square roots of near-zero eigenvalues: good only to ~sqrt(eps) anywhere.
 LOOSE = {"cab2": 1e-7, "cac2": 1e-7, "tau3": 1e-7}
 
 
-def qk(n, q):  # QC-1 qubit -> Qiskit qubit index for the directly-wrapped vector
-    return n - 1 - q
+def qk(n, q):  # QC-1 qubit -> Qiskit qubit index (the same, since QC-1 uses Qiskit's order)
+    return q
 
 
 def ptrace(sv, n, kept):
@@ -47,8 +47,8 @@ def pauli(sv, s):
     return float(sv.expectation_value(qi.Pauli(s)).real)
 
 
-def pstr(n, ops):  # {qubit: 'X'} -> label with QC-1 qubit q at position q
-    return "".join(ops.get(q, "I") for q in range(n))
+def pstr(n, ops):  # {qubit: 'X'} -> Qiskit label (qubit q at position n-1-q)
+    return "".join(ops.get(q, "I") for q in reversed(range(n)))
 
 
 def half(n):
@@ -68,7 +68,7 @@ def counting(psi, n, region):
     for idx, pr in enumerate(probs):
         if pr < 1e-18:
             continue
-        m = sum((idx >> (n - 1 - q)) & 1 for q in region)
+        m = sum((idx >> q) & 1 for q in region)
         p[m] += pr
     mean = float(np.dot(np.arange(len(p)), p))
     var = float(np.dot((np.arange(len(p)) - mean) ** 2, p))
@@ -164,7 +164,7 @@ def schmidt_gap(sv, n):
 def mps(psi, n, target=0.01):
     chi, max_chi, worst, worst_err = [], 0, 0, []
     for k in range(n - 1):
-        m = psi.reshape(2 ** (k + 1), 2 ** (n - k - 1))
+        m = psi.reshape(2 ** (n - k - 1), 2 ** (k + 1))  # qubits 0…k are the low bits
         lam = np.sort(np.linalg.svd(m, compute_uv=False) ** 2)[::-1]
         errs = np.maximum(0, 1 - np.cumsum(lam))
         c = int(np.argmax(errs <= target)) + 1
@@ -214,7 +214,7 @@ def discord(sv, n):
         for b in range(n):
             if a != b:
                 dm = ptrace(sv, n, sorted([a, b])).data
-                if a > b:  # put A first (QC-1's rho index = 2·a_bit + b_bit)
+                if a < b:  # Qiskit's ρ has the lower qubit as the low bit; put A as the high bit (index = 2·a_bit + b_bit)
                     dm = dm.reshape(2, 2, 2, 2).transpose(1, 0, 3, 2).reshape(4, 4)
                 d[a, b] = discord_pair(dm)
     return d.tolist()
@@ -314,7 +314,7 @@ def wigner(psi, n):
     for row in range(dim):
         for col in range(dim):
             A = np.array([[1.0]])
-            for k in range(n):  # qubit 0 is the first tensor factor (MSB)
+            for k in reversed(range(n)):  # Qiskit's order: the highest qubit is the first tensor factor
                 q, p = (row >> k) & 1, (col >> k) & 1
                 A = np.kron(A, 0.5 * (I2 + (-1) ** q * Z + (-1) ** p * X + (-1) ** (q + p) * Y))
             W[row, col] = float(np.real(np.trace(rho @ A))) / dim
@@ -327,7 +327,7 @@ def char_function(sv, n):
     mag = np.zeros((dim, dim))
     for u in range(dim):
         for v in range(dim):
-            lab = "".join("IZXY"[((u >> q) & 1) * 2 + ((v >> q) & 1)] for q in range(n))
+            lab = "".join("IZXY"[((u >> q) & 1) * 2 + ((v >> q) & 1)] for q in reversed(range(n)))  # Qiskit label
             mag[u, v] = abs(pauli(sv, lab))
     return {"mag": mag.tolist(), "dim": dim, "total": float(mag.sum())}
 
@@ -387,7 +387,7 @@ def husimi(psi, n, nT, nP):
 
 def reference(c, husimi_grid):
     n = c["n"]
-    psi = be_statevector(c["qasm"])
+    psi = statevector(c["qasm"])
     sv = qi.Statevector(psi)
     q = c["qc1"]
     out = {"counting": counting(psi, n, half(n)), "multifractal": multifractal(psi, n),

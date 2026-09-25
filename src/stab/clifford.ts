@@ -53,7 +53,9 @@ const kron = (A: M, B: M, a: number, b: number): M => {
   }
   return o;
 };
-// Two-qubit: local qubit 0 is the most significant bit.
+// Two-qubit matrices below are written with the left Kronecker factor as the high bit. The
+// simulator (whose matrices localMatrix reads) has local qubit j as bit j (Qiskit's order),
+// so the left factor is local qubit 1 and the right one local qubit 0.
 const CX01: M = (() => { const o = new Float64Array(32); [[0, 0], [1, 1], [2, 3], [3, 2]].forEach(([i, j]) => (o[2 * (i * 4 + j)] = 1)); return o; })();
 const CX10: M = (() => { const o = new Float64Array(32); [[0, 0], [1, 3], [2, 2], [3, 1]].forEach(([i, j]) => (o[2 * (i * 4 + j)] = 1)); return o; })();
 
@@ -80,9 +82,9 @@ function enumerate(d: number, gens: { M: M; p: Prim }[]): Table {
 let T1: Table | null = null, T2: Table | null = null;
 const table1 = () => (T1 ??= enumerate(2, [{ M: H1, p: { gate: "h", qubits: [0] } }, { M: S1, p: { gate: "s", qubits: [0] } }]));
 const table2 = () => (T2 ??= enumerate(4, [
-  { M: kron(H1, I1, 2, 2), p: { gate: "h", qubits: [0] } }, { M: kron(I1, H1, 2, 2), p: { gate: "h", qubits: [1] } },
-  { M: kron(S1, I1, 2, 2), p: { gate: "s", qubits: [0] } }, { M: kron(I1, S1, 2, 2), p: { gate: "s", qubits: [1] } },
-  { M: CX01, p: { gate: "cx", qubits: [0, 1] } }, { M: CX10, p: { gate: "cx", qubits: [1, 0] } },
+  { M: kron(H1, I1, 2, 2), p: { gate: "h", qubits: [1] } }, { M: kron(I1, H1, 2, 2), p: { gate: "h", qubits: [0] } },
+  { M: kron(S1, I1, 2, 2), p: { gate: "s", qubits: [1] } }, { M: kron(I1, S1, 2, 2), p: { gate: "s", qubits: [0] } },
+  { M: CX01, p: { gate: "cx", qubits: [1, 0] } }, { M: CX10, p: { gate: "cx", qubits: [0, 1] } },
 ]));
 
 /** The group sizes (for tests): 24 and 11 520. */

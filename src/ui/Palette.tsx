@@ -4,6 +4,7 @@ import { PALETTE, PALETTE_GROUPS, type PaletteGroup, type PaletteItem } from "..
 import { CUSTOM_PREFIX } from "../calc/custom";
 import { pressToDrag } from "./dnd";
 import { TYPED_PRESETS } from "./views";
+import { ExprField } from "./ExprField";
 
 /** The palette's items, custom gates included. */
 export function paletteItems(calc: Calculator): PaletteItem[] {
@@ -102,8 +103,8 @@ export function PlacingSheet({ calc }: { calc: Calculator }) {
         <div className="sheet-row">
           <label>qubits <input type="number" inputMode="numeric" min={1} max={calc.n} value={k} onChange={(e) => setK(e.target.value)} onKeyDown={stop} autoFocus /></label>
           {item.block === "qaoa" && <>
-            <label>γ <input value={gamma} onChange={(e) => setGamma(e.target.value)} onKeyDown={stop} autoCapitalize="none" autoCorrect="off" /></label>
-            <label>β <input value={beta} onChange={(e) => setBeta(e.target.value)} onKeyDown={stop} autoCapitalize="none" autoCorrect="off" /></label>
+            <ExprField className="" label="γ" value={gamma} onChange={setGamma} symbols={calc.symbols} />
+            <ExprField className="" label="β" value={beta} onChange={setBeta} symbols={calc.symbols} />
           </>}
         </div>
       )}

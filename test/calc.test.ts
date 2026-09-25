@@ -21,22 +21,22 @@ describe("calculator", () => {
 
   test("anti-control fires on |0⟩", () => {
     const c = calc();
-    add(c, "x", [1], { controls: [0], controlStates: [false] }); // ○X q0→q1 on |00⟩ → |01⟩
-    close(amp(c, 1)[0], 1);
+    add(c, "x", [1], { controls: [0], controlStates: [false] }); // ○X q0→q1 on |00⟩ → |q1 q0⟩ = |10⟩
+    close(amp(c, 2)[0], 1);
   });
 
   test("rotation takes its angle", () => {
     const c = calc();
-    add(c, "rx", [0], { params: ["pi"] }); // RX(π)|0⟩ = −i|1⟩
-    const [re, im] = amp(c, 2);
+    add(c, "rx", [0], { params: ["pi"] }); // RX(π)|0⟩ = −i|1⟩ on q0: index 1 (|q1 q0⟩ = |01⟩)
+    const [re, im] = amp(c, 1);
     close(re, 0);
     close(im, -1);
   });
 
   test("U takes three args", () => {
     const c = calc();
-    add(c, "u", [0], { params: ["pi", "0", "pi"] }); // U(π,0,π) = X
-    close(amp(c, 2)[0], 1);
+    add(c, "u", [0], { params: ["pi", "0", "pi"] }); // U(π,0,π) = X on q0: |01⟩
+    close(amp(c, 1)[0], 1);
   });
 
   test("ALL applies to every qubit as one undo unit", () => {
@@ -52,8 +52,8 @@ describe("calculator", () => {
   test("SWAP exchanges its two qubits", () => {
     const c = calc();
     add(c, "x", [0]);
-    add(c, "swap", [0, 1]); // |10⟩ → |01⟩
-    close(amp(c, 1)[0], 1);
+    add(c, "swap", [0, 1]); // |q1 q0⟩: |01⟩ → |10⟩
+    close(amp(c, 2)[0], 1);
   });
 
   test("measurement collapses and replays deterministically on undo", () => {

@@ -4,9 +4,9 @@
  * one non-zero entry per column, so this is the cheap way to apply a Pauli
  * as a matrix without materialising 2ⁿ × 2ⁿ dense storage.
  *
- * Big-endian convention (matching the rest of the codebase and the Pauli-sum
- * parser): character q of the string is qubit q, qubit 0 is the MSB of the
- * basis index.
+ * Internal convention (matching the Pauli-sum parser): character q of the
+ * string is qubit q; qubit q is bit q of the basis index (QC-1: Qiskit bit
+ * order). User text is Qiskit order and is reversed by src/calc/order.ts.
  */
 
 export type PauliSparse = {
@@ -25,7 +25,7 @@ export function pauliSparse(n: number, pstr: string): PauliSparse {
     let cp = c, re = 1, im = 0;
     for (let q = 0; q < n; q++) {
       const p = pstr[q] ?? "I";
-      const bitpos = n - 1 - q;
+      const bitpos = q; // QC-1: Qiskit bit order (qubit q is bit q)
       const bit = (cp >> bitpos) & 1;
       if (p === "X") {
         cp ^= 1 << bitpos;

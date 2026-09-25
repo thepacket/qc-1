@@ -23,7 +23,7 @@ describe("agent tools", () => {
     expect(SYSTEM_PROMPT).toContain("\\ket{0}");
   });
 
-  test("get_state: the circuit as QASM and the largest amplitudes (q0 is the leftmost bit)", async () => {
+  test("get_state: the circuit as QASM and the largest amplitudes (kets as Qiskit writes them, q0 rightmost)", async () => {
     const out = JSON.parse((await executeTool("get_state", "{}", bell)).result);
     expect(out.n).toBe(2);
     expect(out.qasm).toContain("cx q[0], q[1];");

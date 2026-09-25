@@ -31,12 +31,12 @@ export function zzCorrelations(state: Float64Array, n: number, maxQubits = 16): 
   for (let idx = 0; idx < dim; idx++) {
     const p = state[2 * idx] * state[2 * idx] + state[2 * idx + 1] * state[2 * idx + 1];
     if (p < 1e-15) continue;
-    // Z eigenvalue per qubit: bit 0 → +1, bit 1 → −1. Big-endian: qubit q
-    // is bit (n-1-q).
+    // Z eigenvalue per qubit: bit 0 → +1, bit 1 → −1. Qubit q is bit q
+    // (QC-1: Qiskit bit order).
     let signs = 0; // store +1/−1 per qubit
     const sgn = new Int8Array(n);
     for (let q = 0; q < n; q++) {
-      const bit = (idx >> (n - 1 - q)) & 1;
+      const bit = (idx >> q) & 1; // QC-1: Qiskit bit order (qubit q is bit q)
       sgn[q] = bit ? -1 : 1;
       z[q] += sgn[q] * p;
       void signs;

@@ -23,7 +23,7 @@ describe(`noise (vs ${fx.meta.reference})`, () => {
     } else {
       const T = 20000;
       const counts = new Map<string, number>();
-      runTrajectories(c.n, c.tape, {}, m, (_s, bits) => counts.set([...bits].join(""), (counts.get([...bits].join("")) ?? 0) + 1), { trajectories: T, seed: 99 });
+      runTrajectories(c.n, c.tape, {}, m, (_s, bits) => { const k = [...bits].reverse().join(""); counts.set(k, (counts.get(k) ?? 0) + 1); }, { trajectories: T, seed: 99 });
       for (const key of new Set([...counts.keys(), ...Object.keys(c.aer)])) {
         const fa = c.aer[key] ?? 0, fq = (counts.get(key) ?? 0) / T, p = (fa + fq) / 2;
         expect(Math.abs(fa - fq), key).toBeLessThan(5 * Math.sqrt(Math.max(p * (1 - p), 1e-6) * (1 / c.shots + 1 / T)) + 2e-3);

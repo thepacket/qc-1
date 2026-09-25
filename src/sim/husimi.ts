@@ -53,10 +53,10 @@ export function husimiQ(
       const a1i = -s * Math.sin(phi);  // Im conj(a1) = −s·sin φ
       let ovRe = 0, ovIm = 0;
       for (let x = 0; x < dim; x++) {
-        // Π_q conj(amp(bit q)) for basis index x (big-endian).
+        // Π_q conj(amp(bit q)) for basis index x.
         let pr = 1, pi = 0;
         for (let q = 0; q < n; q++) {
-          const bit = (x >> (n - 1 - q)) & 1;
+          const bit = (x >> q) & 1; // QC-1: Qiskit bit order (qubit q is bit q)
           if (bit === 0) {
             pr *= c; pi *= c;
           } else {

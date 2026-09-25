@@ -12,7 +12,7 @@ import { M_H, M_S, M_Sdg, M_X } from "./matrices";
  */
 
 export function measureZ(state: Float64Array, n: number, q: number, rng: () => number): number {
-  const mask = 1 << (n - 1 - q);
+  const mask = 1 << q; // QC-1: Qiskit bit order (qubit q is bit q)
   const dim = 1 << n;
   let p1 = 0;
   for (let i = 0; i < dim; i++) {
@@ -56,7 +56,7 @@ export function reset(state: Float64Array, n: number, q: number, rng: () => numb
 /** Project the state onto the subspace where qubit q has value `outcome`,
  *  renormalising the surviving amplitudes. */
 function projectQubit(state: Float64Array, n: number, q: number, outcome: number): void {
-  const mask = 1 << (n - 1 - q);
+  const mask = 1 << q; // QC-1: Qiskit bit order (qubit q is bit q)
   const dim = 1 << n;
   const wantMask = outcome === 1 ? mask : 0;
   let norm2 = 0;

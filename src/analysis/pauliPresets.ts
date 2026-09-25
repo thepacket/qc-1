@@ -1,9 +1,9 @@
 /**
  * Observable presets for the current register size, in the Pauli-sum text
- * format (big-endian: character q is qubit q). Shared by the LAB input
- * widget (UI) and the defaults of the compute side.
+ * format as Qiskit writes it (q0 rightmost: "IIZ" is Z on q0). Shared by the
+ * LAB input widget (UI) and the defaults of the compute side.
  */
-const str = (n: number, ops: Record<number, string>) => Array.from({ length: n }, (_, q) => ops[q] ?? "I").join("");
+const str = (n: number, ops: Record<number, string>) => Array.from({ length: n }, (_, p) => ops[n - 1 - p] ?? "I").join("");
 const chain = (n: number, a: string, coef: string) =>
   Array.from({ length: n - 1 }, (_, i) => `${coef}*${str(n, { [i]: a, [i + 1]: a })}`).join(" + ");
 const field = (n: number, a: string, coef: string) => Array.from({ length: n }, (_, i) => `${coef}*${str(n, { [i]: a })}`).join(" + ");

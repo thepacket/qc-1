@@ -182,7 +182,7 @@ export type NoisyStats = {
 };
 
 function blochFromDensity(rho: Float64Array, n: number, q: number) {
-  const d = 1 << n, mask = 1 << (n - 1 - q);
+  const d = 1 << n, mask = 1 << q;
   let x = 0, y = 0, z = 0;
   for (let i = 0; i < d; i++) {
     const p = rho[2 * (i * d + i)];
@@ -208,7 +208,7 @@ export function trajectorySums(n: number, tape: Entry[], scope: Scope, m: NoiseM
     count++;
     for (let i = 0; i < dim; i++) probs[i] += st[2 * i] ** 2 + st[2 * i + 1] ** 2;
     for (let q = 0; q < n; q++) {
-      const mask = 1 << (n - 1 - q);
+      const mask = 1 << q;
       for (let i = 0; i < dim; i++) {
         if (i & mask) continue;
         const j = i | mask;
@@ -270,7 +270,7 @@ export function noisyShots(n: number, probs: Float64Array, m: NoiseModel, shots:
     let lo = 0, hi = cdf.length - 1;
     while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] < r) lo = mid + 1; else hi = mid; }
     let x = lo;
-    for (let q = 0; q < n; q++) if (rng() < rate(m, "readout", q)) x ^= 1 << (n - 1 - q);
+    for (let q = 0; q < n; q++) if (rng() < rate(m, "readout", q)) x ^= 1 << q;
     out.set(x, (out.get(x) ?? 0) + 1);
   }
   return out;

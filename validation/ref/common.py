@@ -1,8 +1,9 @@
 """Shared helpers for QC-1 reference generators.
 
-Conventions: QC-1 is big-endian (qubit 0 = most significant bit of a basis
-index); Qiskit is little-endian. `be_statevector` reverses Qiskit's qubit
-order so vectors compare index-for-index with QC-1's.
+Conventions: QC-1 uses Qiskit's bit order (qubit q = bit q of a basis index,
+q0 rightmost in kets, bitstrings and Pauli labels), so Qiskit's vectors,
+operators, density matrices, labels and counts compare with QC-1's directly:
+no reversal anywhere.
 """
 import json
 import pathlib
@@ -37,8 +38,8 @@ def qc1_state(case):
     return np.array(s[0::2]) + 1j * np.array(s[1::2])
 
 
-def be_statevector(qasm_text):
-    return Statevector(qasm3.loads(qasm_text)).reverse_qargs().data
+def statevector(qasm_text):
+    return Statevector(qasm3.loads(qasm_text)).data
 
 
 def r(x, digits=12):

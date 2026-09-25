@@ -1,4 +1,5 @@
 import type { Entry, Step } from "../../../src/calc/steps";
+import { qiskitGenerators } from "../../../src/calc/order";
 import { StabilizerRegister } from "../../../src/stab/register";
 import { Register } from "../../../src/calc/register";
 import { rng, step } from "../tapes";
@@ -54,5 +55,5 @@ export function smallCases(): StabCase[] {
 
 export function compute(c: StabCase) {
   const reg = new StabilizerRegister(c.n, c.tape);
-  return { generators: reg.tab.stabilizers(), notes: reg.notes, cbits: Array.from(reg.cbits), state: c.n <= 20 ? Array.from(new Register(c.n, c.tape).state) : null };
+  return { generators: qiskitGenerators(reg.tab.stabilizers()), notes: reg.notes, cbits: Array.from(reg.cbits), state: c.n <= 20 ? Array.from(new Register(c.n, c.tape).state) : null };
 }

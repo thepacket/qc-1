@@ -2,6 +2,7 @@ import { Register } from "../../../src/calc/register";
 import { exportQasm3 } from "../../../src/qasm/fromTape";
 import { lowerTape } from "../../../src/calc/lower";
 import { parsePauliSum } from "../../../src/sim/trotter";
+import { internalPauliSum } from "../../../src/calc/order";
 import { pauliSumExpectation } from "../../../src/sim/expectation";
 import { observableMoments } from "../../../src/sim/observableVariance";
 import { collectiveSpinGenerator, quantumFisherPure } from "../../../src/sim/qfi";
@@ -32,9 +33,9 @@ export function stateCasesM(): StateCase[] {
   ];
 }
 
-/** Hamiltonian texts for n qubits; the last terms exercise signed-exponent coefficients. */
+/** Hamiltonian texts for n qubits, as Qiskit writes Pauli strings (q0 rightmost); the last terms exercise signed-exponent coefficients. */
 export function hams(n: number): string[] {
-  const I = (ops: Record<number, string>) => Array.from({ length: n }, (_, q) => ops[q] ?? "I").join("");
+  const I = (ops: Record<number, string>) => Array.from({ length: n }, (_, p) => ops[n - 1 - p] ?? "I").join("");
   const zz = Array.from({ length: n - 1 }, (_, i) => `-1*${I({ [i]: "Z", [i + 1]: "Z" })}`).join(" + ");
   const x = Array.from({ length: n }, (_, i) => `0.7*${I({ [i]: "X" })}`).join(" - ");
   return [
@@ -50,9 +51,10 @@ export function computeState(c: StateCase) {
   const probs = Array.from({ length: 1 << n }, (_, i) => state[2 * i] ** 2 + state[2 * i + 1] ** 2);
   return {
     hams: hams(n).map((h) => {
-      const terms = parsePauliSum(h);
+      // Computed with the strings in the simulator's order (a LAB input's conversion); recorded as written.
+      const terms = parsePauliSum(internalPauliSum(h));
       const m = observableMoments(state, n, terms);
-      return { terms, expectation: pauliSumExpectation(state, n, terms), mean: m.mean, second: m.second, variance: m.variance };
+      return { terms: parsePauliSum(h), expectation: pauliSumExpectation(state, n, terms), mean: m.mean, second: m.second, variance: m.variance };
     }),
     qfi: (["X", "Y", "Z"] as const).map((a) => quantumFisherPure(state, n, collectiveSpinGenerator(n, a))),
     squeezing: spinSqueezing(state, n),
@@ -80,13 +82,13 @@ export const LANDSCAPE_GRID = 7;
 
 export async function computeSym(c: SymCaseM) {
   const circ = lowerTape(c.n, c.tape);
-  const obs = parsePauliSum(hams(c.n)[c.n > 1 ? 1 : 0]);
+  const obs = parsePauliSum(internalPauliSum(hams(c.n)[c.n > 1 ? 1 : 0]));
   return {
     qgt: quantumGeometricTensor(circ, [], c.scope, c.symbols),
     bloch: c.symbols.includes("t") ? blochTrajectories(circ, c.scope, [], PATH_POINTS)!.path : null,
     sweep: participationSweep(circ, c.scope, [])!,
     prefixQasm: c.tape.map((_, k) => exportQasm3(c.n, c.tape.slice(0, k + 1))),
     landscape: await computeLandscape(circ, c.scope, [], { kind: "sum", terms: obs }, [c.symbols[0]], LANDSCAPE_GRID, [-Math.PI, Math.PI]),
-    obs,
+    obs: parsePauliSum(hams(c.n)[c.n > 1 ? 1 : 0]), // as written (Qiskit's labels)
   };
 }

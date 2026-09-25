@@ -1,10 +1,10 @@
 """Phase 5a references: operator & spectrum.
 
-  unitary          qiskit Operator (reordered to big-endian)
+  unitary          qiskit Operator (Qiskit's order, as QC-1)
   PTM              definition R_ij = Tr(P_i U P_j U†)/2ⁿ (numpy, QC-1 labels)
   operator ent.    SVD of U reshaped (A_out A_in)×(B_out B_in)
   Floquet          numpy eigvals of U → sorted phases
-  H spectrum       SparsePauliOp.to_matrix → eigvalsh (label char q = qubit q = MSB first)
+  H spectrum       SparsePauliOp.to_matrix → eigvalsh (Qiskit labels: rightmost char = qubit 0)
   DOS/levels/SFF   same definitions on the numpy spectrum
   Krylov           numpy Lanczos (full re-orthogonalisation); C(t) from expm(−iHt)
   ensembles        numpy eigh; per-level weights (basis-independent) always,
@@ -22,7 +22,7 @@ from qiskit import qasm3
 from qiskit.quantum_info import Operator, Statevector
 from scipy.linalg import expm
 
-from common import OUT, be_statevector, fail, r, write_fixture
+from common import OUT, statevector, fail, r, write_fixture
 
 TOL = 1e-9
 PAULI = {"I": np.eye(2), "X": np.array([[0, 1], [1, 0]]), "Y": np.array([[0, -1j], [1j, 0]]), "Z": np.diag([1, -1])}
@@ -62,8 +62,8 @@ def label_mat(s):
     return m
 
 
-def be_unitary(qasm):
-    return Operator(qasm3.loads(qasm)).reverse_qargs().data
+def unitary(qasm):
+    return Operator(qasm3.loads(qasm)).data
 
 
 def ham_scale(text):
@@ -88,7 +88,7 @@ def ham_terms(text):
 
 
 def circ_ref(c):
-    n, U = c["n"], be_unitary(c["qasm"])
+    n, U = c["n"], unitary(c["qasm"])
     d = 2 ** n
     out = {"unitary": {"re": U.real.flatten().tolist(), "im": U.imag.flatten().tolist()}}
     if n <= 2:
@@ -100,7 +100,8 @@ def circ_ref(c):
     if n >= 2:
         a = n // 2
         dA, dB = 2 ** a, 2 ** (n - a)
-        T = U.reshape(dA, dB, dA, dB).transpose(0, 2, 1, 3).reshape(dA * dA, dB * dB)
+        # A = qubits 0…a−1 = the low bits (Qiskit's order): U[(iB, iA), (jB, jA)].
+        T = U.reshape(dB, dA, dB, dA).transpose(1, 3, 0, 2).reshape(dA * dA, dB * dB)
         lam = np.linalg.svd(T, compute_uv=False) ** 2 / d
         lam = np.sort(lam[lam > 1e-12])[::-1]
         out["opEnt"] = {"spectrum": lam.tolist(), "entropy": float(-np.sum(lam * np.log2(lam))), "cutA": a, "numQubits": n}
@@ -204,8 +205,8 @@ def ham_ref(h, state_qasm, state_n):
     n = h["n"]
     Hm = ham(h["text"])
     E, V = np.linalg.eigh(Hm)
-    psi = be_statevector(state_qasm)
-    U = be_unitary(state_qasm)
+    psi = statevector(state_qasm)
+    U = unitary(state_qasm)
     gap = float(E[1] - E[0]) if len(E) > 1 else 0.0
     pops = np.abs(V.conj().T @ psi) ** 2
     pops /= pops.sum()
@@ -246,7 +247,7 @@ def ham_ref(h, state_qasm, state_n):
     out["work"] = {"works": [wmin + (b + 0.5) * bw for b in range(24)], "probs": (probs / tot).tolist(), "meanWork": mean,
                    "variance": sum((w - mean) ** 2 * p / tot for w, p in pairs), "binWidth": bw}
     if not h["degenerate"]:
-        O = label_mat("Z" + "I" * (n - 1))
+        O = label_mat("I" * (n - 1) + "Z")  # Z on q0 (Qiskit's label: q0 rightmost)
         Om = V.conj().T @ O @ V
         dim = 2 ** n
         stride = max(1, dim * dim // 4000)
@@ -267,7 +268,7 @@ def ham_ref(h, state_qasm, state_n):
         half = n // 2
         ents = []
         for k in range(dim):
-            s = np.linalg.svd(V[:, k].reshape(2 ** half, 2 ** (n - half)), compute_uv=False) ** 2
+            s = np.linalg.svd(V[:, k].reshape(2 ** (n - half), 2 ** half), compute_uv=False) ** 2  # A = qubits 0…half−1, the low bits
             s = s[s > 1e-12]
             ents.append(float(-np.sum(s * np.log2(s))))
         out["eigEnt"] = {"energies": E.tolist(), "entropies": ents, "maxEntropy": min(half, n - half), "numQubits": n}
@@ -291,7 +292,7 @@ QN = {"t": "t_"}
 
 def geo_state(qc, scope):
     ps = {p.name: p for p in qc.parameters}
-    return Statevector(qc.assign_parameters({ps[QN.get(k, k)]: v for k, v in scope.items() if QN.get(k, k) in ps})).reverse_qargs().data
+    return Statevector(qc.assign_parameters({ps[QN.get(k, k)]: v for k, v in scope.items() if QN.get(k, k) in ps})).data
 
 
 def geom_ref(g):

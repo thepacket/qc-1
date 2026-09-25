@@ -76,13 +76,13 @@ def main():
         n, qc1, m = c["n"], c["qc1"], c["qc1"]["model"]
         cid = c["id"]
         qc = qasm3.loads(c["qasm"])
-        rho = density(qc, n, m)  # big-endian
+        rho = density(qc, n, m)  # Qiskit's order, as QC-1
         d = 1 << n
         psi = np.array(qc1["idealState"][0::2]) + 1j * np.array(qc1["idealState"][1::2])
-        ref_sv = Statevector(qc).reverse_qargs().data
+        ref_sv = Statevector(qc).data
         if np.max(np.abs(ref_sv - psi)) > 1e-10:
             fail(f"noise-analyses {cid}: ideal state")
-        R = DensityMatrix(rho)  # (as a little-endian object: only basis-free quantities are read from it)
+        R = DensityMatrix(rho)
         F = state_fidelity(Statevector(psi), R)
         ev = np.sort(np.clip(np.linalg.eigvalsh(rho), 0, None))[::-1]
         td = 0.5 * np.sum(np.abs(np.linalg.eigvalsh(rho - np.outer(psi, psi.conj()))))
@@ -90,10 +90,10 @@ def main():
         close([F, td, purity(R).real, entropy(R, base=2)],
               [imp["fidelity ⟨ψ|ρ|ψ⟩"], imp["trace distance"], imp["purity Tr ρ²"], imp["entropy S(ρ)"]], f"{cid} impact")
         close(ev[:16], qc1["spectrum"], f"{cid} spectrum")
-        # Coherent information across A | B (big-endian qubits → Qiskit indices n−1−q).
+        # Coherent information across A | B.
         A = c["cut"]
         B = [q for q in range(n) if q not in A]
-        qi = lambda qs: [n - 1 - q for q in qs]
+        qi = lambda qs: list(qs)
         SB = entropy(partial_trace(R, qi(A)), base=2)
         SA = entropy(partial_trace(R, qi(B)), base=2)
         SAB = entropy(R, base=2)
@@ -113,7 +113,7 @@ def main():
             close([dx + ax + px, dy + ay + py, dz + az + pz, rate(m, "readout", q)], [row[1], row[2], row[3], row[5]], f"{cid} Pauli budget q{q}")
         # Readout: A = ⊗ A_q applied to diag ρ, then inverted.
         A_full = np.array([[1.0]])
-        for q in range(n):
+        for q in reversed(range(n)):  # Qiskit's order: the highest qubit is the left factor
             p = rate(m, "readout", q)
             A_full = np.kron(A_full, np.array([[1 - p, p], [p, 1 - p]]))
         measured = A_full @ diag
@@ -128,7 +128,7 @@ def main():
         for k in range(1, len(tape) + 1):
             sub = qasm3.loads(prefix_qasm(c["qasm"], k))
             r = density(sub, n, m)
-            ps = Statevector(sub).reverse_qargs().data
+            ps = Statevector(sub).data
             fids.append(float(np.real(ps.conj() @ r @ ps)))
             purs.append(float(np.real(np.trace(r @ r))))
         close(fids, qc1["decoherence"]["fidelity"], f"{cid} decoherence fidelity")

@@ -47,9 +47,9 @@ function select(a: Float64Array, r: number): number {
   return a[r];
 }
 
-/** Bloch vector of qubit q by partial trace (big-endian: q0 is the MSB). */
+/** Bloch vector of qubit q by partial trace (qubit q is bit q, as in Qiskit). */
 export function bloch(state: Float64Array, n: number, q: number): Vec3 {
-  const mask = 1 << (n - 1 - q);
+  const mask = 1 << q;
   const dim = 1 << n;
   // c01 = Σ conj(a₀)·a₁ over pairs differing only in bit q, so ρ₀₁ = conj(c01):
   // ⟨X⟩ = 2 Re c01, ⟨Y⟩ = 2 Im c01 (|+i⟩ → +1), ⟨Z⟩ = ρ₀₀ − ρ₁₁.

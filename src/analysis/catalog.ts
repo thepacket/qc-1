@@ -1,5 +1,6 @@
 import type { AnalysisMeta, Category, InputSpec, Opts } from "./types";
 import { defaultObservable } from "./pauliPresets";
+import { internalPauliSum } from "../calc/order";
 
 /**
  * LAB groups, in display order. A panel has one home group and may be listed
@@ -457,10 +458,15 @@ export function inputValue(spec: InputSpec, opts: Opts, n: number): number {
   return 0;
 }
 
-/** Text of a Pauli input (options or the default observable). */
+/** Text of a Pauli input (options or the default observable), as the user writes it: Qiskit's order, q0 rightmost. */
 export function pauliValue(opts: Opts, key: string, n: number): string {
   const v = opts[key];
   return typeof v === "string" && v.trim() ? v : defaultObservable(n);
+}
+
+/** A Pauli input for the simulator: its strings in the simulator's order (character q = qubit q). */
+export function pauliInput(opts: Opts, key: string, n: number): string {
+  return internalPauliSum(pauliValue(opts, key, n));
 }
 
 /** A symbol input: the chosen symbol if the tape still uses it, else the default ("" = none). */

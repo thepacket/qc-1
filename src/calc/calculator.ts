@@ -1,6 +1,7 @@
 import { MAX_QUBITS } from "./register";
 import { STAB_MAX } from "../stab/register";
-import { bitCount, evalParam, exprOk, formatEntry, NONUNITARY, writesBit, type Entry, type Scope, type Step } from "./steps";
+import { canonicalName } from "./entry";
+import { bitCount, evalParam, exprOk, formatEntry, NONUNITARY, plainExpr, writesBit, type Entry, type Scope, type Step } from "./steps";
 import { CUSTOM_PREFIX, defineGate, setCustomGates, type CustomGate } from "./custom";
 import { blockGate, qaoaLayer, type BlockKind } from "./blocks";
 import { layoutTape } from "./diagram";
@@ -21,6 +22,12 @@ import type { AnalysisReply, AnalysisResult, Opts, Proposal } from "../analysis/
 import { symbolGlyph } from "./entry";
 import type { Cmd, Mode, Result, ViewData } from "./core";
 import type { Engine } from "./engine";
+
+/** A typed angle: displayed text (π÷4, 2θ, γ₀) and phone spellings (gamma0, γ1) read as the canonical expression. */
+const readExpr = (p: string) => {
+  const kept = p.replace(/[A-Za-z_][A-Za-z0-9_]*/g, canonicalName);
+  return exprOk(kept) ? kept : plainExpr(p);
+};
 
 export type { Mode };
 
@@ -691,7 +698,7 @@ export class Calculator {
     if (custom) params = [];
     else if (gate === "initialize") params = [this.amplitudeParam(o.params?.[0] ?? "1", o.params?.[1] ?? "0")];
     else {
-      params = paramDefs(gate).map((d, i) => (o.params?.[i] ?? d.default).trim() || d.default);
+      params = paramDefs(gate).map((d, i) => readExpr((o.params?.[i] ?? d.default).trim() || d.default));
       for (const p of params) if (!exprOk(p)) throw new Error(`can't read "${p}"`);
     }
     if (o.condition) {
@@ -861,7 +868,7 @@ export class Calculator {
       else {
         const defs = e[0].params;
         if (params.length > defs.length) throw new Error(`${defs.length} parameter${defs.length === 1 ? "" : "s"}`);
-        next = defs.map((p, j) => (params[j] ?? p).trim() || p);
+        next = defs.map((p, j) => readExpr((params[j] ?? p).trim() || p));
         for (const p of next) if (!exprOk(p)) throw new Error(`can't read "${p}"`);
       }
     } catch (err) {
@@ -1424,11 +1431,11 @@ export class Calculator {
     this.message = { text, kind: "info" };
   }
 
-  /** An algorithm block on the qubits `qs` (ascending: the first is the most significant); QAOA takes γ, β. Throws with a message. */
+  /** An algorithm block on the qubits `qs` (ascending: the first is the least significant, as in Qiskit); QAOA takes γ, β. Throws with a message. */
   private placeBlock(kind: BlockKind, qs: number[], params: string[] = [], col?: number) {
     if (kind === "qaoa") {
       if (qs.length < 2) throw new Error("QAOA needs 2+ qubits");
-      const [gamma = "π/4", beta = "π/8"] = params;
+      const [gamma = "π/4", beta = "π/8"] = params.map(readExpr);
       for (const a of [gamma, beta]) if (!exprOk(a)) throw new Error(`can't read "${a}"`);
       const entries = qaoaLayer(qs, gamma, beta).map((e) => e.map((s) => ({ ...s, id: newId(), column: this.tape.length })));
       const done = () => this.info(`QAOA layer (γ=${gamma}, β=${beta})`);

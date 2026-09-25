@@ -71,12 +71,11 @@ def density(qc, n, m):
     rho = DensityMatrix.from_label("0" * n)
     for inst in qc.data:
         qs = [qc.find_bit(q).index for q in inst.qubits]
-        # Qiskit is little-endian: QC-1 qubit q is Qiskit qubit q here (q[k] ↔ index k); the
-        # final state is reversed for comparison.
+        # QC-1 qubit q is Qiskit qubit q (q[k] ↔ index k), and QC-1 uses Qiskit's bit order.
         rho = rho.evolve(inst.operation, qs)
         for eq, err in errors_after(m, inst, qs):
             rho = rho.evolve(Kraus(err), eq)
-    return rho.reverse_qargs().data
+    return rho.data
 
 
 def main():
@@ -99,9 +98,9 @@ def main():
         for i, (a, b) in enumerate(zip(p, qc1["trajProbs"])):
             if abs(a - b) > 5 * np.sqrt(max(a * (1 - a), 1e-12) / T) + 1e-3:
                 fail(f"noise {c['id']}: trajectory probability of {i}: {b:.4f} vs ρ {a:.4f}")
-        # Bloch vectors from ρ (big-endian qubit q).
+        # Bloch vectors from ρ.
         for q in range(n):
-            red = partial_trace(DensityMatrix(ref), [n - 1 - k for k in range(n) if k != q]).data
+            red = partial_trace(DensityMatrix(ref), [k for k in range(n) if k != q]).data
             x, y, z = 2 * red[1, 0].real, 2 * red[1, 0].imag, (red[0, 0] - red[1, 1]).real
             b = qc1["bloch"][q]
             if max(abs(x - b["x"]), abs(y - b["y"]), abs(z - b["z"])) > 1e-10:
@@ -132,16 +131,16 @@ def main():
         shots = 40000
         counts = sim.run(transpile(qc, sim, optimization_level=0), shots=shots).result().get_counts()
         T = qc1["trajectories"]
-        keys = set(counts) | {k[::-1] for k in qc1["counts"]}
+        keys = set(counts) | set(qc1["counts"])  # both print c[n-1] … c[0]
         for key in keys:
             fa = counts.get(key, 0) / shots
-            fq = qc1["counts"].get(key[::-1], 0) / T
+            fq = qc1["counts"].get(key, 0) / T
             p = (fa + fq) / 2
             sigma = np.sqrt(max(p * (1 - p), 1e-6) * (1 / shots + 1 / T))
             if abs(fa - fq) > 5 * sigma + 2e-3:
-                fail(f"noise {c['id']}: c={key[::-1]}: QC-1 trajectories {fq:.4f} vs Aer {fa:.4f}")
+                fail(f"noise {c['id']}: c={key}: QC-1 trajectories {fq:.4f} vs Aer {fa:.4f}")
         out_c.append({"id": c["id"], "n": n, "tape": c["tape"], "model": c["model"],
-                      "aer": {k[::-1]: v / shots for k, v in sorted(counts.items())}, "shots": shots})
+                      "aer": {k: v / shots for k, v in sorted(counts.items())}, "shots": shots})
     print(f"  noise: density matrices within {worst:.1e}; {len(out_c)} classical programs agree with Aer")
     write_fixture("noise", "qiskit_aer.noise errors as Kraus maps on DensityMatrix (exact); AerSimulator with NoiseModel (5σ)",
                   [{"kind": "unitary", **x} for x in out_u] + [{"kind": "classical", **x} for x in out_c],

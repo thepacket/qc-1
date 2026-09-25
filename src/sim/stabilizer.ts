@@ -289,7 +289,8 @@ export class Stabilizer {
    * The n stabilizer generators ⟨g₁,…,gₙ⟩ as signed Pauli strings — the
    * group that fixes the state. Sign is the row phase (+ for r=0, − for r=1);
    * each character is I/X/Y/Z from the (x_q, z_q) bit pair. E.g. a Bell pair
-   * yields two of {+XX, +ZZ, −YY}. Big-endian: qubit 0 is the leftmost char.
+   * yields two of {+XX, +ZZ, −YY}. Internal order: qubit 0 is the leftmost char
+   * (QC-1 shows them in Qiskit order through qiskitGenerators).
    */
   stabilizers(): string[] {
     const n = this.n;
@@ -412,8 +413,8 @@ export class Stabilizer {
    * stabilizer states up to 1024 qubits, which the dense statevector
    * path can't reach.
    *
-   * `paulis` is one entry per qubit ("I"/"X"/"Y"/"Z"), big-endian indexed
-   * (qubit 0 is MSB) — matches the rest of the codebase.
+   * `paulis` is one entry per qubit ("I"/"X"/"Y"/"Z"), indexed by qubit
+   * (paulis[q] acts on qubit q).
    */
   pauliExpectation(paulis: ReadonlyArray<"I" | "X" | "Y" | "Z">): -1 | 0 | 1 {
     const n = this.n;

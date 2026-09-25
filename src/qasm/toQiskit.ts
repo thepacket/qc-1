@@ -149,6 +149,6 @@ export function qiskitPython(n: number, tape: Entry[], nc = n): string {
   out.push(creg ? "qc = QuantumCircuit(qr, cr)" : "qc = QuantumCircuit(qr)");
   out.push(...body.filter((l) => l.includes("Parameter(")));
   out.push(...body.filter((l) => !l.includes("Parameter(")));
-  out.push("", "# Qiskit is little-endian: qc's qubit 0 is QC-1's q0, printed rightmost in bitstrings.", "");
+  out.push("", "# qc's qubit k is QC-1's qk; both print q0 rightmost in kets and bitstrings.", "");
   return out.filter((l, i, a) => !(l === "" && a[i - 1] === "")).join("\n");
 }

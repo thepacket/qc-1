@@ -148,7 +148,7 @@ export function quantumDiscordMap(state: Float64Array, n: number, maxQubits = MA
   for (let a = 0; a < n; a++) {
     for (let b = 0; b < n; b++) {
       if (a === b) continue;
-      const rhoAB = reducedDensityMatrix(state, n, [a, b]); // A = MSB
+      const rhoAB = reducedDensityMatrix(state, n, [b, a]); // A = MSB (QC-1: kept[0] is ρ's low bit, so b goes first)
       const rhoA = reducedDensityMatrix(state, n, [a]);
       const rhoB = reducedDensityMatrix(state, n, [b]);
       const val = discordPair(rhoAB, rhoA, rhoB);

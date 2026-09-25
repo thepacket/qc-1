@@ -36,7 +36,7 @@ function prob1(state: Float64Array, n: number, s: Step, scope: Scope): number {
     if (s.gateId === "measure_y") applyStep(psi, n, basis("sdg"), Math.random, scope);
     applyStep(psi, n, basis("h"), Math.random, scope);
   }
-  const mask = 1 << (n - 1 - q);
+  const mask = 1 << q;
   let p = 0;
   for (let i = 0; i < 1 << n; i++) if (i & mask) p += psi[2 * i] ** 2 + psi[2 * i + 1] ** 2;
   return p;
@@ -71,7 +71,7 @@ export function branchTree(n: number, tape: Entry[], scope: Scope = {}, maxEvent
       }
       return;
     }
-    leaves.push({ path, p: node.p, cbits: [...cbits].join("") });
+    leaves.push({ path, p: node.p, cbits: [...cbits].reverse().join("") }); // c[k−1] … c[0], as Qiskit prints counts
   };
   const ground = new Float64Array(2 << n);
   ground[0] = 1;

@@ -57,7 +57,7 @@ export function operatorEntanglement(
   const bQ = n - aQ;              // |B|
   const dA = 1 << aQ, dB = 1 << bQ;
   const rows = dA * dA;          // (A_out, A_in)
-  // M[row][col] = U[i][j], i = iA·dB + iB, j = jA·dB + jB,
+  // M[row][col] = U[i][j], i = iB·dA + iA, j = jB·dA + jA (QC-1: Qiskit bit order, A = qubits 0…|A|−1 = the low bits),
   //   row = iA·dA + jA, col = iB·dB + jB.
   // G = M M†  (rows × rows, Hermitian PSD); eigenvalues = singular values².
   const G: Complex[][] = Array.from({ length: rows }, () => Array.from({ length: rows }, () => ({ re: 0, im: 0 })));
@@ -71,8 +71,8 @@ export function operatorEntanglement(
           let re = 0, im = 0;
           for (let iB = 0; iB < dB; iB++)
             for (let jB = 0; jB < dB; jB++) {
-              const i1 = iA * dB + iB, j1 = jA * dB + jB;
-              const i2 = kA * dB + iB, j2 = lA * dB + jB;
+              const i1 = iB * dA + iA, j1 = jB * dA + jA; // QC-1: Qiskit bit order
+              const i2 = iB * dA + kA, j2 = jB * dA + lA;
               const ar = Ure[i1][j1], ai = Uim[i1][j1];
               const br = Ure[i2][j2], bi = Uim[i2][j2]; // conj below
               // M[r][col]·conj(M[rp][col]) = (ar+iai)(br−ibi)

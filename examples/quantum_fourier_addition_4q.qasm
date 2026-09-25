@@ -12,38 +12,42 @@
 //      Rz(π/2^k) onto b — the QFT-basis "add a" operation.
 //   3. Inverse QFT on b register: |QFT(a+b)⟩ ↦ |a+b⟩.
 //
-// Below: a = 01 (q[0..1]) is the classical addend, b = 10 (q[2..3])
-// the quantum register. Expected output on b: 10 + 01 = 11 (binary 3).
+// Below: a = 01 (q[1] q[0]) is the classical addend, b = 10 (q[3] q[2])
+// the quantum register; each register's lower qubit is its least
+// significant bit (Qiskit's order). Expected output on b: 10 + 01 = 11 (binary 3).
 
 OPENQASM 3.0;
 include "stdgates.inc";
 
-qubit[4] q;       // q[0..1] = a, q[2..3] = b
+qubit[4] q;       // q[0..1] = a, q[2..3] = b (lower qubit = least significant bit)
 bit[2] c;
 
 // Classical addend a = 01.
-x q[1];
+x q[0];
 
 // Quantum input b = 10.
-x q[2];
+x q[3];
 
 // QFT on b register.
-h q[2];
-cp(pi/2) q[3], q[2];
 h q[3];
-swap q[2], q[3];
+cp(pi/2) q[2], q[3];
+h q[2];
+swap q[3], q[2];
 
 // Controlled phase additions: a + b in the Fourier basis.
-cp(pi)   q[0], q[2];
-cp(pi/2) q[0], q[3];
-cp(pi/2) q[1], q[2];
-cp(pi/4) q[1], q[3];
+// QC-1 fix: in the QFT basis b's qubit j carries e^{2πi·b·2^j/4}, so adding
+// a multiplies it by e^{2πi·a·2^j/4}: a phase π·2^(m+j−1) from a's bit m onto
+// b's bit j (the 2π term, m = j = 1, is the identity). Upstream's angles left
+// b = 11 with probability 0.43 only.
+cp(pi/2) q[0], q[2];
+cp(pi)   q[0], q[3];
+cp(pi)   q[1], q[2];
 
 // Inverse QFT on b register.
-swap q[2], q[3];
-h q[3];
-cp(-pi/2) q[3], q[2];
+swap q[3], q[2];
 h q[2];
+cp(-pi/2) q[2], q[3];
+h q[3];
 
 c[0] = measure q[2];
 c[1] = measure q[3];

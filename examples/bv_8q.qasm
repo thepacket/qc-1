@@ -1,4 +1,5 @@
-// Bernstein–Vazirani with a 7-bit hidden string s = 1011010.
+// Bernstein–Vazirani with a 7-bit hidden string s = 0101101 (bit j on
+// qubit j, written s[6]…s[0] as Qiskit writes bits).
 //
 // Problem: an oracle implements f(x) = s · x mod 2 for some unknown
 // hidden bit-string s ∈ {0,1}⁷. Recover s.
@@ -17,9 +18,10 @@
 // pattern is exactly the Hadamard-transform image of the bit-string
 // s. So the final state is exactly |s⟩.
 //
-// Below the oracle has bits set at positions 0, 2, 3, 5 — that's
-// s = 1011010 (read q[0] q[1] q[2] q[3] q[4] q[5] q[6] = MSB first).
-// The Probabilities panel shows a single spike at index 0b1011010 = 90.
+// Below the oracle has bits set on qubits 0, 2, 3, 5 — that's
+// s = 0101101 (q[6] … q[0], as Qiskit writes it) = 45. The Probabilities
+// panel shows two equal spikes, |0 0101101⟩ and |1 0101101⟩: the input
+// register reads s, and the ancilla q[7] (leftmost) is in |−⟩.
 
 OPENQASM 3.0;
 include "stdgates.inc";
@@ -32,7 +34,7 @@ h q[7];
 
 h q[0]; h q[1]; h q[2]; h q[3]; h q[4]; h q[5]; h q[6];
 
-// Oracle for s = 1011010 (bits set at positions 0, 2, 3, 5).
+// Oracle for s = 0101101 (bits set on qubits 0, 2, 3, 5).
 cx q[0], q[7];
 cx q[2], q[7];
 cx q[3], q[7];

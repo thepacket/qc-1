@@ -2,7 +2,7 @@
 
 Each generated script is executed as-is; the resulting QuantumCircuit (with
 symbols bound where needed) must reproduce the committed Qiskit reference of
-the same program exactly: Statevector.reverse_qargs() for the gate, random
+the same program exactly: its Statevector for the gate, random
 and symbolic groups (global phase included), and g_classical's interpreter
 with the recorded outcomes for the classical group (if_test).
 """
@@ -33,7 +33,7 @@ def main():
         qc = build(c["python"])
         if g in ("gates", "random-tapes"):
             exp = np.array(ref["expected"]["re"]) + 1j * np.array(ref["expected"]["im"])
-            got = Statevector(qc).reverse_qargs().data
+            got = Statevector(qc).data
             err = float(np.max(np.abs(got - exp)))
         elif g == "symbolic":
             err = 0.0
@@ -41,7 +41,7 @@ def main():
                 ps = {x.name: x for x in qc.parameters}
                 bound = qc.assign_parameters({ps[name]: p[name] for name in ps})
                 exp = np.array(ref["expected"][k]["re"]) + 1j * np.array(ref["expected"][k]["im"])
-                err = max(err, float(np.max(np.abs(Statevector(bound).reverse_qargs().data - exp))))
+                err = max(err, float(np.max(np.abs(Statevector(bound).data - exp))))
         else:
             outcomes = [s.get("outcome") for e in ref["tape"] for s in e if s["gateId"] in MEAS]
             psi, bits = run_classical(qc, c["n"], outcomes)

@@ -141,3 +141,43 @@ test("tape labels drop the implicit ×", async () => {
   expect(prettyExpr("π*t")).toBe("πt");
   expect(prettyExpr("θ*t")).toBe("θ×t");
 });
+
+test("symbols with a suffix show as glyphs with subscripts, and the displayed text reads back", async () => {
+  const { prettyExpr, plainExpr, evalParam } = await import("../src/calc/steps");
+  const { symbolGlyph } = await import("../src/calc/entry");
+  expect(prettyExpr("2*gamma_0")).toBe("2γ₀");
+  expect(prettyExpr("theta_47/2")).toBe("θ₄₇÷2");
+  expect(prettyExpr("-beta_1")).toBe("−β₁");
+  expect(prettyExpr("sqrt(2)*psi")).toBe("√(2)ψ");
+  expect(symbolGlyph("theta_b")).toBe("θ_b");
+  expect(symbolGlyph("theta_a")).toBe("θₐ");
+  expect(symbolGlyph("x_1")).toBe("x₁");
+  expect(symbolGlyph("t")).toBe("t");
+  const scope = { gamma_0: 0.3, theta_47: 1.1, beta_1: -0.4, theta_b: 0.7, theta: 0.2, t: 0.5 };
+  for (const e of ["2*gamma_0", "theta_47/2", "-beta_1", "3*pi/4", "2*theta+pi/4", "sqrt(2)*t", "theta_b*t", "2*(theta+1)", "1e-3*gamma_0", "sin(t)*gamma_0"]) {
+    expect(evalParam(plainExpr(prettyExpr(e)), scope)).toBeCloseTo(evalParam(e, scope), 12);
+  }
+});
+
+test("an angle typed as displayed (π÷2, 2θ, γ₀) is accepted", async () => {
+  const { calc, add } = await import("./ed");
+  const c = calc();
+  add(c, "rz", [0]);
+  expect(c.setGateParams(0, ["π÷2"])).toBe(true);
+  expect(c.setGateParams(0, ["2γ₀−π÷4"])).toBe(true);
+  expect(c.symbols).toContain("gamma_0");
+});
+
+test("phone spellings of symbols name the same symbol", async () => {
+  const { calc, add } = await import("./ed");
+  const c = calc();
+  add(c, "rz", [0]);
+  for (const typed of ["gamma0", "gamma_0", "Gamma0", "γ0", "γ_0", "γ₀"]) {
+    expect(c.setGateParams(0, [`2*${typed}`])).toBe(true);
+    expect(c.symbols).toEqual(["gamma_0"]);
+  }
+  expect(c.setGateParams(0, ["Theta/2"])).toBe(true);
+  expect(c.symbols).toEqual(["theta"]);
+  expect(c.setGateParams(0, ["π/2"])).toBe(true);
+  expect(c.tape[0][0].params).toEqual(["π/2"]); // parseable text is kept as typed
+});

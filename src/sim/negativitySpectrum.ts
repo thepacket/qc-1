@@ -30,8 +30,8 @@ export function negativitySpectrum(
   if (n < 2 || n > maxQubits) return null;
   if (subsetA.length === 0 || subsetA.length >= n) return null;
   const dim = 1 << n;
-  // Bit position (big-endian) for qubit q is (n-1-q). Build masks for A bits.
-  const aMask = subsetA.reduce((m, q) => m | (1 << (n - 1 - q)), 0);
+  // Qubit q is bit q (Qiskit order). Build masks for A bits.
+  const aMask = subsetA.reduce((m, q) => m | (1 << q), 0); // QC-1: Qiskit bit order (qubit q is bit q)
 
   // Dense ρ = |ψ⟩⟨ψ|, then partial transpose on A: swap the A-bits of row/col.
   // ρ^{T_A}[i][j] = ρ[ (i_B | j_A) ][ (j_B | i_A) ].

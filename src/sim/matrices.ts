@@ -164,11 +164,13 @@ export const M_iSWAP: Matrix = [
   [ZERO, ZERO, ZERO, ONE],
 ];
 
+// QC-1 fix: Qiskit's DCX (dcx a, b = cx a, b; cx b, a). Upstream had the qubit
+// roles reversed: [[1,0,0,0],[0,0,0,1],[0,1,0,0],[0,0,1,0]].
 export const M_DCX: Matrix = [
   [ONE, ZERO, ZERO, ZERO],
+  [ZERO, ZERO, ONE, ZERO],
   [ZERO, ZERO, ZERO, ONE],
   [ZERO, ONE, ZERO, ZERO],
-  [ZERO, ZERO, ONE, ZERO],
 ];
 
 // √SWAP — partial-swap entangler; squares to SWAP. Not Clifford.
@@ -186,13 +188,16 @@ export const M_SQRTSWAPdg: Matrix = [
   [ZERO, ZERO, ZERO, ONE],
 ];
 
+// QC-1 fix: Qiskit's ECR (ecr a, b = rzx(π/4) a, b; x a; rzx(−π/4) a, b), written
+// with the first qubit as the matrix's high bit. Upstream had the qubit roles
+// reversed (Qiskit's printed matrix read with the first qubit high).
 export const M_ECR: Matrix = (() => {
   const s = SQRT1_2;
   return [
-    [ZERO, c(s), ZERO, c(0, s)],
-    [c(s), ZERO, c(0, -s), ZERO],
-    [ZERO, c(0, s), ZERO, c(s)],
-    [c(0, -s), ZERO, c(s), ZERO],
+    [ZERO, ZERO, c(s), c(0, s)],
+    [ZERO, ZERO, c(0, s), c(s)],
+    [c(s), c(0, -s), ZERO, ZERO],
+    [c(0, -s), c(s), ZERO, ZERO],
   ];
 })();
 

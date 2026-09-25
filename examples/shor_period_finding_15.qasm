@@ -12,8 +12,9 @@
 // here) yields r.
 //
 // Registers:
-//   q[0..2]  — 3 counting qubits (the phase-estimation register)
-//   q[3..6]  — 4 work qubits holding a value mod 15, MSB = q[3]
+//   q[0..2]  — 3 counting qubits (the phase-estimation register, q[0] least significant)
+//   q[3..6]  — 4 work qubits holding a value mod 15, q[3] least significant
+//   (Qiskit's order: kets and counts read q[2] q[1] q[0])
 //
 // The key simplification that makes this small: because 15 = 2⁴ − 1,
 // multiplying by 4 = 2² mod 15 is just a *cyclic left-rotation by two
@@ -24,7 +25,7 @@
 //     U² = ×16  ≡ ×1 = identity
 //     U⁴ = ×256 ≡ ×1 = identity
 //
-// so only the U¹ control (counting qubit q[2]) does anything; the higher
+// so only the U¹ control (counting qubit q[0]) does anything; the higher
 // counting qubits estimate phase bits that are exactly zero for r = 2.
 //
 // What you should see (Probabilities / Measurement-counts panels): the
@@ -41,33 +42,33 @@
 
 OPENQASM 3.0;
 include "stdgates.inc";
-// qubit_names: c0, c1, c2, w3, w2, w1, w0
+// qubit_names: c0, c1, c2, w0, w1, w2, w3
 
 qubit[7] q;
 bit[3] c;
 
 // ── Counting register into uniform superposition ──────────────────────
-h q[0];
-h q[1];
 h q[2];
+h q[1];
+h q[0];
 
-// ── Work register initialised to |1⟩  (value 1 = 0001) ────────────────
-x q[6];
+// ── Work register initialised to |1⟩  (value 1 = 0001, q[6] … q[3]) ────
+x q[3];
 
 // ── Controlled modular multiplication ─────────────────────────────────
-// note: q[2] controls U¹ = ×4 mod 15 = rotate work bits left by 2
-cswap q[2], q[3], q[5];
-cswap q[2], q[4], q[6];
-// (q[0], q[1] would control U⁴, U² = identity — omitted)
+// note: q[0] controls U¹ = ×4 mod 15 = rotate work bits left by 2
+cswap q[0], q[6], q[4];
+cswap q[0], q[5], q[3];
+// (q[1], q[2] would control U², U⁴ = identity — omitted)
 
-// ── Inverse QFT on the counting register (q0 MSB … q2 LSB) ─────────────
-swap q[0], q[2];
-h q[2];
-cp(-π/2) q[1], q[2];
-h q[1];
-cp(-π/4) q[0], q[2];
-cp(-π/2) q[0], q[1];
+// ── Inverse QFT on the counting register (q0 least significant, as Qiskit's QFT) ──
+swap q[2], q[0];
 h q[0];
+cp(-π/2) q[1], q[0];
+h q[1];
+cp(-π/4) q[2], q[0];
+cp(-π/2) q[2], q[1];
+h q[2];
 
 // ── Measure the counting register → peaks at 0 and 4 ──────────────────
 c[0] = measure q[0];

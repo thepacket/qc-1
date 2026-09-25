@@ -66,7 +66,7 @@ def run(qc, n, outcomes):
             psi = psi.evolve(inst.operation, qi)
 
     execute(qc.data, {q: i for i, q in enumerate(qc.qubits)}, {c: i for i, c in enumerate(qc.clbits)})
-    return psi.reverse_qargs().data, bits
+    return psi.data, bits
 
 
 def branches(qc, n):
@@ -114,7 +114,7 @@ def branches(qc, n):
             if name == "barrier":
                 continue
             psi = psi.evolve(inst.operation, qi)
-        leaves[path] = (p, "".join(str(b) for b in bits))
+        leaves[path] = (p, "".join(str(b) for b in reversed(bits)))  # c[k-1] … c[0], as Qiskit prints
 
     walk([(qc.data, {q: i for i, q in enumerate(qc.qubits)}, {c: i for i, c in enumerate(qc.clbits)}, 0)],
          Statevector.from_label("0" * n), [0] * max(n, qc.num_clbits), 1.0, "")
@@ -175,13 +175,13 @@ def aer_check(qc, n, leaves, cid):
         dist[bits] = dist.get(bits, 0) + p
     worst = 0.0
     for bits, p in dist.items():
-        key = bits[::-1]  # Qiskit prints c[n-1] … c[0]
+        key = bits  # both print c[n-1] … c[0]
         f = counts.get(key, 0) / shots
         sigma = np.sqrt(max(p * (1 - p), 1e-9) / shots)
         worst = max(worst, abs(f - p) / sigma)
         if abs(f - p) > 5 * sigma + 1e-3:
             fail(f"classical {cid}: Aer frequency {f:.4f} vs QC-1 branches {p:.4f} for c={bits}")
-    extra = sum(v for k, v in counts.items() if k[::-1] not in dist) / shots
+    extra = sum(v for k, v in counts.items() if k not in dist) / shots
     if extra > 1e-3:
         fail(f"classical {cid}: Aer saw outcomes QC-1 says are impossible ({extra:.4f})")
     return worst

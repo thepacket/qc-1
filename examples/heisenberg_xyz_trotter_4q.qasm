@@ -20,7 +20,7 @@ input float delta;
 
 qubit[4] q;
 
-// Initial state: Néel order |0101⟩ via X on q[1] and q[3].
+// Initial state: Néel order |1010⟩ (q[3] q[2] q[1] q[0], as Qiskit writes kets) via X on q[1] and q[3].
 x q[1];
 x q[3];
 

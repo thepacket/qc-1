@@ -31,18 +31,18 @@ def main():
         n, qs = c["n"], c["qubits"]
         qc = QuantumCircuit(n)
         if c["kind"] == "matrix":
-            qc.append(UnitaryGate(ref), list(reversed(qs)))  # UnitaryGate's first qubit is the least significant
-            want = Operator(qc).reverse_qargs().data
+            qc.append(UnitaryGate(ref), list(qs))  # QC-1 reads a typed matrix as Qiskit does: the first qubit is the least significant
+            want = Operator(qc).data
             cols = c["qc1"]["cols"]
             mine = np.array([np.array(col[0::2]) + 1j * np.array(col[1::2]) for col in cols]).T
-            got = Operator(qasm3.loads(c["qc1"]["qasm"])).reverse_qargs().data
+            got = Operator(qasm3.loads(c["qc1"]["qasm"])).data
         else:
             ref = ref / np.linalg.norm(ref)
-            qc.initialize(Statevector(ref).reverse_qargs().data, list(qs))  # Qiskit's own reading of the target on those qubits
-            want = Statevector(qc).reverse_qargs().data
+            qc.initialize(ref, list(qs))  # Qiskit's own reading of the target on those qubits
+            want = Statevector(qc).data
             col = c["qc1"]["cols"][0]
             mine = np.array(col[0::2]) + 1j * np.array(col[1::2])
-            got = Statevector(qasm3.loads(c["qc1"]["qasm"])).reverse_qargs().data
+            got = Statevector(qasm3.loads(c["qc1"]["qasm"])).data
         err = max(float(np.max(np.abs(mine - want))), float(np.max(np.abs(got - want))))
         worst = max(worst, err)
         if err > 1e-10:

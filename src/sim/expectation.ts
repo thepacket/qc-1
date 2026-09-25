@@ -54,7 +54,7 @@ export function evaluateObservable(
 
 /**
  * state is the interleaved-re/im Float64Array of length 2 · 2^n.
- * paulis[q] selects the Pauli on qubit q (big-endian: q = 0 is MSB).
+ * paulis[q] selects the Pauli on qubit q (qubit q is bit q, as in Qiskit).
  */
 export function paulis(state: Float64Array, n: number, paulis: Pauli[]): number {
   const dim = 1 << n;
@@ -68,7 +68,7 @@ export function paulis(state: Float64Array, n: number, paulis: Pauli[]): number 
   for (let q = 0; q < n; q++) {
     const p = paulis[q];
     if (p === "I") continue;
-    const mask = 1 << (n - 1 - q);
+    const mask = 1 << q; // QC-1: Qiskit bit order (qubit q is bit q)
 
     if (p === "X") {
       for (let i = 0; i < dim; i++) {

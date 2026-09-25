@@ -484,14 +484,14 @@ export function classicalShadows(n: number, state: Float64Array, snapshots: numb
 export function processTomography(n: number, tape: Entry[], m: NoiseModel | null, scope: Record<string, number> = {}): number[][] {
   if (n > 2) throw new Error("process tomography here is for up to 2 qubits");
   const d = 1 << n, K = 4 ** n;
-  // Input states: product of {|0⟩, |1⟩, |+⟩, |+i⟩} per qubit (big-endian digits).
+  // Input states: product of {|0⟩, |1⟩, |+⟩, |+i⟩} per qubit (base-4 digit q is qubit q: Qiskit's Pauli basis order).
   const prep: string[][] = [[], ["x"], ["h"], ["h", "s"]];
   const labels = [..."IXYZ"];
-  const pauliOf = (k: number) => Array.from({ length: n }, (_, q) => labels[(k >> (2 * (n - 1 - q))) & 3]).join("");
+  const pauliOf = (k: number) => Array.from({ length: n }, (_, q) => labels[(k >> (2 * q)) & 3]).join("");
   // Expectations e[a][i] = Tr(P_i Λ(ρ_a)); the inputs are prepared ideally (the channel is the tape's alone).
   const expectations = Array.from({ length: K }, (_, a) => {
     const inTape: Entry[] = [];
-    for (let q = 0; q < n; q++) for (const g of prep[(a >> (2 * (n - 1 - q))) & 3]) inTape.push([step(g, [q])]);
+    for (let q = 0; q < n; q++) for (const g of prep[(a >> (2 * q)) & 3]) inTape.push([step(g, [q])]);
     const psi = new Register(n, inTape.length ? inTape : [[step("i", [0])]]).state;
     // QC-1 fix (docs/quantiom-bugs.md #43): the circuit's symbols take their current values.
     const rho = m ? noisyDensity(n, tape, scope, m, psi).rho : (() => {
@@ -507,7 +507,7 @@ export function processTomography(n: number, tape: Entry[], m: NoiseModel | null
   // Input Pauli vectors: s[a][j] = Tr(P_j ρ_a) — the same readout of the ideal preparations.
   const inputs = Array.from({ length: K }, (_, a) => {
     const inTape: Entry[] = [];
-    for (let q = 0; q < n; q++) for (const g of prep[(a >> (2 * (n - 1 - q))) & 3]) inTape.push([step(g, [q])]);
+    for (let q = 0; q < n; q++) for (const g of prep[(a >> (2 * q)) & 3]) inTape.push([step(g, [q])]);
     const s = new Register(n, inTape.length ? inTape : [[step("i", [0])]]).state, r = new Float64Array(2 * d * d);
     for (let i = 0; i < d; i++) for (let j = 0; j < d; j++) {
       r[2 * (i * d + j)] = s[2 * i] * s[2 * j] + s[2 * i + 1] * s[2 * j + 1];
@@ -523,7 +523,7 @@ export function processTomography(n: number, tape: Entry[], m: NoiseModel | null
   return E.map((row) => Array.from({ length: K }, (_, j) => row.reduce((acc, v, a) => acc + v * Sinv[a][j], 0)));
 }
 
-/** Tr(ρ P) for a Pauli string P (big-endian). */
+/** Tr(ρ P) for a Pauli string P (character q acts on qubit q = bit q). */
 function pauliTrace(rho: Float64Array, n: number, P: string): number {
   const d = 1 << n;
   let tr = 0;
@@ -531,8 +531,8 @@ function pauliTrace(rho: Float64Array, n: number, P: string): number {
     // P|j⟩ = phase·|k⟩
     let k = j, re = 1, im = 0;
     for (let q = 0; q < n; q++) {
-      const bit = (j >> (n - 1 - q)) & 1, c = P[q];
-      if (c === "X" || c === "Y") k ^= 1 << (n - 1 - q);
+      const bit = (j >> q) & 1, c = P[q];
+      if (c === "X" || c === "Y") k ^= 1 << q;
       if (c === "Y") { const [a, b] = bit ? [im, -re] : [-im, re]; re = a; im = b; }
       if (c === "Z" && bit) { re = -re; im = -im; }
     }

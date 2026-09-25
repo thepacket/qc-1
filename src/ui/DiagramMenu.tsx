@@ -7,6 +7,7 @@ import { CUSTOM_PREFIX } from "../calc/custom";
 import { SNIPPETS } from "../calc/snippets";
 import { exportQasm3 } from "../qasm/fromTape";
 import type { Opts } from "../analysis/types";
+import { ExprField } from "./ExprField";
 
 /** What a long-press (or a right-click) opened: a gate's menu (by its first step's id), the canvas's, or the selection's. */
 export type MenuAt = { x: number; y: number } & ({ kind: "gate"; id: string } | { kind: "canvas" } | { kind: "selection" });
@@ -26,6 +27,16 @@ function Field({ label, value, onCommit, hint }: { label: string; value: string;
         autoCapitalize="none" autoCorrect="off" spellCheck={false} enterKeyHint="done" aria-label={label} />
     </label>
   );
+}
+
+/** An angle field: Field plus the symbol keys (ExprField). */
+function AngleField({ label, value, onCommit, hint, symbols }: { label: string; value: string; onCommit: (v: string) => void; hint?: string; symbols: string[] }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const latest = useRef(draft);
+  latest.current = draft;
+  return <ExprField label={label} value={draft} hint={hint} symbols={symbols} onChange={setDraft}
+    onCancel={() => setDraft(value)} onCommit={() => { const d = latest.current.trim(); if (d && d !== value) onCommit(d); }} />;
 }
 
 /** `initialize`'s stored amplitudes "(Re α, Im α, Re β, Im β)" as α, β. */
@@ -90,7 +101,7 @@ export function DiagramMenu({ calc, menu, close }: { calc: Calculator; menu: Men
       })() : s.params.length > 0 && (
         <div className="menu-fields">
           {s.params.map((p, j) => (
-            <Field key={j} label={defs[j]?.name ?? `p${j}`} value={prettyExpr(p)} hint={defs[j]?.default}
+            <AngleField key={j} label={defs[j]?.name ?? `p${j}`} value={prettyExpr(p)} hint={defs[j]?.default} symbols={calc.symbols}
               onCommit={(v) => calc.setGateParams(i, s.params.map((x, k) => (k === j ? v : x)))} />
           ))}
         </div>

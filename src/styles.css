@@ -862,6 +862,9 @@ button {
 .menu-field { display: flex; align-items: center; gap: 5px; color: var(--ink-dim); }
 .menu-field input, .diagram-menu select { height: 30px; padding: 0 6px; font: 13px var(--mono); color: var(--ink); background: #111110; border: 1px solid var(--grid); border-radius: 5px; }
 .menu-field input { width: 8em; }
+.expr-keys { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 4px; }
+.expr-keys button { min-width: 34px; height: 32px; padding: 0 7px; font: 15px var(--mono); color: var(--ink); background: var(--lcd-hi); border: 1px solid var(--grid); border-radius: 5px; touch-action: manipulation; }
+.expr-keys button:active { background: var(--series-1); color: #fff; }
 .menu-field input:focus, .diagram-menu select:focus { outline: none; border-color: var(--series-1); }
 .circ .gate:focus { outline: none; }
 .circ .box.meas[class*="g-"] { stroke: var(--amber); stroke-width: 1.5; }

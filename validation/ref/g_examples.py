@@ -164,8 +164,7 @@ def main():
         if c["kind"] == "stabilizer":
             st = StabilizerState(clifford_of(qc.remove_final_measurements(inplace=False)))
             for g in c["generators"]:
-                # QC-1 labels are big-endian (qubit 0 first); Qiskit's Pauli labels are little-endian.
-                ev = st.expectation_value(Pauli(("-" if g[0] == "-" else "") + g[1:][::-1]))
+                ev = st.expectation_value(Pauli(("-" if g[0] == "-" else "") + g[1:]))  # QC-1 writes Qiskit's labels
                 if abs(ev - 1) > 1e-12:
                     fail(f"examples {c['file']}: <{g[:16]}…> = {ev}")
             bits = [[1 if p in "XY" else 0 for p in g[1:]] + [1 if p in "ZY" else 0 for p in g[1:]] for g in c["generators"]]
@@ -173,7 +172,7 @@ def main():
                 fail(f"examples {c['file']}: generators not independent")
             entry["generators"] = c["generators"]
         elif c["kind"] == "state":
-            ref = Statevector(qc.remove_final_measurements(inplace=False)).reverse_qargs().data
+            ref = Statevector(qc.remove_final_measurements(inplace=False)).data
             mine = np.array(c["state"][0::2]) + 1j * np.array(c["state"][1::2])
             err = float(np.max(np.abs(ref - mine)))
             worst = max(worst, err)

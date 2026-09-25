@@ -81,7 +81,7 @@ export function computeClassical(c: NoiseCase) {
   const T = 20000;
   const counts: Record<string, number> = {};
   runTrajectories(c.n, c.tape, {}, m, (_, bits) => {
-    const key = [...bits].join("");
+    const key = [...bits].reverse().join(""); // c[k−1] … c[0], as Qiskit prints counts
     counts[key] = (counts[key] ?? 0) + 1;
   }, { trajectories: T, seed: 99 });
   // Recorded outcomes for the export (the trajectories ignore them); seeded, so fixtures reproduce.

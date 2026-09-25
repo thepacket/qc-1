@@ -36,8 +36,8 @@ export function countingStatistics(
   if (region.some((q) => q < 0 || q >= n)) return null;
   const dim = 1 << n;
   const size = region.length;
-  // Big-endian: qubit q is bit (n-1-q). Bit value 1 = |1⟩ = one excitation.
-  const masks = region.map((q) => 1 << (n - 1 - q));
+  // Qubit q is bit q (Qiskit order). Bit value 1 = |1⟩ = one excitation.
+  const masks = region.map((q) => 1 << q); // QC-1: Qiskit bit order (qubit q is bit q)
   const p = new Array<number>(size + 1).fill(0);
   for (let idx = 0; idx < dim; idx++) {
     const pr = state[2 * idx];

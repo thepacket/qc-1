@@ -9,14 +9,14 @@ function run(file: string, t: number) {
   const st = new Register(n, tape, { t }).state;
   const dim = 1 << n;
   const p = (i: number) => st[2 * i] ** 2 + st[2 * i + 1] ** 2;
-  /** Probability that the listed qubits read `bits` (q0 is the most significant bit of the index). */
+  /** Probability that the listed qubits read `bits` (qubit q is bit q of the index, as in Qiskit). */
   const marginal = (qs: number[], bits: number[]) => {
     let s = 0;
-    for (let i = 0; i < dim; i++) if (qs.every((q, k) => ((i >> (n - 1 - q)) & 1) === bits[k])) s += p(i);
+    for (let i = 0; i < dim; i++) if (qs.every((q, k) => ((i >> q) & 1) === bits[k])) s += p(i);
     return s;
   };
   const bloch = (q: number) => {
-    const m = 1 << (n - 1 - q);
+    const m = 1 << q;
     let x = 0, y = 0, z = 0;
     for (let i = 0; i < dim; i++) {
       if (i & m) continue;
@@ -52,7 +52,7 @@ describe("animation examples do what their comments say", () => {
   });
 
   test("quantum walk: t = 0 splits to sites 1 and 7; t = π zig-zags to sites 3 and 5", () => {
-    const site = (r: ReturnType<typeof run>, s: number) => r.marginal([0, 1, 2], [(s >> 2) & 1, (s >> 1) & 1, s & 1]);
+    const site = (r: ReturnType<typeof run>, s: number) => r.marginal([0, 1, 2], [s & 1, (s >> 1) & 1, (s >> 2) & 1]); // q0 is the least significant bit
     const a = run("anim_quantum_walk.qasm", 0);
     close(site(a, 1), 0.5);
     close(site(a, 7), 0.5);
@@ -87,7 +87,7 @@ describe("animation examples do what their comments say", () => {
   test("phase estimation: t = 2πk/8 reads k on q0..q2, exactly", () => {
     for (let k = 0; k < 8; k++) {
       const r = run("anim_phase_estimation.qasm", (2 * Math.PI * k) / 8);
-      close(r.marginal([0, 1, 2], [(k >> 2) & 1, (k >> 1) & 1, k & 1]), 1);
+      close(r.marginal([0, 1, 2], [k & 1, (k >> 1) & 1, (k >> 2) & 1]), 1); // q0 is k's least significant bit
     }
   });
 

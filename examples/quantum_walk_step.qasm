@@ -1,6 +1,6 @@
 // One step of a discrete-time quantum walk on the 4-cycle.
 //
-//   q[0..1] — position register (4 sites; q[0] is the MSB).
+//   q[0..1] — position register (4 sites; q[0] is the least significant bit, as in Qiskit).
 //   q[2]    — coin qubit; coin = |1⟩ shifts +1, coin = |0⟩ shifts −1.
 //
 // The coin operator is a Hadamard, putting the walker into a 50/50
@@ -9,7 +9,8 @@
 // once — the hallmark of ballistic spreading that beats classical walks.
 //
 // Starting from |position = 00, coin = 0⟩, after one step the walker is
-// in the superposition (|01⟩|1⟩ + |11⟩|0⟩)/√2.
+// in the superposition (|1⟩|01⟩ + |0⟩|11⟩)/√2 written |coin⟩|position⟩,
+// i.e. the kets |101⟩ and |011⟩ (q[2] q[1] q[0], as Qiskit writes them).
 
 OPENQASM 3.0;
 include "stdgates.inc";
@@ -21,15 +22,15 @@ bit[3] c;
 h q[2];
 
 // Conditional increment (when coin = 1).
-ccx q[2], q[1], q[0];
-cx q[2], q[1];
+ccx q[2], q[0], q[1];
+cx q[2], q[0];
 
 // Conditional decrement (when coin = 0): wrap the same circuit with X
 // on the coin so it triggers on the opposite branch, undoing the carry
 // chain in reverse order.
 x q[2];
-cx q[2], q[1];
-ccx q[2], q[1], q[0];
+cx q[2], q[0];
+ccx q[2], q[0], q[1];
 x q[2];
 
 c[0] = measure q[0];

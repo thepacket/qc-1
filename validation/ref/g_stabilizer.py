@@ -21,12 +21,10 @@ from g_tools import gf2_rank
 
 
 def clifford_of(qc):
-    """The circuit's Clifford, built instruction by instruction from each Operator.
-
-    Clifford(circuit) dispatches ecr/dcx/iswap by *name* to Qiskit's own gates,
-    ignoring the program's definitions (QC-1's ECR and DCX have the qubit roles
-    reversed relative to Qiskit's); the Operator of each instruction follows
-    its definition.
+    """The circuit's Clifford, built instruction by instruction from each Operator
+    (each instruction as the program defines it). main() also checks it equals
+    Clifford(circuit), which reads ecr/dcx/iswap by *name* as Qiskit's own gates:
+    QC-1's gates of those names are Qiskit's.
     """
     from qiskit import QuantumCircuit
     cliff = Clifford(QuantumCircuit(qc.num_qubits))
@@ -42,10 +40,12 @@ def main():
     for c in doc["large"]:
         n, gens = c["n"], c["qc1"]["generators"]
         qc = qasm3.loads(c["qasm"])
-        st = StabilizerState(clifford_of(qc))
+        cl = clifford_of(qc)
+        if cl != Clifford(qc):
+            fail(f"stabilizer {c['id']}: a gate's definition in QC-1's export differs from Qiskit's gate of that name")
+        st = StabilizerState(cl)
         for g in gens:
-            # QC-1 labels are big-endian (qubit 0 first); Qiskit's Pauli labels are little-endian.
-            ev = st.expectation_value(Pauli(("-" if g[0] == "-" else "") + g[1:][::-1]))
+            ev = st.expectation_value(Pauli(("-" if g[0] == "-" else "") + g[1:]))  # QC-1 writes Qiskit's labels
             if abs(ev - 1) > 1e-12:
                 fail(f"stabilizer {c['id']}: <{g[:12]}…> = {ev}")
         bits = [[1 if p in "XY" else 0 for p in g[1:]] + [1 if p in "ZY" else 0 for p in g[1:]] for g in gens]

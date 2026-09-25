@@ -2,8 +2,8 @@
  * Reduced density matrix ρ_S = Tr_{S^c}(|ψ⟩⟨ψ|) for a chosen subset S of
  * qubits. The result is a 2^|S| × 2^|S| matrix of complex numbers.
  *
- * Convention: qubit 0 is the MSB of the global basis index; within ρ,
- * the kept qubits supply the row/column index with kept[0] as MSB.
+ * Convention (QC-1: Qiskit's): qubit q is bit q of the global basis index;
+ * within ρ, kept[j] is bit j of the row/column index (kept[0] least significant).
  *
  * Cost: O(2^n · 4^|S|) — fine for |S| ≤ 4 on a 20-qubit state.
  */
@@ -31,8 +31,9 @@ export function reducedDensityMatrix(
   }
 
   // Precompute the bit masks for each kept and traced qubit.
-  const keptMasks = kept.map((q) => 1 << (n - 1 - q));
-  const tracedMasks = traced.map((q) => 1 << (n - 1 - q));
+  // QC-1: Qiskit bit order (qubit q is bit q; within ρ, kept[j] is bit j, as Qiskit's partial_trace).
+  const keptMasks = kept.map((q) => 1 << q);
+  const tracedMasks = traced.map((q) => 1 << q);
 
   for (let t = 0; t < dimT || (traced.length === 0 && t === 0); t++) {
     let tBits = 0;
@@ -43,7 +44,7 @@ export function reducedDensityMatrix(
     for (let a = 0; a < dimK; a++) {
       let aBits = tBits;
       for (let j = 0; j < k; j++) {
-        if ((a >> (k - 1 - j)) & 1) aBits |= keptMasks[j];
+        if ((a >> j) & 1) aBits |= keptMasks[j];
       }
       const a_re = state[2 * aBits];
       const a_im = state[2 * aBits + 1];
@@ -51,7 +52,7 @@ export function reducedDensityMatrix(
       for (let b = 0; b < dimK; b++) {
         let bBits = tBits;
         for (let j = 0; j < k; j++) {
-          if ((b >> (k - 1 - j)) & 1) bBits |= keptMasks[j];
+          if ((b >> j) & 1) bBits |= keptMasks[j];
         }
         const b_re = state[2 * bBits];
         const b_im = state[2 * bBits + 1];

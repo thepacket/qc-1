@@ -1,6 +1,7 @@
 import { MAX_QUBITS, Register, type Contents } from "./register";
 import { StabilizerRegister, STAB_MAX } from "../stab/register";
 import type { Stabilizer } from "../sim/stabilizer";
+import { qiskitGenerators } from "./order";
 import { bloch, sampleState, topK, type Vec3 } from "./analysis";
 import type { Entry, Scope } from "./steps";
 import type { Op } from "./register";
@@ -267,7 +268,7 @@ export class Core {
     const n = this.reg.n;
     const single = (q: number, p: "X" | "Y" | "Z") => tab.pauliExpectation(Array.from({ length: n }, (_, i) => (i === q ? p : "I")));
     switch (req.mode) {
-      case "ket": return { n, stab: true, mode: "ket", rows: [], nonzero: 0, restP: 0, generators: tab.stabilizers() };
+      case "ket": return { n, stab: true, mode: "ket", rows: [], nonzero: 0, restP: 0, generators: qiskitGenerators(tab.stabilizers()) };
       case "prob": return { n, stab: true, mode: "prob", rows: [], complete: false, restP: 0, marginals: Array.from({ length: stabFit(n, 1) }, (_, q) => (1 - single(q, "Z")) / 2) };
       case "bloch": return { n, stab: true, mode: "bloch", vectors: Array.from({ length: stabFit(n, 3) }, (_, q) => ({ x: single(q, "X"), y: single(q, "Y"), z: single(q, "Z") })) };
       case "shots": {
@@ -278,7 +279,7 @@ export class Core {
         for (let s = 0; s < shots; s++) {
           const t = tab.clone();
           let bits = "";
-          for (let q = 0; q < n; q++) bits += t.measureZ(q, rng);
+          for (let q = 0; q < n; q++) bits = t.measureZ(q, rng) + bits; // q0 rightmost, as Qiskit prints counts
           counts.set(bits, (counts.get(bits) ?? 0) + 1);
         }
         const rows = [...counts.entries()].sort((a, b) => b[1] - a[1]);

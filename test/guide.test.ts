@@ -36,7 +36,7 @@ c[0] = measure q[0];
     const caps = stepCaptions(src, r.lines);
     expect(caps).toHaveLength(r.tape.length);
     expect(caps[0]).toBe(""); // the first Hadamards come before any comment
-    expect(caps[3]).toBe("Oracle: phase-flip on |001⟩ and |110⟩. |001⟩ — q[0]=0, q[1]=0, q[2]=1");
+    expect(caps[3]).toBe("Oracle: phase-flip on |100⟩ and |011⟩. |100⟩ — q[2]=1, q[1]=0, q[0]=0");
     expect(caps[caps.length - 1]).toBe("");
   });
 

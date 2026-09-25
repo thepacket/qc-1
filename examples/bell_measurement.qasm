@@ -5,11 +5,11 @@
 // Bell basis back onto the computational basis. After applying it, a
 // computational-basis measurement reveals the Bell index:
 //
-//     measurement  →  Bell state
-//     00           →  |Φ+⟩
-//     01           →  |Ψ+⟩
-//     10           →  |Φ−⟩
-//     11           →  |Ψ−⟩
+//     c[1] c[0]  →  Bell state   (as Qiskit prints counts: c[0] rightmost)
+//     00         →  |Φ+⟩
+//     10         →  |Ψ+⟩
+//     01         →  |Φ−⟩
+//     11         →  |Ψ−⟩
 //
 // Bell measurement is the foundational ingredient in teleportation,
 // entanglement swapping, and dense coding. Here we prepare |Φ+⟩

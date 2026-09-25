@@ -35,7 +35,7 @@ export function permuteQubits(state: Float64Array, n: number, perm: number[]): F
   const dim = 1 << n;
   for (let i = 0; i < dim; i++) {
     let j = 0;
-    for (let l = 0; l < n; l++) if ((i >> (n - 1 - l)) & 1) j |= 1 << (n - 1 - perm[l]);
+    for (let l = 0; l < n; l++) if ((i >> l) & 1) j |= 1 << perm[l];
     out[2 * j] = state[2 * i];
     out[2 * j + 1] = state[2 * i + 1];
   }

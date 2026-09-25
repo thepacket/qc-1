@@ -35,19 +35,19 @@ TARGET = {"transpile-clifford-t": "clifford-t", "transpile-ibm-heavy-hex": "ibm-
           "transpile-rigetti": "rigetti", "compile-ibm-line": "ibm-heavy-hex"}
 
 
-def be_unitary(qc):
-    return Operator(qc).reverse_qargs().data
+def unitary(qc):
+    return Operator(qc).data
 
 
 def perm_matrix(n, perm):
-    """Big-endian: logical qubit l moves to physical qubit perm[l]."""
+    """Logical qubit l moves to physical qubit perm[l] (qubit q is bit q, Qiskit's order)."""
     d = 1 << n
     P = np.zeros((d, d))
     for i in range(d):
         j = 0
         for l in range(n):
-            if (i >> (n - 1 - l)) & 1:
-                j |= 1 << (n - 1 - perm[l])
+            if (i >> l) & 1:
+                j |= 1 << perm[l]
         P[j, i] = 1
     return P
 
@@ -186,7 +186,7 @@ def post_selected_state(qc, n, outcomes):
         if name == "barrier":
             continue
         psi = psi.evolve(inst.operation, qi)
-    return psi.reverse_qargs().data
+    return psi.data
 
 
 def gf2_rank(rows):
@@ -242,11 +242,11 @@ def main():
     for c in cases:
         n, qc1 = c["n"], c["qc1"]
         qa = qasm3.loads(c["qasm"])
-        UA = be_unitary(qa)
+        UA = unitary(qa)
         entry = {"id": c["id"], "n": n, "tape": c["tape"], "resources": check_resources(c["id"], qa, qc1["resources"]), "tools": {}}
         for name, t in qc1["tools"].items():
             qb = qasm3.loads(t["qasm"])
-            UB = be_unitary(qb)
+            UB = unitary(qb)
             if name == "inverse":
                 expected = UA.conj().T
             elif t["perm"] is not None:

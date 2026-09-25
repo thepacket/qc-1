@@ -28,7 +28,7 @@ def reference(c):
     qc = QuantumCircuit(n)
     if c["kind"] in ("qft", "iqft"):
         g = QFTGate(k)
-        qc.append(g.inverse() if c["kind"] == "iqft" else g, list(reversed(qs)))
+        qc.append(g.inverse() if c["kind"] == "iqft" else g, list(qs))  # Qiskit's QFTGate on the block's qubits in order
     elif c["kind"] == "diff":
         s = np.full(2 ** k, 2 ** (-k / 2))
         qc.append(UnitaryGate(2 * np.outer(s, s) - np.eye(2 ** k)), qs)
@@ -39,7 +39,7 @@ def reference(c):
         vals = {p.name: (c["beta"] if p.name.startswith("β") else c["gamma"]) for p in ans.parameters}
         ans = ans.assign_parameters({p: vals[p.name] for p in ans.parameters})
         qc.append(ans.to_gate(), qs)  # local qubit j of the ring → block qubit j (the ring is symmetric)
-    return Operator(qc).reverse_qargs().data
+    return Operator(qc).data
 
 
 def main():
@@ -53,7 +53,7 @@ def main():
         worst = max(worst, err)
         if err > 1e-10:
             fail(f"blocks {c['id']}: QC-1 differs from the reference by {err:.2e}")
-        exp = Operator(qasm3.loads(c["qc1"]["qasm"])).reverse_qargs().data
+        exp = Operator(qasm3.loads(c["qc1"]["qasm"])).data
         if np.max(np.abs(exp - ref)) > 1e-10:
             fail(f"blocks {c['id']}: Qiskit's import of the export differs by {np.max(np.abs(exp - ref)):.2e}")
         out.append({"id": c["id"], "n": c["n"], "unitary": {"re": [[r(z.real) for z in row] for row in ref.T], "im": [[r(z.imag) for z in row] for row in ref.T]}})

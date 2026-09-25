@@ -4,7 +4,7 @@
  * scipy fits and closed forms (fixture `bench`).
  */
 import type { AnalysisContext, AnalysisResult, Opts } from "./types";
-import { ANALYSIS_BY_ID, inputValue, pauliValue } from "./catalog";
+import { ANALYSIS_BY_ID, inputValue, pauliInput } from "./catalog";
 import { classicalShadows, mirror, processTomography, quantumVolume, rb, repetitionExact, repetitionMonteCarlo, t1t2, unitarity, xeb, cliffordGroup, step } from "../noise/bench";
 import type { NoiseModel } from "../noise/model";
 import { mulberry32 } from "../sim/measure";
@@ -114,7 +114,7 @@ export const BENCH_RUNS: Record<string, Run> = {
   },
 
   shadows(ctx, opts) {
-    const terms = parsePauliSum(pauliValue(opts, "obs", ctx.n));
+    const terms = parsePauliSum(pauliInput(opts, "obs", ctx.n));
     if (terms[0].paulis.length !== ctx.n) throw new Error(`Pauli strings need ${ctx.n} letters`);
     const N = num("shadows", "snapshots", opts, ctx.n);
     const sh = classicalShadows(ctx.n, ctx.state, N);
@@ -135,6 +135,7 @@ export const BENCH_RUNS: Record<string, Run> = {
     const noisy = num("tomography", "channel", opts, ctx.n) === 1;
     if (noisy) needNoise(ctx);
     const R = processTomography(ctx.n, ctx.tape, noisy ? ctx.noise! : null, ctx.scope);
+    // Qiskit's Pauli basis order (digit q is qubit q), labels as Qiskit writes them (q0 rightmost).
     const labels = Array.from({ length: 4 ** ctx.n }, (_, k) => Array.from({ length: ctx.n }, (_, q) => "IXYZ"[(k >> (2 * (ctx.n - 1 - q))) & 3]).join(""));
     const ideal = processTomography(ctx.n, ctx.tape, null, ctx.scope);
     const d = 1 << ctx.n;

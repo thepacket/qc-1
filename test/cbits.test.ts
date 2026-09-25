@@ -32,7 +32,7 @@ describe("a classical register of its own (Quantiom's)", () => {
     expect(c.setMeasureBit(mi, 0)).toBe(true);
     expect(c.tape[mi][0].clbits).toEqual([0]);
     add(c, "x", [2], { condition: { clbit: 0, value: 1 } });
-    expect(probs(stateOf(c))[0b011]).toBeCloseTo(1, 12); // |q0 q1 q2⟩ = |011⟩
+    expect(probs(stateOf(c))[0b110]).toBeCloseTo(1, 12); // |q2 q1 q0⟩ = |110⟩
     expect(Array.from((c.engine as unknown as { core: { reg: Register } }).core.reg.cbits.slice(0, 2))).toEqual([1, 0]);
   });
 

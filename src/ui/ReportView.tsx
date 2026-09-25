@@ -51,7 +51,7 @@ export function ReportView({ calc }: { calc: Calculator }) {
         ) : (
           <>
             <table className="report-table">
-              <thead><tr><th>basis |q0…q{n - 1}⟩</th><th>amplitude</th><th>probability</th></tr></thead>
+              <thead><tr><th>basis |q{n - 1}…q0⟩</th><th>amplitude</th><th>probability</th></tr></thead>
               <tbody>
                 {ket.rows.slice(0, KET_ROWS).map((r) => (
                   <tr key={r.i}><td>|{bits(r.i, n)}⟩</td><td>{fmtC(r.re, r.im)}</td><td>{fmt(r.re ** 2 + r.im ** 2, 4)}</td></tr>
