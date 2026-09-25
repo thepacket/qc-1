@@ -81,6 +81,7 @@ export type Saved = {
   gates?: CustomGate[];
   /** SHOTS: periodic runs (on/off) and their rate, runs per second. */
   autoShots?: boolean;
+  experimentMode?: "simulation" | "hardware";
   shotRate?: number;
   /** SHOTS: undo the noise model's readout confusion in the estimates. */
   mitigateReadout?: boolean;
@@ -205,6 +206,8 @@ export class Calculator {
       this.mode = saved.mode;
       this.shots = saved.shots;
       if (typeof saved.autoShots === "boolean") this.autoShots = saved.autoShots;
+      this.experimentMode = saved.experimentMode === "hardware" || (saved.experimentMode === undefined && this.autoShots) ? "hardware" : "simulation";
+      if (this.experimentMode === "simulation") this.autoShots = false;
       if (typeof saved.mitigateReadout === "boolean") this.mitigateReadout = saved.mitigateReadout;
       if (typeof saved.shotRate === "number" && saved.shotRate >= SHOT_RATE[0] && saved.shotRate <= SHOT_RATE[1]) this.shotRate = saved.shotRate;
       if (saved.lab && typeof saved.lab === "object") {
@@ -249,7 +252,7 @@ export class Calculator {
 
   save(): Saved {
     return {
-      v: 1, n: this.n, sel: this.sel, mode: this.mode, shots: this.shots, tape: this.tape, autoShots: this.autoShots, shotRate: this.shotRate, mitigateReadout: this.mitigateReadout,
+      v: 1, n: this.n, sel: this.sel, mode: this.mode, shots: this.shots, tape: this.tape, autoShots: this.autoShots, experimentMode: this.experimentMode, shotRate: this.shotRate, mitigateReadout: this.mitigateReadout,
       lab: this.lab, scope: this.scope, memory: this.memory, gates: this.customGates, noise: this.noise, nc: this.nc,
     };
   }
@@ -527,7 +530,7 @@ export class Calculator {
     // Compare reads a memory slot, which lives here, not in the workers.
     const opts = id === "compare" ? { ...this.labOpts(id), other: this.memory[Number(this.labOpts(id).slot) || 1] } : this.labOpts(id);
     // Periodic runs: a Z-basis panel runs on the run's sample.
-    const sample = this.autoShots && fromRun(id) ? { shots: this.shots, seed: this.shotSeed, mitigate: this.mitigateReadout } : undefined;
+    const sample = this.experimentMode === "hardware" && fromRun(id) ? { shots: this.shots, seed: this.shotSeed, mitigate: this.mitigateReadout } : undefined;
     this.engine.analyze({ seq, id, opts, noise: this.noiseOn ? this.noise : undefined, sample });
   }
 
@@ -547,7 +550,7 @@ export class Calculator {
 
   /** STATE/PROB/BLOCH estimated from the SHOTS sample: periodic runs are on (estimate.ts). */
   get estimating(): boolean {
-    return this.autoShots && ["ket", "prob", "bloch"].includes(this.mode);
+    return this.experimentMode === "hardware" && ["ket", "prob", "bloch"].includes(this.mode);
   }
 
   /** The view comes from the noisy distribution: PROB/BLOCH/SHOTS under noise, and STATE when it's estimated from the (noisy) shots. */
@@ -1122,9 +1125,7 @@ export class Calculator {
     this.shots = n;
     this.clearError();
     this.shotSeed++;
-    this.send({ t: "view", req: this.viewReq() });
-    this.requestNoisyView();
-    this.changed();
+    this.refreshExperiment();
     return true;
   }
 
@@ -1134,6 +1135,7 @@ export class Calculator {
    * show. The next run is timed once the last one's view is back, so a slow
    * sample never builds a backlog.
    */
+  experimentMode: "simulation" | "hardware" = "simulation";
   autoShots = false;
   /** Runs per second (SHOT_RATE). */
   shotRate = 1;
@@ -1142,17 +1144,28 @@ export class Calculator {
   private shotTimer: ReturnType<typeof setTimeout> | null = null;
   private shotLoop = 0;
 
-  setAutoShots(on: boolean) {
-    this.autoShots = on;
-    this.shotRun = 0;
-    if (on) this.startShotLoop();
-    else this.stopShotLoop();
-    // Estimated views switch to exact ones, and back.
+  setExperimentMode(mode: "simulation" | "hardware") {
+    this.experimentMode = mode;
+    if (mode === "simulation") { this.autoShots = false; this.stopShotLoop(); }
+    this.refreshExperiment();
+  }
+
+  private refreshExperiment() {
     this.send({ t: "view", req: this.viewReq() });
     this.noisyView = null;
     this.requestNoisyView();
     if (this.mode === "lab") this.requestAnalysis();
     this.changed();
+  }
+
+  setAutoShots(on: boolean) {
+    if (on) this.experimentMode = "hardware";
+    this.autoShots = on;
+    this.shotRun = 0;
+    if (on) this.startShotLoop();
+    else this.stopShotLoop();
+    // Stopping automatic refresh keeps the hardware experiment mode.
+    this.refreshExperiment();
   }
 
   /** Undo the readout confusion in the estimates (with noise on); the open tab follows. */
@@ -1223,9 +1236,8 @@ export class Calculator {
   /** Sample the shots again. */
   rerollShots() {
     this.shotSeed++;
-    this.send({ t: "view", req: this.viewReq() });
-    this.requestNoisyView();
-    this.changed();
+    this.shotRun++;
+    this.refreshExperiment();
   }
 
   // ─── Editing on the diagram's grid (pure edits in grid.ts) ───

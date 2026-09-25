@@ -11,6 +11,7 @@ import { KET_ROWS, SHOT_ROWS, type ViewData } from "../calc/core";
 import { topK } from "../calc/analysis";
 import { estimateView, stateTomography } from "../calc/estimate";
 import { confusion } from "../calc/tomography";
+import { viewProvenance } from "../calc/provenance";
 import { Register } from "../calc/register";
 import { densityOk, measurementDevice, noisyDensity, noisyShots, noisyStats, runTrajectories, DENSITY_MAX } from "../noise/sim";
 import { noisyStatsParallel } from "../noise/parallel";
@@ -158,7 +159,9 @@ export async function noisyView(ctx: AnalysisContext, opts: Opts): Promise<Analy
     const listed = rows.reduce((s, i) => s + stats.probs[i], 0);
     view = { n, mode: "prob", complete: n <= 4 || nonzero <= KET_ROWS, restP: Math.max(0, 1 - listed), rows: rows.map((i) => ({ i, p: stats.probs[i] })) };
   }
-  return { view: { ...view, method } };
+  const source = stats.method === "density" ? "Exact density-matrix simulation" : "Trajectory approximation";
+  const detail = [stats.method === "density" ? "Noise model included" : `${stats.trajectories.toLocaleString()} noise trajectories`, opts.mitigate && opts.estimate ? "readout mitigated; approximate error propagation" : ""].filter(Boolean).join(" · ");
+  return { view: { ...view, method, provenance: viewProvenance(view, source, detail) } };
 }
 
 // ─── Analyses ──────────────────────────────────────────────────────────

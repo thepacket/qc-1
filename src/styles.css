@@ -825,6 +825,14 @@ button {
 .shots-bar input { width: 7em; }
 .shots-bar input.shots-rate { width: 4.5em; }
 .shots-bar input[type="checkbox"] { width: auto; }
+.experiment-controls { flex: none; padding: 6px 0; border-bottom: 1px solid var(--grid); }
+.experiment-mode { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11px; }
+.experiment-controls .shots-bar { margin-top: 6px; }
+.result-source { flex: none; display: flex; flex-wrap: wrap; gap: 3px 8px; padding: 6px 0; font-size: 11px; color: var(--ink-dim); }
+.result-source strong { color: var(--ink); font-weight: 500; }
+.bit-order { flex: none; font: 11px var(--mono); color: var(--ink); padding: 4px 0; }
+.bit-order span { color: var(--ink-dim); }
+.input-mapping { margin: 5px 0; font-size: 11px; line-height: 1.5; color: var(--ink-dim); overflow-wrap: anywhere; }
 .shots-auto { display: inline-flex; align-items: center; gap: 4px; }
 .view-head.estimate { color: var(--amber); }
 .mem-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; }

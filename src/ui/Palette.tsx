@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import type { Calculator } from "../calc/calculator";
-import { PALETTE, PALETTE_GROUPS, type PaletteGroup, type PaletteItem } from "../calc/gateSpecs";
+import { PALETTE, PALETTE_GROUPS, spanFrom, type PaletteGroup, type PaletteItem } from "../calc/gateSpecs";
 import { BLOCK_BY_ID, FAMILIES, defaultSettings, type Family, type Settings } from "../calc/blockLib";
 import { CUSTOM_PREFIX } from "../calc/custom";
 import { pressToDrag } from "./dnd";
 import { TYPED_PRESETS } from "./views";
 import { ExprField } from "./ExprField";
+import { parseMatrix, parseState } from "../calc/typed";
+import { bitOrder } from "./ResultContext";
 
 /** The palette's items, custom gates included. */
 export function paletteItems(calc: Calculator): PaletteItem[] {
@@ -206,6 +208,9 @@ export function PlacingSheet({ calc }: { calc: Calculator }) {
           placeholder={item.typed === "state" ? "|00⟩ + |11⟩   or   0.6, 0, 0, 0.8" : "0,1; 1,0   (rows by ; or new lines, complex like 1+2i)"} />
       )}
       {item.kind === "typed" && (
+        <TypedMapping kind={item.typed} text={text} first={row} n={calc.n} />
+      )}
+      {item.kind === "typed" && (
         <div className="cut-picker">
           {TYPED_PRESETS[item.typed].map(([l, t]) => <button type="button" key={l} className="qb" onClick={() => { setText(t); setErr(null); }}>{l}</button>)}
         </div>
@@ -219,4 +224,15 @@ export function PlacingSheet({ calc }: { calc: Calculator }) {
       {spec && <p className="dim note">{spec.qiskit ? <>Checked against <code>{spec.qiskit}</code>.</> : "A QC-1 definition (Qiskit has no object for it), checked against its target state."}</p>}
     </form>
   );
+}
+
+function TypedMapping({ kind, text, first, n }: { kind: "state" | "matrix"; text: string; first: number; n: number }) {
+  try {
+    if (!text.trim()) return <p className="input-mapping">The rightmost bit maps to the first qubit. Enter {kind === "matrix" ? "a matrix" : "a state"} to preview the mapping.</p>;
+    const k = (kind === "matrix" ? parseMatrix(text) : parseState(text)).k;
+    if (k > n) return <p className="input-mapping">Needs {k} qubits; this circuit has {n}.</p>;
+    const qs = spanFrom(first, k, n);
+    const basis = Array.from({ length: Math.min(2 ** k, 8) }, (_, i) => `|${i.toString(2).padStart(k, "0")}⟩`).join(", ");
+    return <p className="input-mapping">Bit order: {bitOrder(k, qs[0])}. {kind === "matrix" ? "Rows = outputs; columns = inputs. Basis: " : "Amplitude order: "}{basis}{k > 3 ? ", …" : ""}. Rightmost bit → q{qs[0]}.</p>;
+  } catch { return <p className="input-mapping">Complete the {kind} to preview its basis and qubits.</p>; }
 }

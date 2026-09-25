@@ -6,6 +6,7 @@ import { bloch, sampleState, topK, type Vec3 } from "./analysis";
 import { estimateView, shotRng, stateTomography } from "./estimate";
 import { IDEAL_DEVICE } from "./tomography";
 import { circuitCounts, circuitTomography, needsReplay } from "./experiments";
+import { viewProvenance, type Provenance } from "./provenance";
 import type { Entry, Scope } from "./steps";
 import type { Op } from "./register";
 import { customGates, setCustomGates, type CustomGate } from "./custom";
@@ -26,6 +27,7 @@ export type ViewReq = {
 };
 
 export type ViewData = {
+  provenance?: Provenance;
   n: number;
   /** Scrubbed to this many entries (else the end). */
   at?: number;
@@ -273,7 +275,10 @@ export class Core {
     const data = reg instanceof StabilizerRegister
       ? this.stabView(req, at === undefined ? reg.tab : reg.tableauAt(at), reg.tape.slice(0, at))
       : this.viewOf(req, at === undefined ? reg.state : reg.stateAt(at), reg.tape.slice(0, at));
-    return at === undefined ? data : { ...data, at };
+    const source = data.stab ? "Exact stabilizer simulation" : "Exact statevector simulation";
+    const detail = !data.estimate && data.mode !== "shots" && needsReplay(reg.tape.slice(0, at)) ? "Recorded measurement branch; not the ensemble of all outcomes." : "";
+    const provenance = viewProvenance(data, source, detail);
+    return { ...data, provenance, ...(at === undefined ? {} : { at }) };
   }
 
   /** Views of a stabilizer state: generators, per-qubit P(1), exact Bloch vectors, sampled bitstrings. */

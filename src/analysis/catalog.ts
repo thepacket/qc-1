@@ -434,7 +434,7 @@ export const ANALYSIS_BY_ID: Record<string, AnalysisMeta> = Object.fromEntries(A
 
 /**
  * Panels that read only the Z-basis probabilities |ψᵢ|² of the state: with
- * SHOTS → repeat on, they run on each run's sample (Σ √fᵢ |i⟩ gives them
+ * Hardware experiment on, they run on each run's sample (Σ √fᵢ |i⟩ gives them
  * exactly the sample's frequencies), as they would on hardware. The others
  * need phases, ρ or the circuit itself and stay exact.
  */
@@ -442,7 +442,7 @@ export const FROM_SHOTS = new Set(["anticoncentration", "zz", "corrlength", "str
 
 /**
  * Panels that read the state beyond its Z-basis probabilities (phases,
- * reduced ρ, non-Z observables): with SHOTS → repeat on they run on the
+ * reduced ρ, non-Z observables): with Hardware experiment on they run on the
  * state reconstructed by the run's state tomography (up to TOMO_MAX qubits;
  * above that, not measurable), as they would on hardware. Everything not in
  * FROM_SHOTS or here doesn't read the state (circuit, structure, noise model,
@@ -457,7 +457,7 @@ export const FROM_TOMOGRAPHY = new Set([
 
 /**
  * Panels that only need the reduced density matrices of a few qubits
- * (reducedDensityMatrix): with SHOTS → repeat on they see measured, mixed ρ_S,
+ * (reducedDensityMatrix): with Hardware experiment on they see measured, mixed ρ_S,
  * at any size (local tomography above TOMO_MAX qubits).
  */
 export const FROM_LOCAL = new Set(["phasedisk", "density", "mutualinfo", "negativity", "concurrence", "discord", "tripartite"]);

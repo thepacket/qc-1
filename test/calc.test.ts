@@ -9,6 +9,43 @@ const amp = (c: Calculator, i: number) => [stateOf(c)[2 * i], stateOf(c)[2 * i +
 const close = (a: number, b: number) => expect(a).toBeCloseTo(b, 10);
 
 describe("calculator", () => {
+  test("hardware mode survives stopping refresh and supports independent single runs", () => {
+    vi.useFakeTimers();
+    const c = calc();
+    try {
+      add(c, "h", [0]);
+      c.setMode("prob");
+      c.setExperimentMode("hardware");
+      expect(c.autoShots).toBe(false);
+      expect(c.view!.estimate?.shots).toBe(c.shots);
+      expect(c.view!.provenance?.method).toBe("Sampled measurements");
+      const before = c.shotSeed;
+      c.rerollShots();
+      expect(c.shotSeed).not.toBe(before);
+      expect(vi.getTimerCount()).toBe(0);
+      c.setAutoShots(true);
+      c.setAutoShots(false);
+      expect(c.experimentMode).toBe("hardware");
+      expect(c.view!.estimate).toBeDefined();
+      const restored = calc(c.save());
+      expect(restored.experimentMode).toBe("hardware");
+      expect(restored.autoShots).toBe(false);
+      c.setExperimentMode("simulation");
+      expect(c.view!.estimate).toBeUndefined();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { c.setAutoShots(false); vi.useRealTimers(); }
+  });
+
+  test("legacy repeat sessions migrate to hardware mode", () => {
+    vi.useFakeTimers();
+    const saved = calc().save();
+    delete saved.experimentMode;
+    saved.autoShots = true;
+    const restored = calc(saved);
+    try { expect(restored.experimentMode).toBe("hardware"); }
+    finally { restored.setAutoShots(false); vi.useRealTimers(); }
+  });
+
   test("Bell state: H q0, CTRL q0, q1, X", () => {
     const c = calc();
     add(c, "h", [0]);
@@ -257,7 +294,7 @@ describe("SHOTS: periodic runs", () => {
     add(c, "ry", [0], { params: ["1.1"] });
     cx(c, 0, 1);
     c.setShots(200);
-    c.autoShots = true; // the flag alone: no timer in this test
+    c.experimentMode = "hardware"; // the flag alone: no timer in this test
     c.setMode("shots");
     const v = c.view!;
     if (v.mode !== "shots") throw new Error(v.mode);
@@ -283,7 +320,7 @@ describe("SHOTS: periodic runs", () => {
     const p1 = (freq.get(1) ?? 0) + (freq.get(3) ?? 0); // q0 = 1
     expect(b.vectors[0].z).toBeCloseTo(1 - 2 * p1, 14);
     expect(b.errors?.[0].x).toBeGreaterThan(0);
-    c.autoShots = false;
+    c.experimentMode = "simulation";
     c.setMode("prob");
     expect(c.view!.estimate).toBeUndefined();
   });
@@ -309,7 +346,7 @@ describe("SHOTS: periodic runs", () => {
     expect(JSON.stringify(c.analysis!.result)).not.toBe(JSON.stringify(first));
     c.openAnalysis("density");
     await new Promise((r) => setTimeout(r, 0));
-    expect(c.analysis!.result!.notes?.[0]).toMatch(/^Measured by state tomography \(SHOTS → repeat\): 9 Pauli settings × 100 shots/);
+    expect(c.analysis!.result!.notes?.[0]).toMatch(/^Measured by state tomography \(Hardware experiment\): 9 Pauli settings × 100 shots/);
     c.openAnalysis("resources");
     await new Promise((r) => setTimeout(r, 0));
     expect(c.analysis!.result!.notes?.some((x) => /shots/.test(x))).toBeFalsy();
@@ -322,21 +359,21 @@ describe("SHOTS: periodic runs", () => {
     c.setQubitCount(7);
     add(c, "h", [0]);
     c.setShots(64);
-    c.autoShots = true; // the flag alone: no timer in this test
+    c.experimentMode = "hardware"; // the flag alone: no timer in this test
     c.setMode("ket");
     expect(c.view!.estimate?.magnitudes).toBe(true);
     c.setMode("lab");
     c.openAnalysis("renyi"); // a full-state panel (local panels like mutual information are measured by local tomography)
     await new Promise((r) => setTimeout(r, 0));
     expect(c.analysis!.result!.error).toMatch(/^Not measurable at this size with shots: state tomography needs 3ⁿ settings \(2,187 at n = 7\)/);
-    c.autoShots = false;
+    c.experimentMode = "simulation";
   });
 
   test("stabilizer mode (30 qubits): PROB and BLOCH are estimated from shots too", () => {
     const c = calc();
     c.loadQasm(`OPENQASM 3.0; include "stdgates.inc"; qubit[30] q; h q[0]; cx q[0], q[29]; h q[5];`, "import");
     c.setShots(400);
-    c.autoShots = true; // the flag alone: no timer in this test
+    c.experimentMode = "hardware"; // the flag alone: no timer in this test
     c.setMode("prob");
     const p = c.view!;
     if (p.mode !== "prob") throw new Error(p.mode);
@@ -351,6 +388,6 @@ describe("SHOTS: periodic runs", () => {
     expect(b.vectors[5].x).toBeGreaterThan(0.85); // |+⟩ on q5: X = +1 every shot
     expect(Math.abs(b.vectors[0].x)).toBeLessThan(0.3); // q0 is half of a Bell pair: maximally mixed
     expect(b.errors![0].x).toBeGreaterThan(0);
-    c.autoShots = false;
+    c.experimentMode = "simulation";
   });
 });

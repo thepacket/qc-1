@@ -128,6 +128,7 @@ export type Chart =
     };
 
 export type AnalysisResult = {
+  provenance?: import("../calc/provenance").Provenance;
   scalars?: Scalar[]; charts?: Chart[]; notes?: string[]; error?: string;
   /** Offer to set these symbol values (e.g. the optimizer's result). */
   apply?: { label: string; scope: Record<string, number> };
@@ -155,7 +156,7 @@ export type AnalysisContext = { n: number; state: Float64Array; tape: Entry[]; s
 
 export type AnalysisRequest = {
   seq: number; id: string; opts: Opts; noise?: NoiseModel;
-  /** SHOTS → repeat: run a FROM_SHOTS panel on this run's sample (shots, the run's seed). */
+  /** Hardware experiment: run a FROM_SHOTS panel on this run's sample (shots, the run's seed). */
   sample?: { shots: number; seed: number; /** Undo the readout confusion on every count first. */ mitigate?: boolean };
 };
 export type AnalysisReply = { seq: number; rev: number; id: string; result: AnalysisResult; ms: number };

@@ -1192,9 +1192,13 @@ export function runAnalysis(id: string, ctx: AnalysisContext, opts: Opts, sample
   if (ctx.n > meta.maxQubits) return { error: `needs n ≤ ${meta.maxQubits} (n = ${ctx.n})` };
   if (meta.minQubits && ctx.n < meta.minQubits) return { error: `needs n ≥ ${meta.minQubits}` };
   const fail = (e: unknown): AnalysisResult => ({ error: e instanceof Error ? e.message : String(e) });
+  const describe = (out: AnalysisResult): AnalysisResult => out.error || out.provenance ? out : { ...out, provenance: {
+    method: meta.category === "noise" || meta.category === "bench" || meta.category === "qec" ? "Model-based analysis" : FROM_SHOTS.has(id) || FROM_TOMOGRAPHY.has(id) || FROM_LOCAL.has(id) ? "Statevector analysis" : "Circuit analysis",
+    detail: meta.category === "noise" || meta.category === "bench" || meta.category === "qec" ? "Uses this analysis's own model and settings; method details below." : "Computed from the circuit or its ideal state; method details below.",
+  } };
   try {
     const out = run(ctx, opts);
-    return out instanceof Promise ? out.catch(fail) : out;
+    return out instanceof Promise ? out.then(describe).catch(fail) : describe(out);
   } catch (e) {
     return fail(e);
   }

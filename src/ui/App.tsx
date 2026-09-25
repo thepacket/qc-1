@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Calculator, MAX_CBITS, type Mode, type Saved } from "../calc/calculator";
 import { formatEntry } from "../calc/steps";
-import { BlochView, KetView, Pending, ProbView, ShotsView, TapeView } from "./views";
+import { BlochView, KetView, Pending, ProbView, ShotsView, TapeView, ExperimentControls } from "./views";
+import { ResultSource } from "./ResultContext";
 import { createEngine } from "../calc/engine";
 import { LabView } from "./lab/LabView";
 import { ParamView } from "./ParamView";
@@ -239,6 +240,8 @@ export function App() {
         </div>}
 
 
+        {!overlay && !calc.param.open && <ExperimentControls calc={calc} />}
+        {!overlay && !calc.param.open && !["lab", "tape"].includes(calc.mode) && <ResultSource source={data?.provenance} />}
         {view}
 
         {calc.activeGuide && <GuideBar calc={calc} />}

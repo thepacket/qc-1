@@ -1,5 +1,5 @@
 /**
- * Views as on hardware (SHOTS → repeat): each periodic run is a set of
+ * Views as on hardware (Hardware experiment): each periodic run is a set of
  * experiments of N shots each, and while runs are on the views show what
  * those shots give, fluctuating from run to run:
  *

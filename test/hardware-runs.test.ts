@@ -11,7 +11,7 @@ test.each([1, 21])("independent measured circuit shots, including stabilizer mod
   const c = calc(); c.setQubitCount(n);
   add(c, "h", [0]); add(c, "measure", [0]);
   const recorded = c.tape[1][0].outcome;
-  c.setShots(1000); c.autoShots = true; c.setMode("prob");
+  c.setShots(1000); c.experimentMode = "hardware"; c.setMode("prob");
   const p = c.view!;
   if (p.mode !== "prob") throw new Error(p.mode);
   const p1 = p.stab ? p.marginals![0] : p.rows.find(r => r.i === 1)!.p;
@@ -26,7 +26,7 @@ test("fresh classical outcomes drive feed-forward, and scrubbed sampling uses on
   add(c, "h", [0]); add(c, "measure", [0]);
   const tape = [...c.tape, [{ ...c.tape[0][0], id: "feedback", gateId: "x", condition: { clbit: 0, value: 1 as const } }]];
   const d = calc({ ...c.save(), tape });
-  d.autoShots = true; d.setMode("prob");
+  d.experimentMode = "hardware"; d.setMode("prob");
   if (d.view!.mode === "prob") expect(d.view!.rows[0].p).toBe(1);
   d.scrub = 1; d.setMode("bloch");
   if (d.view!.mode === "bloch") expect(d.view!.vectors[0].x).toBe(1);

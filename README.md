@@ -38,8 +38,8 @@ install to your home screen, and it works offline.
 - **Noise** with Qiskit Aer's conventions: exact density matrices or
   trajectories, asymmetric readout errors, ZNE and PEC, device calibration
   import.
-- **Measure it like hardware**: SHOTS → repeat runs the circuit again and
-  again, and every tab then shows only what measurements would give, with
+- **Measure it like hardware**: Hardware experiment mode provides single runs
+  and optional auto-refresh, showing simulated measurement results with
   shot noise, tomography and error bars (see below).
 - **AI chat** through OpenRouter with your own key: it reads the circuit, runs LAB
   analyses and proposes circuits you apply with a tap.
@@ -47,13 +47,14 @@ install to your home screen, and it works offline.
   stepped through with its comments), OpenQASM 3 and Qiskit (Python) export,
   share links and QR codes.
 
-## Measure it like hardware (SHOTS → repeat)
+## Measure it like hardware
 
-By default QC-1 shows the exact state. Switch on **repeat** in the SHOTS tab
-(with a rate, in runs per second) and it behaves like a quantum computer
-instead: the circuit is run again and again, whichever tab is open, and every
-tab shows only what that run's measurements give. The numbers fluctuate from
-run to run and settle as the number of shots N grows.
+By default QC-1 uses **Simulation** mode for direct calculations. Select
+**Hardware experiment** to see simulated measurement results, then **Run once**
+for a fresh sample or enable **auto-refresh**. Stopping auto-refresh preserves
+measurement mode; select Simulation to return to direct calculations.
+Result labels identify the method, shot count, reconstruction, or noise model
+used. Bitstrings display their qubit order: q0 is the rightmost bit.
 
 Each run is a set of experiments of N shots each:
 

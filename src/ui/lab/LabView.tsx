@@ -10,6 +10,7 @@ import { ChartView } from "../charts/Charts";
 import { fmt } from "../charts/colors";
 import { NOISE_PRESETS, type NoiseModel } from "../../noise/model";
 import { importIbmBackend } from "../../noise/ibm";
+import { ResultSource, pauliMeaning } from "../ResultContext";
 
 /** LAB: category list → analysis list → analysis screen. */
 export function LabView({ calc }: { calc: Calculator }) {
@@ -119,13 +120,14 @@ function AnalysisScreen({ calc, meta }: { calc: Calculator; meta: AnalysisMeta }
         </button>
       </div>
       <div className="rows lab-body">
+        {res && <ResultSource source={res.provenance} />}
         {meta.inputs.length > 0 && (
           <div className="lab-inputs">
             {meta.inputs.map((s) => <Input key={s.key} calc={calc} meta={meta} spec={s} />)}
           </div>
         )}
-        {calc.autoShots && !FROM_SHOTS.has(meta.id) && !FROM_TOMOGRAPHY.has(meta.id) && !FROM_LOCAL.has(meta.id) && (
-          <p className="dim note">An experiment of its own, computed from the circuit: this panel doesn't read the state, so a periodic run's shots don't change it.</p>
+        {calc.experimentMode === "hardware" && !FROM_SHOTS.has(meta.id) && !FROM_TOMOGRAPHY.has(meta.id) && !FROM_LOCAL.has(meta.id) && (
+          <p className="dim note">This analysis uses its own circuit or model settings, independently of the shared measurement shots.</p>
         )}
         {res?.error && <div className="lab-error">E: {res.error}</div>}
         {res?.scalars && (
@@ -252,6 +254,7 @@ function PauliField({ calc, meta, spec }: { calc: Calculator; meta: AnalysisMeta
         onChange={(e) => setDraft(e.target.value.toUpperCase().replace(/[^IXYZ0-9.EE+\-* ]/g, ""))}
         onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); e.stopPropagation(); }}
       />
+      <p className="input-mapping">{pauliMeaning(draft ?? committed, calc.n)}</p>
       <div className="cut-picker">
         {pauliPresets(calc.n).map((p) => (
           <button key={p.label} className={`qb${p.text === committed ? " sel" : ""}`} onClick={() => { setDraft(null); calc.setLabOpts(meta.id, { [spec.key]: p.text }); }}>

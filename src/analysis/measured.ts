@@ -1,5 +1,5 @@
 /**
- * LAB panels on a periodic run's measurements (SHOTS → repeat), as on hardware.
+ * LAB panels on a periodic run's measurements (Hardware experiment), as on hardware.
  * Each panel sees an estimate built from a measurement record:
  *
  *   FROM_SHOTS       the Z experiment (the SHOTS sample): Σ √fᵢ |i⟩;
@@ -88,7 +88,7 @@ async function zPath(ctx: AnalysisContext, sample: Sample, noisy: boolean, devic
       }
       return sampleStateVector(n, c, shots);
     },
-    note: `Estimated from ${shots.toLocaleString()} shots${noisy ? " of the noisy circuit" : ""} (SHOTS → repeat): the sample's Z-basis frequencies, as on hardware.`,
+    note: `Estimated from ${shots.toLocaleString()} shots${noisy ? " of the noisy circuit" : ""} (Hardware experiment): the sample's Z-basis frequencies, as on hardware.`,
   };
 }
 
@@ -119,7 +119,7 @@ function trajectoryReduced(ctx: AnalysisContext, subsets: number[][]): { rho: Ma
   const perT = dim * (steps + subsets.reduce((a, k) => a + 4 ** k.length, 0));
   const T = Math.min(m.trajectories, Math.floor(LOCAL_WORK / perT));
   if (T < LOCAL_MIN_T) {
-    throw new Error(`Too large to measure with noise here: ${subsets.length} qubit subsets on ${n} qubits leave ${T} trajectories in the work budget (${LOCAL_MIN_T} needed). Turn noise off, or SHOTS → repeat off.`);
+    throw new Error(`Too large to measure with noise here: ${subsets.length} qubit subsets on ${n} qubits leave ${T} trajectories in the work budget (${LOCAL_MIN_T} needed). Turn noise off, or switch to Simulation.`);
   }
   const acc = new Map(subsets.map((k) => [k.join(","), new Float64Array(2 * 4 ** k.length)]));
   runTrajectories(n, ctx.tape, ctx.scope, m, (st) => {
@@ -148,7 +148,7 @@ async function localPath(id: string, ctx: AnalysisContext, opts: Opts, run: Run,
         st[REDUCED] = (kept) => toComplex(partialTrace(rhoOf(b), n, kept), 1 << kept.length);
         return st;
       },
-      note: `Measured by state tomography (SHOTS → repeat): ${S.toLocaleString()} Pauli settings × ${shots.toLocaleString()} shots${noisy ? " of the noisy circuit" : ""}; this panel sees the reconstructed mixed ρ̂ (its reduced density matrices).`,
+      note: `Measured by state tomography (Hardware experiment): ${S.toLocaleString()} Pauli settings × ${shots.toLocaleString()} shots${noisy ? " of the noisy circuit" : ""}; this panel sees the reconstructed mixed ρ̂ (its reduced density matrices).`,
     };
   }
   // Larger registers: tomography of each subset, from its exact reduced ρ. Noisy: the model's density matrix when
@@ -202,7 +202,7 @@ async function localPath(id: string, ctx: AnalysisContext, opts: Opts, run: Run,
       return st;
     },
     get note() {
-      return `Measured by local tomography (SHOTS → repeat): each qubit subset the panel needs, 3ᵏ Pauli settings × ${shots.toLocaleString()} shots${noisy ? ` of the noisy circuit (${traj ? `its state from ${traj.T} noise trajectories, ` : ""}the basis changes with those qubits' own noise, no crosstalk to others)` : ""}; the panel sees the reconstructed mixed ρ of each subset.`;
+      return `Measured by local tomography (Hardware experiment): each qubit subset the panel needs, 3ᵏ Pauli settings × ${shots.toLocaleString()} shots${noisy ? ` of the noisy circuit (${traj ? `its state from ${traj.T} noise trajectories, ` : ""}the basis changes with those qubits' own noise, no crosstalk to others)` : ""}; the panel sees the reconstructed mixed ρ of each subset.`;
     },
   };
 }
@@ -224,7 +224,7 @@ function statePath(ctx: AnalysisContext, sample: Sample, noisy: boolean, device:
   };
   return {
     estimate: lead,
-    note: `Reconstructed by state tomography (SHOTS → repeat): ${tomo.settings.toLocaleString()} Pauli settings × ${shots.toLocaleString()} shots${noisy ? " of the noisy circuit" : ""}; this panel sees the leading eigenvector of ρ̂ (weight λ₁ = ${tomo.lambda.toFixed(3)}).`,
+    note: `Reconstructed by state tomography (Hardware experiment): ${tomo.settings.toLocaleString()} Pauli settings × ${shots.toLocaleString()} shots${noisy ? " of the noisy circuit" : ""}; this panel sees the leading eigenvector of ρ̂ (weight λ₁ = ${tomo.lambda.toFixed(3)}).`,
   };
 }
 
@@ -232,7 +232,7 @@ function statePath(ctx: AnalysisContext, sample: Sample, noisy: boolean, device:
 export async function measuredRun(id: string, ctx: AnalysisContext, opts: Opts, sample: Sample, run: Run): Promise<AnalysisResult> {
   const local = FROM_LOCAL.has(id) || id === "expectation", z = FROM_SHOTS.has(id);
   if (!z && ctx.n > TOMO_MAX && (!local || id === "expectation")) {
-    return { error: `Not measurable at this size with shots: state tomography needs 3ⁿ settings (${(3 ** ctx.n).toLocaleString()} at n = ${ctx.n}); QC-1 reconstructs up to ${TOMO_MAX} qubits. Switch SHOTS → repeat off for the exact result.` };
+    return { error: `Not measurable at this size with shots: state tomography needs 3ⁿ settings (${(3 ** ctx.n).toLocaleString()} at n = ${ctx.n}); QC-1 reconstructs up to ${TOMO_MAX} qubits. Switch to Simulation for the direct result.` };
   }
   try {
     const noisy = !!ctx.noise && !isIdeal(ctx.noise);
@@ -265,8 +265,13 @@ export async function measuredRun(id: string, ctx: AnalysisContext, opts: Opts, 
       ...(B ? [`± is the bootstrap spread (${B} resamplings of the counts)${sample.mitigate && noisy ? "; readout errors mitigated (the confusion matrix undone on every count)" : ""}. Charts show the estimate only.`] : []),
       ...(out.notes ?? []),
     ];
-    return { ...out, scalars, notes };
+    return { ...out, scalars, notes, provenance: {
+      method: z ? "Sampled Z measurements" : local && ctx.n > TOMO_MAX ? "Local state tomography" : "State tomography",
+      detail: `${shotsLabel(sample.shots)}${B ? ` · uncertainty from ${B} bootstrap resamplings` : ""}${noisy ? " · noise model included" : " · ideal circuit"}${sample.mitigate && noisy ? " · readout mitigated" : ""}`,
+    } };
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
 }
+
+const shotsLabel = (shots: number) => `${shots.toLocaleString()} shots per measurement setting`;

@@ -12,6 +12,7 @@ import { EXAMPLE_CATEGORIES, EXAMPLE_COUNT, describeProgram, loadExample } from 
 import type { Vec3 } from "../calc/analysis";
 import { ket, num, pct } from "./format";
 import { project } from "./charts/sphere";
+import { BitOrder } from "./ResultContext";
 
 type ViewProps<M extends ViewData["mode"]> = { calc: Calculator; data: Extract<ViewData, { mode: M }> };
 
@@ -66,6 +67,7 @@ export function KetView({ data }: ViewProps<"ket">) {
     return (
       <div className="view">
         <div className="view-head">stabilizer state · {n} generators</div>
+        <BitOrder n={n} />
         <RowList items={data.generators} row={(g, i) => <div className="row gen-row" key={i}><span className="dim">g{i + 1}</span><span className="ket">{g}</span></div>} />
       </div>
     );
@@ -88,6 +90,7 @@ export function KetView({ data }: ViewProps<"ket">) {
         {nonzero === 1 ? "basis state" : `${nonzero.toLocaleString()} terms`}
         {nonzero > rows.length && ` · the ${rows.length.toLocaleString()} largest; the other ${(nonzero - rows.length).toLocaleString()} hold ${pct(data.restP)}`}
       </div>
+      <BitOrder n={n} />
       <RowList items={rows} row={({ i, re, im }) => (
         <div className="row ket-row" key={i} style={{ gridTemplateColumns: cols }}>
           {showRe && <span className="amp">{fix(re)}</span>}
@@ -100,11 +103,12 @@ export function KetView({ data }: ViewProps<"ket">) {
   );
 }
 
-function Bars({ items, head, wide }: { items: { label: string; p: number; note: string }[]; head: string; /** Notes like "3.4% ± 0.6%". */ wide?: boolean }) {
+function Bars({ items, head, wide, n }: { items: { label: string; p: number; note: string }[]; head: string; n?: number; /** Notes like "3.4% ± 0.6%". */ wide?: boolean }) {
   const max = items.reduce((m, x) => Math.max(m, x.p), 1e-12); // (no spread: lists can be long)
   return (
     <div className={`view${wide ? " wide-notes" : ""}`}>
       <div className="view-head">{head}</div>
+      {n !== undefined && <BitOrder n={n} />}
       <RowList items={items} row={(x) => (
         <div className="bar-row" key={x.label}>
           <span className="ket">{x.label}</span>
@@ -127,7 +131,7 @@ export function ProbView({ data }: ViewProps<"prob">) {
   // Every bit of probability is accounted for: what isn't listed is one last row.
   if (!data.complete && data.restP > 1e-9) items.push({ label: "all other outcomes", p: data.restP, note: pct(data.restP) });
   const head = data.complete ? "P(basis)" : `the ${data.rows.length.toLocaleString()} most likely + the rest`;
-  return <Bars items={items} wide={!!data.estimate} head={data.estimate ? `${head} · estimated from ${data.estimate.shots.toLocaleString()} shots (± standard error)` : head} />;
+  return <Bars items={items} n={data.n} wide={!!data.estimate} head={data.estimate ? `${head} · estimated from ${data.estimate.shots.toLocaleString()} shots (± standard error)` : head} />;
 }
 
 export function ShotsView({ calc, data }: ViewProps<"shots">) {
@@ -139,13 +143,24 @@ export function ShotsView({ calc, data }: ViewProps<"shots">) {
   const shots = data.requested ? `${data.shots.toLocaleString()} shots (of ${data.requested.toLocaleString()}: the budget at n = ${data.n})` : `${data.shots.toLocaleString()} shots`;
   return (
     <>
-      <ShotsBar calc={calc} />
-      <Bars items={items} head={`${shots} · ${data.distinct.toLocaleString()} outcomes`} />
+      <Bars items={items} n={data.n} head={`${shots} · ${data.distinct.toLocaleString()} outcomes`} />
     </>
   );
 }
 
 /** The shot count (typed), a re-roll, and periodic runs (a toggle and their rate; the Calculator runs them in any tab). */
+export function ExperimentControls({ calc }: { calc: Calculator }) {
+  const hardware = calc.experimentMode === "hardware";
+  return <div className="experiment-controls">
+    <div className="experiment-mode" role="group" aria-label="Calculation mode">
+      <button className={`qb${!hardware ? " on" : ""}`} aria-pressed={!hardware} onClick={() => calc.setExperimentMode("simulation")}>Simulation</button>
+      <button className={`qb${hardware ? " on" : ""}`} aria-pressed={hardware} onClick={() => calc.setExperimentMode("hardware")}>Hardware experiment</button>
+      <span className="dim">{hardware ? "Simulated measurements" : "Direct calculation"}</span>
+    </div>
+    {(hardware || calc.mode === "shots") && <ShotsBar calc={calc} />}
+  </div>;
+}
+
 function ShotsBar({ calc }: { calc: Calculator }) {
   const [draft, setDraft] = useState<string | null>(null);
   const [rate, setRate] = useState<string | null>(null);
@@ -164,14 +179,14 @@ function ShotsBar({ calc }: { calc: Calculator }) {
       <label>shots <input type="number" inputMode="numeric" min={1} max={1000000} value={draft ?? String(calc.shots)}
         onFocus={(e) => { setDraft(String(calc.shots)); e.target.select(); }} onChange={(e) => setDraft(e.target.value)} onBlur={commit}
         onKeyDown={keys} /></label>
-      <button className="qb" onClick={() => calc.rerollShots()}>re-roll</button>
-      <label className="shots-auto"><input type="checkbox" checked={autoShots} onChange={(e) => calc.setAutoShots(e.target.checked)} /> repeat</label>
-      <label>rate <input className="shots-rate" type="number" inputMode="decimal" min={SHOT_RATE[0]} max={SHOT_RATE[1]} step="any"
+      <button className="qb" disabled={calc.busy} onClick={() => calc.rerollShots()}>{calc.experimentMode === "hardware" ? "Run once" : "Sample shots"}</button>
+      {calc.experimentMode === "hardware" && <label className="shots-auto"><input type="checkbox" checked={autoShots} onChange={(e) => calc.setAutoShots(e.target.checked)} /> Auto-refresh</label>}
+      {autoShots && <label>rate <input className="shots-rate" type="number" inputMode="decimal" min={SHOT_RATE[0]} max={SHOT_RATE[1]} step="any"
         value={rate ?? String(shotRate)} aria-label="Runs per second"
         onFocus={(e) => { setRate(String(shotRate)); e.target.select(); }} onChange={(e) => setRate(e.target.value)} onBlur={commitRate}
-        onKeyDown={keys} /> /s</label>
+        onKeyDown={keys} /> /s</label>}
       {autoShots && <span className="dim" aria-live="off">run {calc.shotRun}</span>}
-      {calc.noiseOn && (
+      {calc.noiseOn && calc.experimentMode === "hardware" && (
         <label className="shots-auto" title="Undo the noise model's readout confusion in the estimates (quasi-probabilities)">
           <input type="checkbox" checked={calc.mitigateReadout} onChange={(e) => calc.setMitigateReadout(e.target.checked)} /> mitigate readout
         </label>

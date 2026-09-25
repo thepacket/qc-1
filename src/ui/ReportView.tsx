@@ -81,6 +81,7 @@ export function ReportView({ calc }: { calc: Calculator }) {
               </table>
             )}
             {p.result.charts?.map((c, k) => <figure key={k} className="report-figure">{<ChartView chart={c} />}</figure>)}
+            {p.result.provenance && <p className="report-dim"><b>{p.result.provenance.method}</b> · {p.result.provenance.detail}</p>}
             {p.result.notes?.map((t) => <p key={t} className="report-dim">{t}</p>)}
           </section>
         ))}
