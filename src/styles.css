@@ -197,12 +197,13 @@ button {
   flex: 1;
   min-height: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  overflow-y: auto;
   gap: 14px;
 }
-.sphere-main { height: 100%; max-height: 360px; width: auto; aspect-ratio: 1; }
-.bloch-read { line-height: 1.45; font-variant-numeric: tabular-nums; }
+.sphere-main { flex: 0 0 auto; width: min(100%, 360px); height: auto; aspect-ratio: 1; }
+.bloch-read { flex: 0 0 auto; text-align: center; line-height: 1.45; font-variant-numeric: tabular-nums; }
 .bloch-read .big { font-size: 18px; font-weight: 700; }
 .sphere { fill: rgba(255, 255, 255, 0.03); stroke: var(--ink-muted); stroke-width: 1; }
 .eq { fill: none; stroke: var(--ink-muted); stroke-width: 1; }
