@@ -240,7 +240,7 @@ export function App() {
         </div>}
 
 
-        {!overlay && !calc.param.open && <ExperimentControls calc={calc} />}
+        {!overlay && !calc.param.open && calc.mode !== "tape" && <ExperimentControls calc={calc} />}
         {!overlay && !calc.param.open && !["lab", "tape"].includes(calc.mode) && <ResultSource source={data?.provenance} />}
         {view}
 

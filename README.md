@@ -86,6 +86,12 @@ with calculated probabilities. Practice circuits are isolated from your work.
 and circuit-equivalence analyses, with interpretation notes and prerequisites.
 The full technical catalog and search remain available below.
 
+**LAB → What did noise change? → Ideal vs noisy** compares probabilities,
+purity, and a Pauli observable in adjacent columns, with their differences.
+Enable the noise model first. Readout errors can be included in the probability
+comparison; purity and observables remain pre-readout state quantities.
+The panel supports up to 8 qubits and identifies trajectory approximations.
+
 ## Measure it like hardware
 
 By default QC-1 uses **Simulation** mode for direct calculations. Select

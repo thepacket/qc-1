@@ -331,6 +331,9 @@ ANALYSES.push(
 ANALYSES.push(
   { id: "noisemodel", title: "Noise model", category: "noise", mode: "live", maxQubits: 1024, inputs: [],
     summary: "Turn noise on and set its rates: depolarizing, T1/T2 damping, readout, crosstalk; device presets and calibration files." },
+  { id: "noisecompare", title: "Ideal vs noisy", category: "noise", mode: "live", maxQubits: 8,
+    inputs: [obs, { kind: "choice", key: "readout", label: "probabilities", fallback: 0, options: [{ label: "Before readout", value: 0 }, { label: "Include readout errors", value: 1 }] }],
+    summary: "Compare probabilities, purity, and an observable side by side; show noisy minus ideal changes." },
   { id: "impact", title: "Noise impact", category: "noise", mode: "live", maxQubits: 10, inputs: [],
     summary: "Fidelity and trace distance of the noisy state to the ideal one, its purity and entropy." },
   { id: "decoherence", title: "Decoherence by depth", category: "noise", mode: "run", maxQubits: 6, inputs: [],

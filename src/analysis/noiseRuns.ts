@@ -1,3 +1,4 @@
+import { pauliSparse } from "../sim/pauliMatrix";
 /**
  * LAB "Noise & error": analyses of the tape under the noise model, and the
  * noisy PROB / BLOCH / SHOTS views. Every quantity is computed from the
@@ -9,7 +10,7 @@ import type { AnalysisContext, AnalysisResult, Opts } from "./types";
 import { ANALYSIS_BY_ID, defaultCut, inputValue, pauliInput } from "./catalog";
 import { KET_ROWS, SHOT_ROWS, type ViewData } from "../calc/core";
 import { topK } from "../calc/analysis";
-import { estimateView, stateTomography } from "../calc/estimate";
+import { estimateView, stateTomography, outer } from "../calc/estimate";
 import { leadingState, TOMO_MAX } from "../calc/tomography";
 import { confusion } from "../calc/tomography";
 import { viewProvenance } from "../calc/provenance";
@@ -202,6 +203,51 @@ export const NOISE_RUNS: Record<string, Run> = {
   noisemodel(ctx) {
     const m = ctx.noise;
     return { scalars: [{ label: "noise", value: m?.enabled && !isIdeal(m) ? "on" : "off" }] };
+  },
+
+  noisecompare(ctx, opts) {
+    const m = model(ctx), n = ctx.n, d = 2 ** n;
+    const terms = parsePauliSum(pauliInput(opts, "obs", n));
+    if (!terms.length || terms.some(t => t.paulis.length !== n)) throw new Error(`Pauli strings need ${n} letters`);
+    const { rho, method } = densityOf(ctx, m), ref = idealReference(ctx, m);
+    const sigma = "pure" in ref ? outer(ref.pure) : ref.mixed;
+    const expectation = (r: Float64Array) => terms.reduce((sum, t) => {
+      const { perm, phRe, phIm } = pauliSparse(n, t.paulis);
+      let mean = 0;
+      for (let i = 0; i < d; i++) {
+        const k = 2 * (i * d + perm[i]);
+        mean += r[k] * phRe[i] - r[k + 1] * phIm[i];
+      }
+      return sum + t.coefficient * mean;
+    }, 0);
+    const purity = (r: Float64Array) => r.reduce((sum, x) => sum + x * x, 0);
+    const ideal = Float64Array.from({ length: d }, (_, i) => sigma[2 * (i * d + i)]);
+    const stateProb = Float64Array.from({ length: d }, (_, i) => rho[2 * (i * d + i)]);
+    const withReadout = num("noisecompare", "readout", opts, n) === 1;
+    const noisy = withReadout ? confusion(stateProb, n, Array.from({ length: n }, (_, q) => readoutPair(m, q)), false) : stateProb;
+    const indices = Array.from({ length: d }, (_, i) => i);
+    const shown = d <= 32 ? indices : indices.sort((a, b) => Math.max(ideal[b], noisy[b]) - Math.max(ideal[a], noisy[a]) || a - b).slice(0, 32);
+    const rows: (string | number)[][] = shown.map(i => [ket(i, n), ideal[i], noisy[i], noisy[i] - ideal[i]]);
+    if (shown.length < d) {
+      const restI = Math.max(0, 1 - shown.reduce((sum, i) => sum + ideal[i], 0));
+      const restN = Math.max(0, 1 - shown.reduce((sum, i) => sum + noisy[i], 0));
+      rows.push(["All other outcomes", restI, restN, restN - restI]);
+    }
+    const pi = purity(sigma), pn = purity(rho), ei = expectation(sigma), en = expectation(rho);
+    return {
+      provenance: { method: "Ideal vs noisy comparison", detail: `${method}; calculated distributions, no finite-shot sampling${"mixed" in ref ? "; trajectory uncertainty is not included" : ""}.` },
+      scalars: [{ label: "probability distance (total variation)", value: ideal.reduce((sum, p, i) => sum + Math.abs(p - noisy[i]), 0) / 2 }],
+      charts: [
+        { kind: "table", title: "State quantities (before readout)", headers: ["Quantity", "Ideal", "Noisy", "Δ noisy − ideal"], rows: [["Purity Tr ρ²", pi, pn, pn - pi], ["Observable ⟨H⟩", ei, en, en - ei]] },
+        { kind: "table", title: `Probabilities · ${withReadout ? "including readout errors" : "before readout"}`, headers: ["Outcome", "Ideal", "Noisy", "Δ noisy − ideal"], rows },
+      ],
+      notes: [
+        `Bit order: ${Array.from({ length: n }, (_, j) => `q${n - 1 - j}`).join(" ")}; q0 is the rightmost bit. Probabilities are fractions from 0 to 1.`,
+        "Both columns use the same circuit and parameters. Purity and observable values describe the state before readout; the probability selector affects only the probability table and distance. Shot count and readout mitigation do not alter this model comparison.",
+        ...("mixed" in ref ? [UNCONDITIONAL] : []),
+        ...(d > 32 ? ["Showing the 32 outcomes with the greatest probability in either column; the final row accounts for every omitted outcome. Distance uses all outcomes."] : []),
+      ],
+    };
   },
 
   impact(ctx) {
