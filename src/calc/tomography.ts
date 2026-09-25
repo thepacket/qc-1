@@ -95,7 +95,7 @@ export const IDEAL_DEVICE: Device = { readout: [] };
  * A_q⁻¹ = [[1 − p₁₀, −p₁₀], [−p₀₁, 1 − p₀₁]] / (1 − p₀₁ − p₁₀). The inverse can
  * give negative quasi-probabilities.
  */
-export function confusion(dist: Float64Array, n: number, readout: Readout, inverse: boolean): Float64Array {
+export function confusion(dist: Float64Array, n: number, readout: Readout, inverse: boolean, options: { transpose?: boolean; squared?: boolean } = {}): Float64Array {
   let out = Float64Array.from(dist);
   for (let q = 0; q < n; q++) {
     const [p01, p10] = readout[q] ?? [0, 0];
@@ -104,6 +104,8 @@ export function confusion(dist: Float64Array, n: number, readout: Readout, inver
     if (inverse && det <= 0) throw new Error(`q${q}: readout errors this large can't be undone (p₀₁ + p₁₀ ≥ 1)`);
     // A[read][true]
     const A = inverse ? [[(1 - p10) / det, -p10 / det], [-p01 / det, (1 - p01) / det]] : [[1 - p01, p10], [p01, 1 - p10]];
+    if (options.transpose) [A[0][1], A[1][0]] = [A[1][0], A[0][1]];
+    if (options.squared) for (const row of A) for (let j = 0; j < 2; j++) row[j] **= 2;
     const m = 1 << q, next = new Float64Array(out.length);
     for (let i = 0; i < out.length; i++) {
       const b = (i >> q) & 1;
@@ -293,10 +295,14 @@ export function leadingState(vector: Complex[]): Float64Array {
 export function tomography(n: number, shots: number, probsOf: (s: Basis[]) => Float64Array, rngOf: (s: number) => () => number, readout: Readout = [], mitigate = false) {
   const S = settings(n);
   const counts = S.map((s, k) => drawCounts(probsOf(s), shots, rngOf(k), readout));
+  return reconstructTomography(n, shots, counts, readout, mitigate);
+}
+
+export function reconstructTomography(n: number, shots: number, counts: Map<number, number>[], readout: Readout = [], mitigate = false) {
   // Mitigated: the readout confusion undone on each setting's counts (quasi-counts) before the inversion.
   const rhoHat = linearInversion(n, mitigate && readout.length ? counts.map((c) => mitigateCounts(c, n, readout)) : counts, shots);
   const { rho, values, vectors } = physical(rhoHat, 1 << n);
-  return { counts, rhoHat, rho, lambda: values[0], state: leadingState(vectors[0]), settings: S.length };
+  return { counts, rhoHat, rho, lambda: values[0], state: leadingState(vectors[0]), settings: counts.length };
 }
 
 /**

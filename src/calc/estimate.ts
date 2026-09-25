@@ -13,7 +13,7 @@
  */
 import type { ViewData } from "./core";
 import type { Vec3 } from "./analysis";
-import { blochFromCounts, IDEAL_DEVICE, mitigateCounts, qubitP1, rhoProbs, rhoProbsNoisy, stateProbs, tomography, TOMO_MAX, type Basis, type Device } from "./tomography";
+import { blochFromCounts, confusion, IDEAL_DEVICE, mitigateCounts, qubitP1, rhoProbs, rhoProbsNoisy, stateProbs, tomography, TOMO_MAX, type Basis, type Device } from "./tomography";
 
 /** Most rows listed (as KET_ROWS in core.ts). */
 const ROWS = 4096;
@@ -39,6 +39,8 @@ export type RunSource = {
   z: Map<number, number>;
   /** Each qubit's exact Bloch vector (ideal, or under noise): its X and Y experiments' outcome distributions. */
   bloch: () => Vec3[];
+  /** Joint basis experiment for circuits whose measurements must be replayed. */
+  basisCounts?: (basis: 0 | 1) => Map<number, number>;
   /** How it measures (readout errors, noisy basis changes; ideal without noise). */
   device: Device;
   /** Undo the readout confusion on every count before estimating. */
@@ -77,20 +79,28 @@ export function estimateView(mode: "ket" | "prob" | "bloch", n: number, shots: n
   const counts = clip(fix(run.z));
   if (mode === "bloch") {
     const exact = run.bloch();
-    const x = basisExperiment(n, exact, 0, shots, shotRng(run.seed, EXP.X), run.device);
-    const y = basisExperiment(n, exact, 1, shots, shotRng(run.seed, EXP.Y), run.device);
+    const x = run.basisCounts?.(0) ?? basisExperiment(n, exact, 0, shots, shotRng(run.seed, EXP.X), run.device);
+    const y = run.basisCounts?.(1) ?? basisExperiment(n, exact, 1, shots, shotRng(run.seed, EXP.Y), run.device);
     const { vectors, errors } = blochFromCounts(n, fix(x), fix(y), fix(run.z), shots);
+    if (run.mitigate && run.device.readout.length) {
+      const raw = blochFromCounts(n, x, y, run.z, shots).errors;
+      errors.forEach((v, q) => {
+        const [p01, p10] = run.device.readout[q] ?? [0, 0], det = 1 - p01 - p10;
+        v.x = raw[q].x / det; v.y = raw[q].y / det; v.z = raw[q].z / det;
+      });
+    }
     return { n, mode: "bloch", estimate: { shots, experiments: "X, Y and Z experiments" }, vectors, errors };
   }
   if (mode === "prob") {
     const estimate = { shots };
-    const se = (f: number) => Math.sqrt((f * (1 - f)) / shots);
+    const corrected = run.mitigate && run.device.readout.length ? mitigatedProbabilityErrors(n, run.z, shots, run.device) : null;
+    const se = (f: number, i: number) => corrected ? corrected[i] : Math.sqrt((f * (1 - f)) / shots);
     if (n <= 4) {
-      const rows = [...Array(1 << n).keys()].map((i) => { const p = (counts.get(i) ?? 0) / shots; return { i, p, se: se(p) }; });
+      const rows = [...Array(1 << n).keys()].map((i) => { const p = (counts.get(i) ?? 0) / shots; return { i, p, se: se(p, i) }; });
       return { n, mode: "prob", estimate, complete: true, restP: 0, rows };
     }
     const top = listed(counts);
-    const rows = top.map(([i, c]) => ({ i, p: c / shots, se: se(c / shots) }));
+    const rows = top.map(([i, c]) => ({ i, p: c / shots, se: se(c / shots, i) }));
     return { n, mode: "prob", estimate, complete: counts.size <= ROWS, restP: Math.max(0, 1 - rows.reduce((s, r) => s + r.p, 0)), rows };
   }
   const tomo = n <= TOMO_MAX ? run.tomography() : null;
@@ -102,6 +112,27 @@ export function estimateView(mode: "ket" | "prob" | "bloch", n: number, shots: n
   const top = listed(counts);
   const rows = top.map(([i, c]) => ({ i, re: Math.sqrt(c / shots), im: 0 }));
   return { n, mode: "ket", estimate: { shots, magnitudes: true }, nonzero: counts.size, restP: Math.max(0, 1 - rows.reduce((s, r) => s + r.re * r.re, 0)), rows };
+}
+
+/** Delta-method covariance through inverse readout, clipping and normalization.
+ * Away from clipping boundaries this propagates the multinomial covariance
+ * without constructing its exponentially larger dense matrix.
+ */
+export function mitigatedProbabilityErrors(n: number, counts: Map<number, number>, shots: number, device: Device): Float64Array {
+  const f = new Float64Array(2 ** n);
+  for (const [i, c] of counts) f[i] = c / shots;
+  const readout = device.readout, q = confusion(f, n, readout, true);
+  const active = q.map(v => v > 0 ? 1 : 0);
+  const total = q.reduce((a, v) => a + Math.max(0, v), 0) || 1;
+  const t = confusion(active, n, readout, true, { transpose: true });
+  const second = confusion(f, n, readout, true, { squared: true });
+  const cross = confusion(f.map((v, i) => v * t[i]), n, readout, true);
+  const normSecond = f.reduce((a, v, i) => a + v * t[i] ** 2, 0);
+  return q.map((v, i) => {
+    if (v <= 0) return 0;
+    const p = v / total;
+    return Math.sqrt(Math.max(0, second[i] - 2 * p * cross[i] + p * p * normSecond) / shots) / total;
+  });
 }
 
 /** The state Σ √(countᵢ/N) |i⟩ (phases zero): exact for anything that reads only Z-basis probabilities. */

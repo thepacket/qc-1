@@ -20,6 +20,7 @@ import type { AnalysisContext, AnalysisRequest, AnalysisResult, Opts, Scalar } f
 import { FROM_LOCAL, FROM_SHOTS } from "./catalog";
 import { sampleState } from "../calc/analysis";
 import { EXP, sampleStateVector, shotRng, stateTomography } from "../calc/estimate";
+import { circuitCounts, circuitTomography, needsReplay } from "../calc/experiments";
 import {
   drawCounts, IDEAL_DEVICE, linearInversion, mitigateCounts, physical, rhoProbs, rhoProbsNoisy, tomography, TOMO_MAX, type Device,
 } from "../calc/tomography";
@@ -72,7 +73,9 @@ async function zPath(ctx: AnalysisContext, sample: Sample, noisy: boolean, devic
   const { n } = ctx, { shots, seed } = sample;
   const counts = noisy
     ? noisyShots(n, (await noisyStatsParallel(n, ctx.tape, ctx.scope, ctx.noise!)).probs, ctx.noise!, shots, 0x5407 + seed)
-    : sampleState(ctx.state, shots, shotRng(seed));
+    : needsReplay(ctx.tape)
+      ? circuitCounts(n, ctx.tape, ctx.scope, Array.from({ length: n }, (_, q) => q), Array(n).fill(2), shots, shotRng(seed))
+      : sampleState(ctx.state, shots, shotRng(seed));
   const replicate = (b: number) => (b ? resample(counts, shots, shotRng(seed, 900_000 + b)) : counts);
   return {
     estimate: (b) => {
@@ -96,6 +99,7 @@ function reconstruct(k: number, counts: Counts[], shots: number, sample: Sample,
 }
 
 function fullTomography(ctx: AnalysisContext, sample: Sample, noisy: boolean, device: Device) {
+  if (!noisy && needsReplay(ctx.tape)) return circuitTomography(ctx.n, ctx.tape, ctx.scope, Array.from({ length: ctx.n }, (_, q) => q), sample.shots, k => shotRng(sample.seed, EXP.TOMO + k));
   const source = noisy ? { rho: densityOf(ctx, ctx.noise!).rho } : { state: ctx.state };
   return stateTomography(ctx.n, sample.shots, sample.seed, source, device, undefined, !!sample.mitigate)!;
 }
@@ -177,6 +181,10 @@ async function localPath(id: string, ctx: AnalysisContext, opts: Opts, run: Run,
   const measure = (kept: number[]) => {
     const key = subsetKey(kept);
     if (!counts.has(key)) {
+      if (!noisy && needsReplay(ctx.tape)) {
+        counts.set(key, circuitTomography(n, ctx.tape, ctx.scope, kept, shots, j => shotRng(seed, EXP.TOMO + 1000 * key + j)).counts);
+        return counts.get(key)!;
+      }
       const k = kept.length, rho = exactReduced(kept), dev = onQubits(device, kept);
       const probsOf = dev.superops ? (s: (0 | 1 | 2)[]) => rhoProbsNoisy(rho, k, s, dev.superops!) : (s: (0 | 1 | 2)[]) => rhoProbs(rho, k, s);
       counts.set(key, tomography(k, shots, probsOf, (j) => shotRng(seed, EXP.TOMO + 1000 * key + j), dev.readout).counts);
@@ -222,12 +230,17 @@ function statePath(ctx: AnalysisContext, sample: Sample, noisy: boolean, device:
 
 /** Run panel `id` on the run's measurements, with bootstrap error bars on its numeric scalars. */
 export async function measuredRun(id: string, ctx: AnalysisContext, opts: Opts, sample: Sample, run: Run): Promise<AnalysisResult> {
-  const local = FROM_LOCAL.has(id), z = FROM_SHOTS.has(id);
-  if (!z && ctx.n > TOMO_MAX && !local) {
+  const local = FROM_LOCAL.has(id) || id === "expectation", z = FROM_SHOTS.has(id);
+  if (!z && ctx.n > TOMO_MAX && (!local || id === "expectation")) {
     return { error: `Not measurable at this size with shots: state tomography needs 3ⁿ settings (${(3 ** ctx.n).toLocaleString()} at n = ${ctx.n}); QC-1 reconstructs up to ${TOMO_MAX} qubits. Switch SHOTS → repeat off for the exact result.` };
   }
   try {
     const noisy = !!ctx.noise && !isIdeal(ctx.noise);
+    // A pure-state visualization can explicitly show a principal component;
+    // a scientific observable must not silently substitute it for a mixture.
+    if (!local && !z && (noisy || needsReplay(ctx.tape)) && !["statevector", "ampphase", "qsphere"].includes(id)) {
+      return { error: "This analysis requires a pure state and cannot yet use the measured mixed density matrix. Use a mixed-state analysis such as Expectation value or Reduced density matrix." };
+    }
     const device = noisy ? measurementDevice(ctx.noise!, ctx.n) : IDEAL_DEVICE;
     const path = z ? await zPath(ctx, sample, noisy, device) : local ? await localPath(id, ctx, opts, run, sample, noisy, device) : statePath(ctx, sample, noisy, device);
     const out = await run(id, { ...ctx, state: path.estimate(0) }, opts);
@@ -257,4 +270,3 @@ export async function measuredRun(id: string, ctx: AnalysisContext, opts: Opts, 
     return { error: e instanceof Error ? e.message : String(e) };
   }
 }
-

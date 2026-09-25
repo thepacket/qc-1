@@ -10,6 +10,9 @@
  * simulated circuits (n ≤ 20).
  */
 
+import { REDUCED, type MeasuredState } from "./density";
+import { observableMoments } from "./observableVariance";
+
 export type Pauli = "I" | "X" | "Y" | "Z";
 
 /**
@@ -29,6 +32,7 @@ export function pauliSumExpectation(
   n: number,
   terms: Array<{ coefficient: number; paulis: string }>,
 ): number {
+  if ((state as MeasuredState)[REDUCED]) return observableMoments(state, n, terms).mean;
   let total = 0;
   for (const term of terms) {
     if (term.coefficient === 0) continue;

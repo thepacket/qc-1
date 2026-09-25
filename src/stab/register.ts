@@ -52,6 +52,13 @@ function isDeterministic(tab: Stabilizer, q: number): boolean {
   return tab.pauliExpectation(Array.from({ length: tab.n }, (_, i) => (i === q ? "Z" : "I"))) !== 0;
 }
 
+/** One independent execution, ignoring the editor's recorded outcomes. */
+export function freshTableau(n: number, tape: Entry[], rng: () => number): Stabilizer {
+  const tab = new Stabilizer(n), bits = new Uint8Array(bitCount(n, tape));
+  for (const e of tape) for (const s of e) applyTab(tab, { ...s, outcome: undefined }, rng, bits, [], 0);
+  return tab;
+}
+
 export class StabilizerRegister {
   n: number;
   tab: Stabilizer;

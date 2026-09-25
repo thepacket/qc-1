@@ -61,13 +61,21 @@ Each run is a set of experiments of N shots each:
 |---|---|
 | **Z** (the SHOTS sample) | SHOTS; PROB (frequencies ± standard error); the LAB panels that only read Z-basis probabilities (entropies of the distribution, ZZ correlations, symmetry sectors…) |
 | **X and Y** (every qubit measured in X, in Y) | BLOCH's x and y (z from Z), each ± its error |
-| **State tomography** (all 3ⁿ Pauli settings, linear inversion, the nearest physical ρ by Smolin–Gambetta–Smith, as Qiskit Experiments' `StateTomography`) | STATE (the reconstructed state, with the weight λ₁ of ρ̂'s leading eigenvector, below 1 under noise) and the LAB panels that read the state |
+| **State tomography** (all 3ⁿ Pauli settings, linear inversion, the nearest physical ρ by Smolin–Gambetta–Smith, as Qiskit Experiments' `StateTomography`) | STATE (the leading component, with its weight λ₁); Expectation value uses the mixed density matrix, including its observable variance |
 | **Local tomography** (3ᵏ settings on just the k qubits a panel needs) | density matrices, mutual information, negativity, concurrence, discord, tripartite information and phase disks, from the measured mixed ρ of those qubits |
 
 LAB numbers carry **± error bars** from a bootstrap: the run's counts are
 resampled and the panel re-run. Panels that don't read the state (circuit
 structure and tools, the noise model, benchmarks) are experiments of their own
 and don't change.
+
+Measurements, resets and classical conditions are executed afresh for each
+ideal-circuit shot; the editor's recorded branch is left intact. This also
+applies to the X/Y experiments and tomography, and to stabilizer-mode sampling.
+Analyses that only support pure states report that limitation when the circuit
+has noise or nonunitary instructions; they do not substitute a pure component
+for a mixed-state observable. STATE, amplitude and Q-sphere views explicitly
+show the leading component instead of the entire mixed state.
 
 **With noise on**, every experiment samples the noisy circuit:
 - gate noise, damping and crosstalk as in the noise model;
@@ -78,6 +86,12 @@ and don't change.
 - **mitigate readout** (in the SHOTS bar) undoes the readout confusion matrix
   on every count, as readout-error mitigation does on a device.
 
+Readout mitigation also amplifies statistical uncertainty. BLOCH propagates
+that amplification through each marginal's inverse readout correction. PROB
+propagates multinomial covariance through the inverse correction, clipping
+and normalization (a local linear approximation, less reliable at clipping
+boundaries). LAB retains its bootstrap through the complete estimator.
+
 **What can be measured at which size:**
 
 | | up to 6 qubits | 7 – 20 qubits | 21 – 1024 qubits (stabilizer mode) |
@@ -85,12 +99,12 @@ and don't change.
 | SHOTS, PROB, BLOCH | ✓ | ✓ | ✓ (PROB as each qubit's P(1); no noise model in this mode) |
 | STATE | reconstructed by tomography | √frequency only: phases need tomography | stabilizer generators, exact (without noise, measuring one always gives ±1) |
 | Local LAB panels | from the full tomography | local tomography: ideal at any size; with noise from the model's density matrix up to 10 qubits (8 if the circuit measures), then from noise trajectories within a work budget | not available (these panels stop at 20 qubits) |
-| Full-state LAB panels (Rényi, Wigner, magic, QFI…) | on the reconstructed state | "not measurable at this size" (3ⁿ settings) | not available |
+| Full-state LAB panels (Rényi, Wigner, magic, QFI…) | on the reconstructed state for ideal unitary circuits; pure-state-only analyses unavailable for noisy/nonunitary circuits | "not measurable at this size" (3ⁿ settings) | not available |
 
 **Still idealized:** the device never drifts (no calibration changes between
 runs, no leakage or non-Markovian effects); readout errors are independent per
-qubit; crosstalk to qubits outside a locally measured group is left out; panels
-that need the full state see ρ̂'s leading eigenvector, the closest pure state;
+qubit; crosstalk to qubits outside a locally measured group is left out; pure-state
+visualizations show ρ̂'s leading eigenvector, the closest pure state;
 and experiments cost no time (a 6-qubit tomography is 729 settings × N shots
 per run).
 

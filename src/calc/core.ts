@@ -1,10 +1,11 @@
 import { MAX_QUBITS, Register, type Contents } from "./register";
-import { StabilizerRegister, STAB_MAX } from "../stab/register";
+import { StabilizerRegister, STAB_MAX, freshTableau } from "../stab/register";
 import type { Stabilizer } from "../sim/stabilizer";
 import { qiskitGenerators } from "./order";
 import { bloch, sampleState, topK, type Vec3 } from "./analysis";
 import { estimateView, shotRng, stateTomography } from "./estimate";
 import { IDEAL_DEVICE } from "./tomography";
+import { circuitCounts, circuitTomography, needsReplay } from "./experiments";
 import type { Entry, Scope } from "./steps";
 import type { Op } from "./register";
 import { customGates, setCustomGates, type CustomGate } from "./custom";
@@ -270,13 +271,13 @@ export class Core {
     const at = req.upTo != null && req.upTo < len ? Math.max(0, req.upTo) : undefined;
     const reg = this.reg;
     const data = reg instanceof StabilizerRegister
-      ? this.stabView(req, at === undefined ? reg.tab : reg.tableauAt(at))
-      : this.viewOf(req, at === undefined ? reg.state : reg.stateAt(at));
+      ? this.stabView(req, at === undefined ? reg.tab : reg.tableauAt(at), reg.tape.slice(0, at))
+      : this.viewOf(req, at === undefined ? reg.state : reg.stateAt(at), reg.tape.slice(0, at));
     return at === undefined ? data : { ...data, at };
   }
 
   /** Views of a stabilizer state: generators, per-qubit P(1), exact Bloch vectors, sampled bitstrings. */
-  private stabView(req: ViewReq, tab: Stabilizer): ViewData {
+  private stabView(req: ViewReq, tab: Stabilizer, tape: Entry[]): ViewData {
     const n = this.reg.n;
     const single = (q: number, p: "X" | "Y" | "Z") => tab.pauliExpectation(Array.from({ length: n }, (_, i) => (i === q ? p : "I")));
     // The SHOTS sample: bitstrings measured on clones of the tableau, as many as the work budget allows.
@@ -286,7 +287,7 @@ export class Core {
       const rng = () => ((seed = (Math.imul(seed ^ (seed >>> 15), 0x2c1b3c6d) + 0x6d2b79f5) >>> 0) / 2 ** 32);
       const counts = new Map<string, number>();
       for (let s = 0; s < shots; s++) {
-        const t = tab.clone();
+        const t = needsReplay(tape) ? freshTableau(n, tape, rng) : tab.clone();
         let bits = "";
         for (let q = 0; q < n; q++) bits = t.measureZ(q, rng) + bits; // q0 rightmost, as Qiskit prints counts
         counts.set(bits, (counts.get(bits) ?? 0) + 1);
@@ -302,6 +303,24 @@ export class Core {
       return { n, stab: true, mode: "prob", rows: [], complete: false, restP: 0, marginals, marginalErrors: marginals.map((p) => Math.sqrt((p * (1 - p)) / shots)), estimate: { shots } };
     }
     if (req.estimate && req.mode === "bloch") {
+      if (needsReplay(tape)) {
+        const k = stabFit(n, 3), N = Math.max(1, Math.min(req.shots, Math.floor(SHOT_BUDGET / (n * n * n))));
+        const components = [0, 1, 2].map(basis => {
+          const rng = shotRng(req.shotSeed, basis === 2 ? 0 : basis + 1), ones = new Array<number>(k).fill(0);
+          for (let s = 0; s < N; s++) {
+            const t = freshTableau(n, tape, rng);
+            for (let q = 0; q < n; q++) {
+              if (basis === 1) { t.s(q); t.s(q); t.s(q); }
+              if (basis !== 2) t.h(q);
+            }
+            for (let q = 0; q < n; q++) { const bit = t.measureZ(q, rng); if (q < k) ones[q] += bit; }
+          }
+          return ones.map(v => 1 - 2 * v / N);
+        });
+        const vectors = Array.from({ length: k }, (_, q) => ({ x: components[0][q], y: components[1][q], z: components[2][q] }));
+        const se = (c: number) => Math.sqrt(Math.max(0, 1 - c * c) / N);
+        return { n, stab: true, mode: "bloch", vectors, errors: vectors.map(v => ({ x: se(v.x), y: se(v.y), z: se(v.z) })), estimate: { shots: N, experiments: "X, Y and Z experiments" } };
+      }
       // Periodic runs: X, Y and Z experiments, N shots each, per qubit from its exact marginal (no noise in stabilizer mode).
       const k = stabFit(n, 3), N = req.shots;
       const draw = (c: number, rng: () => number) => { let ones = 0; for (let s = 0; s < N; s++) if (rng() < (1 - c) / 2) ones++; return 1 - (2 * ones) / N; };
@@ -328,16 +347,21 @@ export class Core {
     }
   }
 
-  private viewOf(req: ViewReq, state: Float64Array): ViewData {
+  private viewOf(req: ViewReq, state: Float64Array, tape: Entry[]): ViewData {
     const { n } = this.reg;
     const p = (i: number) => state[2 * i] ** 2 + state[2 * i + 1] ** 2;
     // The run's sample (seeded: every view of it draws the same shots).
-    const sample = () => sampleState(state, req.shots, shotRng(req.shotSeed));
+    const replay = needsReplay(tape), kept = Array.from({ length: n }, (_, q) => q);
+    const experiment = (basis: 0 | 1 | 2, exp: number) => circuitCounts(n, tape, this.reg.scope, kept, Array(n).fill(basis), req.shots, shotRng(req.shotSeed, exp));
+    const sample = () => replay ? experiment(2, 0) : sampleState(state, req.shots, shotRng(req.shotSeed));
     if (req.estimate && (req.mode === "ket" || req.mode === "prob" || req.mode === "bloch")) {
       return estimateView(req.mode, n, req.shots, {
         z: sample(), device: IDEAL_DEVICE, seed: req.shotSeed,
         bloch: () => [...Array(n).keys()].map((q) => bloch(state, n, q)),
-        tomography: () => stateTomography(n, req.shots, req.shotSeed, { state }),
+        basisCounts: replay ? (basis) => experiment(basis, basis + 1) : undefined,
+        tomography: () => replay
+          ? circuitTomography(n, tape, this.reg.scope, kept, req.shots, (k) => shotRng(req.shotSeed, 16 + k))
+          : stateTomography(n, req.shots, req.shotSeed, { state }),
       });
     }
     switch (req.mode) {

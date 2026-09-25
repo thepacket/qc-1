@@ -17,6 +17,8 @@
  */
 
 import { pauliSparse } from "./pauliMatrix";
+import { REDUCED, type MeasuredState } from "./density";
+import { hermitianEig } from "./eig";
 
 export type VarianceResult = {
   mean: number;
@@ -30,6 +32,20 @@ export function observableMoments(
   n: number,
   terms: Array<{ coefficient: number; paulis: string }>,
 ): VarianceResult {
+  const reduced = (state as MeasuredState)[REDUCED];
+  if (reduced) {
+    const { values, vectors } = hermitianEig(reduced(Array.from({ length: n }, (_, q) => q)));
+    let mean = 0, second = 0;
+    values.forEach((weight, k) => {
+      if (weight <= 0) return;
+      const pure = Float64Array.from(vectors[k].flatMap(z => [z.re, z.im]));
+      const moments = observableMoments(pure, n, terms);
+      mean += weight * moments.mean;
+      second += weight * moments.second;
+    });
+    const variance = Math.max(0, second - mean * mean);
+    return { mean, second, variance, std: Math.sqrt(variance) };
+  }
   const dim = 1 << n;
   const hRe = new Float64Array(dim);
   const hIm = new Float64Array(dim);

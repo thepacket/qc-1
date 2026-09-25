@@ -438,7 +438,7 @@ export const ANALYSIS_BY_ID: Record<string, AnalysisMeta> = Object.fromEntries(A
  * exactly the sample's frequencies), as they would on hardware. The others
  * need phases, ρ or the circuit itself and stay exact.
  */
-export const FROM_SHOTS = new Set(["anticoncentration", "zz", "corrlength", "structure", "symmetry", "counting", "multifractal", "coherence", "participation"]);
+export const FROM_SHOTS = new Set(["anticoncentration", "zz", "corrlength", "structure", "symmetry", "counting", "multifractal", "participation"]);
 
 /**
  * Panels that read the state beyond its Z-basis probabilities (phases,
@@ -449,7 +449,7 @@ export const FROM_SHOTS = new Set(["anticoncentration", "zz", "corrlength", "str
  * benchmarks): an experiment of its own, computed from the circuit.
  */
 export const FROM_TOMOGRAPHY = new Set([
-  "statevector", "ampphase", "qsphere", "schmidt", "profile",
+  "statevector", "ampphase", "qsphere", "coherence", "schmidt", "profile",
   "page", "renyi", "wigner", "husimi", "magic", "magicspectrum", "charfunction", "majorana", "totalcorr", "chsh",
   "contour", "schmidtgap", "entham", "entstats", "mps", "negspectrum", "ptmoments", "threetangle", "expectation", "qfi",
   "multiqfi", "squeezing", "hamspectrum", "krylov", "diagens", "efftemp", "shadows", "stateprep", "plotprogram",
