@@ -38,7 +38,7 @@ export type ViewData = {
   estimate?: { shots: number; experiments?: string; settings?: number; lambda?: number; magnitudes?: boolean };
 } & (
   | { mode: "ket"; rows: { i: number; re: number; im: number }[]; nonzero: number; generators?: string[]; /** Probability in the terms not listed. */ restP: number }
-  | { mode: "prob"; rows: { i: number; p: number; /** Standard error, for estimates. */ se?: number }[]; complete: boolean; marginals?: number[]; /** Probability in the outcomes not listed. */ restP: number }
+  | { mode: "prob"; rows: { i: number; p: number; /** Standard error, for estimates. */ se?: number }[]; complete: boolean; marginals?: number[]; /** Their standard errors, for estimates. */ marginalErrors?: number[]; /** Probability in the outcomes not listed. */ restP: number }
   | { mode: "bloch"; vectors: Vec3[]; /** Standard errors, for estimates. */ errors?: Vec3[] }
   | {
       mode: "shots"; rows: { i: number; count: number; bits?: string }[]; distinct: number; shots: number;
@@ -279,21 +279,43 @@ export class Core {
   private stabView(req: ViewReq, tab: Stabilizer): ViewData {
     const n = this.reg.n;
     const single = (q: number, p: "X" | "Y" | "Z") => tab.pauliExpectation(Array.from({ length: n }, (_, i) => (i === q ? p : "I")));
+    // The SHOTS sample: bitstrings measured on clones of the tableau, as many as the work budget allows.
+    const sampleShots = () => {
+      const shots = Math.max(1, Math.min(req.shots, Math.floor(SHOT_BUDGET / (n * n * n))));
+      let seed = 0x5407 + req.shotSeed;
+      const rng = () => ((seed = (Math.imul(seed ^ (seed >>> 15), 0x2c1b3c6d) + 0x6d2b79f5) >>> 0) / 2 ** 32);
+      const counts = new Map<string, number>();
+      for (let s = 0; s < shots; s++) {
+        const t = tab.clone();
+        let bits = "";
+        for (let q = 0; q < n; q++) bits = t.measureZ(q, rng) + bits; // q0 rightmost, as Qiskit prints counts
+        counts.set(bits, (counts.get(bits) ?? 0) + 1);
+      }
+      return { shots, counts };
+    };
+    if (req.estimate && req.mode === "prob") {
+      // Periodic runs: each qubit's P(1) from the SHOTS sample, with its standard error.
+      const { shots, counts } = sampleShots();
+      const k = stabFit(n, 1), ones = new Array<number>(k).fill(0);
+      for (const [bits, c] of counts) for (let q = 0; q < k; q++) if (bits[n - 1 - q] === "1") ones[q] += c;
+      const marginals = ones.map((o) => o / shots);
+      return { n, stab: true, mode: "prob", rows: [], complete: false, restP: 0, marginals, marginalErrors: marginals.map((p) => Math.sqrt((p * (1 - p)) / shots)), estimate: { shots } };
+    }
+    if (req.estimate && req.mode === "bloch") {
+      // Periodic runs: X, Y and Z experiments, N shots each, per qubit from its exact marginal (no noise in stabilizer mode).
+      const k = stabFit(n, 3), N = req.shots;
+      const draw = (c: number, rng: () => number) => { let ones = 0; for (let s = 0; s < N; s++) if (rng() < (1 - c) / 2) ones++; return 1 - (2 * ones) / N; };
+      const rx = shotRng(req.shotSeed, 1), ry = shotRng(req.shotSeed, 2), rz = shotRng(req.shotSeed, 3);
+      const vectors = Array.from({ length: k }, (_, q) => ({ x: draw(single(q, "X"), rx), y: draw(single(q, "Y"), ry), z: draw(single(q, "Z"), rz) }));
+      const se = (c: number) => Math.sqrt(Math.max(0, 1 - c * c) / N);
+      return { n, stab: true, mode: "bloch", vectors, errors: vectors.map((v) => ({ x: se(v.x), y: se(v.y), z: se(v.z) })), estimate: { shots: N, experiments: "X, Y and Z experiments" } };
+    }
     switch (req.mode) {
       case "ket": return { n, stab: true, mode: "ket", rows: [], nonzero: 0, restP: 0, generators: qiskitGenerators(tab.stabilizers()) };
       case "prob": return { n, stab: true, mode: "prob", rows: [], complete: false, restP: 0, marginals: Array.from({ length: stabFit(n, 1) }, (_, q) => (1 - single(q, "Z")) / 2) };
       case "bloch": return { n, stab: true, mode: "bloch", vectors: Array.from({ length: stabFit(n, 3) }, (_, q) => ({ x: single(q, "X"), y: single(q, "Y"), z: single(q, "Z") })) };
       case "shots": {
-        const shots = Math.max(1, Math.min(req.shots, Math.floor(SHOT_BUDGET / (n * n * n))));
-        let seed = 0x5407 + req.shotSeed;
-        const rng = () => ((seed = (Math.imul(seed ^ (seed >>> 15), 0x2c1b3c6d) + 0x6d2b79f5) >>> 0) / 2 ** 32);
-        const counts = new Map<string, number>();
-        for (let s = 0; s < shots; s++) {
-          const t = tab.clone();
-          let bits = "";
-          for (let q = 0; q < n; q++) bits = t.measureZ(q, rng) + bits; // q0 rightmost, as Qiskit prints counts
-          counts.set(bits, (counts.get(bits) ?? 0) + 1);
-        }
+        const { shots, counts } = sampleShots();
         const rows = [...counts.entries()].sort((a, b) => b[1] - a[1]);
         const listed = rows.slice(0, SHOT_ROWS);
         return {

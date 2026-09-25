@@ -118,8 +118,10 @@ function Bars({ items, head, wide }: { items: { label: string; p: number; note: 
 
 export function ProbView({ data }: ViewProps<"prob">) {
   if (data.marginals) {
-    const items = data.marginals.map((p, q) => ({ label: `q${q}`, p, note: pct(p) }));
-    return <Bars items={items} head={`P(qᵢ = 1) · stabilizer state${data.n > items.length ? ` · first ${items.length} of ${data.n} qubits (work budget)` : ""}`} />;
+    const errs = data.marginalErrors;
+    const items = data.marginals.map((p, q) => ({ label: `q${q}`, p, note: errs ? `${pct(p)} ± ${pct(errs[q])}` : pct(p) }));
+    const head = `P(qᵢ = 1) · stabilizer state${data.n > items.length ? ` · first ${items.length} of ${data.n} qubits (work budget)` : ""}`;
+    return <Bars items={items} wide={!!errs} head={data.estimate ? `${head} · estimated from ${data.estimate.shots.toLocaleString()} shots (± standard error)` : head} />;
   }
   const items = data.rows.map(({ i, p, se }) => ({ label: ket(i, data.n), p, note: se === undefined ? pct(p) : `${pct(p)} ± ${pct(se)}` }));
   // Every bit of probability is accounted for: what isn't listed is one last row.

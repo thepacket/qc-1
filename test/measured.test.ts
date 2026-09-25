@@ -39,6 +39,16 @@ describe("LAB on measurements: mixed ρ, local tomography, bootstrap", () => {
     expect(mi[0][3]).toBeLessThan(0.1);
   }, 60_000);
 
+  test("with noise above 10 qubits, local panels measure trajectory-averaged ρ; too much work says so", async () => {
+    const noise = sanitiseNoise({ enabled: true, p1: 0.05, p2: 0.1, ad: 0, pd: 0, readout: 0, trajectories: 64 });
+    const r = await measured("density", 12, (c) => bell(c, 0, 11), 3000, { kept: [0, 11] }, noise);
+    expect(r.error).toBeUndefined();
+    expect(r.notes?.[0]).toMatch(/its state from 64 noise trajectories/);
+    expect(scalar(r, "purity Tr ρ²").value as number).toBeLessThan(0.95);
+    const big = await measured("density", 16, (c) => bell(c, 0, 15), 100, { kept: [0, 1, 2, 3, 4, 15] }, noise); // 4⁶ entries per trajectory on 2¹⁶ amplitudes
+    expect(big.error).toMatch(/^Too large to measure with noise here/);
+  }, 120_000);
+
   test("state panels still say not measurable above 6 qubits", async () => {
     const r = await measured("renyi", 7, (c) => bell(c), 100);
     expect(r.error).toMatch(/^Not measurable at this size/);

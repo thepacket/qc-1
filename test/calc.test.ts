@@ -331,4 +331,26 @@ describe("SHOTS: periodic runs", () => {
     expect(c.analysis!.result!.error).toMatch(/^Not measurable at this size with shots: state tomography needs 3ⁿ settings \(2,187 at n = 7\)/);
     c.autoShots = false;
   });
+
+  test("stabilizer mode (30 qubits): PROB and BLOCH are estimated from shots too", () => {
+    const c = calc();
+    c.loadQasm(`OPENQASM 3.0; include "stdgates.inc"; qubit[30] q; h q[0]; cx q[0], q[29]; h q[5];`, "import");
+    c.setShots(400);
+    c.autoShots = true; // the flag alone: no timer in this test
+    c.setMode("prob");
+    const p = c.view!;
+    if (p.mode !== "prob") throw new Error(p.mode);
+    expect(p.estimate?.shots).toBeGreaterThan(0);
+    expect(p.marginals![0]).toBeGreaterThan(0.3);
+    expect(p.marginals![0]).toBeLessThan(0.7);
+    expect(p.marginals![1]).toBe(0);
+    expect(p.marginalErrors![0]).toBeGreaterThan(0);
+    c.setMode("bloch");
+    const b = c.view!;
+    if (b.mode !== "bloch") throw new Error(b.mode);
+    expect(b.vectors[5].x).toBeGreaterThan(0.85); // |+⟩ on q5: X = +1 every shot
+    expect(Math.abs(b.vectors[0].x)).toBeLessThan(0.3); // q0 is half of a Bell pair: maximally mixed
+    expect(b.errors![0].x).toBeGreaterThan(0);
+    c.autoShots = false;
+  });
 });

@@ -23,7 +23,7 @@ import { EXP, sampleStateVector, shotRng, stateTomography } from "../calc/estima
 import {
   drawCounts, IDEAL_DEVICE, linearInversion, mitigateCounts, physical, rhoProbs, rhoProbsNoisy, tomography, TOMO_MAX, type Device,
 } from "../calc/tomography";
-import { measurementDevice, noisyShots } from "../noise/sim";
+import { densityOk, measurementDevice, noisyShots, runTrajectories } from "../noise/sim";
 import { noisyStatsParallel } from "../noise/parallel";
 import { isIdeal } from "../noise/model";
 import { reducedDensityMatrix, REDUCED, type Complex, type MeasuredState } from "../sim/density";
@@ -100,8 +100,35 @@ function fullTomography(ctx: AnalysisContext, sample: Sample, noisy: boolean, de
   return stateTomography(ctx.n, sample.shots, sample.seed, source, device, undefined, !!sample.mitigate)!;
 }
 
+/** Work budget (amplitude operations) for trajectory-averaged reduced density matrices, and the fewest trajectories worth showing. */
+const LOCAL_WORK = 4e8, LOCAL_MIN_T = 16;
+
+/**
+ * The noisy reduced ρ of each subset, averaged over trajectories (circuits too
+ * big for the model's density matrix: n > 10, or measuring above 8 qubits),
+ * with as many trajectories as the work budget allows. Throws when that's too
+ * few to be worth showing.
+ */
+function trajectoryReduced(ctx: AnalysisContext, subsets: number[][]): { rho: Map<string, Float64Array>; T: number } {
+  const { n } = ctx, m = ctx.noise!, dim = 1 << n;
+  const steps = ctx.tape.flat().length;
+  const perT = dim * (steps + subsets.reduce((a, k) => a + 4 ** k.length, 0));
+  const T = Math.min(m.trajectories, Math.floor(LOCAL_WORK / perT));
+  if (T < LOCAL_MIN_T) {
+    throw new Error(`Too large to measure with noise here: ${subsets.length} qubit subsets on ${n} qubits leave ${T} trajectories in the work budget (${LOCAL_MIN_T} needed). Turn noise off, or SHOTS → repeat off.`);
+  }
+  const acc = new Map(subsets.map((k) => [k.join(","), new Float64Array(2 * 4 ** k.length)]));
+  runTrajectories(n, ctx.tape, ctx.scope, m, (st) => {
+    for (const k of subsets) {
+      const r = reducedDensityMatrix(st, n, k), a = acc.get(k.join(","))!, d = 1 << k.length;
+      for (let i = 0; i < d; i++) for (let j = 0; j < d; j++) { a[2 * (i * d + j)] += r[i][j].re / T; a[2 * (i * d + j) + 1] += r[i][j].im / T; }
+    }
+  }, { trajectories: T, seed: 0x10ca1 });
+  return { rho: acc, T };
+}
+
 /** Local panels: measured reduced density matrices of the subsets they ask for. */
-function localPath(ctx: AnalysisContext, sample: Sample, noisy: boolean, device: Device): Path {
+async function localPath(id: string, ctx: AnalysisContext, opts: Opts, run: Run, sample: Sample, noisy: boolean, device: Device): Promise<Path> {
   const { n } = ctx, { shots, seed } = sample;
   if (n <= TOMO_MAX) {
     const tomo = fullTomography(ctx, sample, noisy, device);
@@ -120,11 +147,30 @@ function localPath(ctx: AnalysisContext, sample: Sample, noisy: boolean, device:
       note: `Measured by state tomography (SHOTS → repeat): ${S.toLocaleString()} Pauli settings × ${shots.toLocaleString()} shots${noisy ? " of the noisy circuit" : ""}; this panel sees the reconstructed mixed ρ̂ (its reduced density matrices).`,
     };
   }
-  // Larger registers: tomography of each subset, from its exact reduced ρ (noisy: the model's density matrix).
+  // Larger registers: tomography of each subset, from its exact reduced ρ. Noisy: the model's density matrix when
+  // it fits, else an average over trajectories of the subsets the panel asks for (found by a first, recording run).
   let noisyRho: Float64Array | null = null;
+  let traj: { rho: Map<string, Float64Array>; T: number } | null = null;
+  // densityOf covers unitary circuits up to 10 qubits and measured ones up to 8; beyond, trajectories.
+  if (noisy && !densityOk(n, ctx.tape) && n > 8) {
+    const subsets: number[][] = [];
+    const recorder = new Float64Array(2 << n) as MeasuredState;
+    recorder[REDUCED] = (kept) => {
+      if (!subsets.some((k) => k.join(",") === kept.join(","))) subsets.push([...kept]);
+      const d = 1 << kept.length;
+      return Array.from({ length: d }, (_, i) => Array.from({ length: d }, (_, j) => ({ re: i === j ? 1 / d : 0, im: 0 })));
+    };
+    await run(id, { ...ctx, state: recorder }, opts);
+    traj = trajectoryReduced(ctx, subsets);
+  }
   const exactReduced = (kept: number[]): Float64Array => {
     if (!noisy) return fromComplex(reducedDensityMatrix(ctx.state, n, kept));
-    noisyRho ??= densityOf(ctx, ctx.noise!).rho; // throws past its size limit
+    if (traj) {
+      const r = traj.rho.get(kept.join(","));
+      if (!r) throw new Error(`q${kept.join(", q")}: not measured in this run`);
+      return r;
+    }
+    noisyRho ??= densityOf(ctx, ctx.noise!).rho;
     return partialTrace(noisyRho, n, kept);
   };
   const counts = new Map<number, Counts[]>();
@@ -147,7 +193,9 @@ function localPath(ctx: AnalysisContext, sample: Sample, noisy: boolean, device:
       };
       return st;
     },
-    note: `Measured by local tomography (SHOTS → repeat): each qubit subset the panel needs, 3ᵏ Pauli settings × ${shots.toLocaleString()} shots${noisy ? " of the noisy circuit (the model's noise on those qubits; crosstalk to others left out)" : ""}; the panel sees the reconstructed mixed ρ of each subset.`,
+    get note() {
+      return `Measured by local tomography (SHOTS → repeat): each qubit subset the panel needs, 3ᵏ Pauli settings × ${shots.toLocaleString()} shots${noisy ? ` of the noisy circuit (${traj ? `its state from ${traj.T} noise trajectories, ` : ""}the basis changes with those qubits' own noise, no crosstalk to others)` : ""}; the panel sees the reconstructed mixed ρ of each subset.`;
+    },
   };
 }
 
@@ -181,7 +229,7 @@ export async function measuredRun(id: string, ctx: AnalysisContext, opts: Opts, 
   try {
     const noisy = !!ctx.noise && !isIdeal(ctx.noise);
     const device = noisy ? measurementDevice(ctx.noise!, ctx.n) : IDEAL_DEVICE;
-    const path = z ? await zPath(ctx, sample, noisy, device) : local ? localPath(ctx, sample, noisy, device) : statePath(ctx, sample, noisy, device);
+    const path = z ? await zPath(ctx, sample, noisy, device) : local ? await localPath(id, ctx, opts, run, sample, noisy, device) : statePath(ctx, sample, noisy, device);
     const out = await run(id, { ...ctx, state: path.estimate(0) }, opts);
     if (out.error) return out;
     // Bootstrap: resample every experiment's counts, re-run, and take each numeric scalar's spread.
