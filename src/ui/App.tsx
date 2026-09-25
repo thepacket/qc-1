@@ -173,7 +173,7 @@ export function App() {
 
   // A view summary is shown only once it matches the selected mode. Under
   // noise, PROB/BLOCH/SHOTS come from the analysis worker (ρ or trajectories).
-  const noisy = calc.noiseOn && ["prob", "bloch", "shots"].includes(calc.mode);
+  const noisy = calc.noisyMode;
   const nv = noisy ? calc.noisyView : null;
   const data = noisy ? (nv?.view?.mode === calc.mode ? nv.view : null) : calc.view?.mode === calc.mode ? calc.view : null;
   const view = (() => {

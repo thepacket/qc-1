@@ -2,6 +2,7 @@ import type { Calculator } from "../calc/calculator";
 import { CATEGORIES, analysesIn } from "../analysis/catalog";
 import { PALETTE_GROUPS } from "../calc/gateSpecs";
 import { BLOCKS, FAMILIES } from "../calc/blockLib";
+import { TOMO_MAX } from "../calc/tomography";
 
 /** Phone-first help: building a circuit, editing it, the views, LAB, conventions. */
 export function HelpView({ calc }: { calc: Calculator }) {
@@ -31,6 +32,7 @@ export function HelpView({ calc }: { calc: Calculator }) {
         <p>The scrubber shows the state after any step (or tap a step in STEP); editing the circuit goes back to the live state.</p>
         <h3>Views</h3>
         <p><b>CIRCUIT</b> the menu of examples, import and export (MENU), the diagram (CIRCUIT), the numbered steps (STEP) and the OpenQASM (QASM) · <b>STATE</b> amplitudes · <b>PROB</b> probabilities · <b>BLOCH</b> one sphere per qubit · <b>SHOTS</b> sampled counts (type the number of shots; re-roll) · <b>LAB</b> analyses and tools (PIN adds a result to the report).</p>
+        <p><b>SHOTS → repeat</b> runs the circuit again and again, at the rate you set (runs per second), whichever tab is open, and every tab then shows what hardware would: only what measurements give, new at the end of each run. A run is a set of experiments of N shots each. The Z experiment is the SHOTS sample: PROB shows its frequencies with their standard errors, and the LAB panels that read only Z-basis probabilities use it. Measuring every qubit in X and in Y gives BLOCH's x and y (z from Z), each with its error. Up to {TOMO_MAX} qubits, state tomography measures all 3ⁿ Pauli settings (linear inversion, then the nearest physical ρ): STATE shows the reconstructed state (the leading eigenvector of ρ̂ and its weight λ₁, below 1 under noise), and the LAB panels that read the state run on it. Above {TOMO_MAX} qubits STATE shows √frequency and those panels say they aren't measurable at that size. Panels that don't read the state (circuit structure, tools, noise model, benchmarks) are experiments of their own and don't change. With noise on, every experiment samples the noisy circuit, with readout errors. Turn repeat off for the exact values again.</p>
         <p>Turn the phone sideways: the display on the left, the palette on the right.</p>
         <h3>Examples, step by step</h3>
         <p>MENU → Examples: tap a program, then <b>▶ step through</b>. It loads at the start; ◀ ▶ under the display walk the steps with the program's own comments, in any view. ✕ ends it.</p>

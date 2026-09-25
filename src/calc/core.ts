@@ -3,6 +3,7 @@ import { StabilizerRegister, STAB_MAX } from "../stab/register";
 import type { Stabilizer } from "../sim/stabilizer";
 import { qiskitGenerators } from "./order";
 import { bloch, sampleState, topK, type Vec3 } from "./analysis";
+import { estimateView, shotRng, stateTomography } from "./estimate";
 import type { Entry, Scope } from "./steps";
 import type { Op } from "./register";
 import { customGates, setCustomGates, type CustomGate } from "./custom";
@@ -16,7 +17,11 @@ import { customGates, setCustomGates, type CustomGate } from "./custom";
 export type Mode = "ket" | "prob" | "bloch" | "shots" | "tape" | "lab";
 
 /** `upTo`: show the state after that many tape entries (TAPE scrubber); null = the end. */
-export type ViewReq = { mode: Mode; shots: number; shotSeed: number; upTo?: number | null };
+export type ViewReq = {
+  mode: Mode; shots: number; shotSeed: number; upTo?: number | null;
+  /** STATE/PROB/BLOCH estimated from the SHOTS sample (periodic runs on; estimate.ts). */
+  estimate?: boolean;
+};
 
 export type ViewData = {
   n: number;
@@ -24,10 +29,16 @@ export type ViewData = {
   at?: number;
   /** Stabilizer mode (n > 20): generators, marginals, bitstring shots. */
   stab?: boolean;
+  /**
+   * Estimated from a periodic run's shots (estimate.ts), not computed exactly:
+   * N shots per experiment; STATE from state tomography (its settings and the
+   * reconstructed state's weight λ₁) or, too large for it, √frequency magnitudes.
+   */
+  estimate?: { shots: number; experiments?: string; settings?: number; lambda?: number; magnitudes?: boolean };
 } & (
   | { mode: "ket"; rows: { i: number; re: number; im: number }[]; nonzero: number; generators?: string[]; /** Probability in the terms not listed. */ restP: number }
-  | { mode: "prob"; rows: { i: number; p: number }[]; complete: boolean; marginals?: number[]; /** Probability in the outcomes not listed. */ restP: number }
-  | { mode: "bloch"; vectors: Vec3[] }
+  | { mode: "prob"; rows: { i: number; p: number; /** Standard error, for estimates. */ se?: number }[]; complete: boolean; marginals?: number[]; /** Probability in the outcomes not listed. */ restP: number }
+  | { mode: "bloch"; vectors: Vec3[]; /** Standard errors, for estimates. */ errors?: Vec3[] }
   | {
       mode: "shots"; rows: { i: number; count: number; bits?: string }[]; distinct: number; shots: number;
       /** Shots whose outcomes aren't listed (beyond SHOT_ROWS distinct outcomes). */
@@ -297,6 +308,15 @@ export class Core {
   private viewOf(req: ViewReq, state: Float64Array): ViewData {
     const { n } = this.reg;
     const p = (i: number) => state[2 * i] ** 2 + state[2 * i + 1] ** 2;
+    // The run's sample (seeded: every view of it draws the same shots).
+    const sample = () => sampleState(state, req.shots, shotRng(req.shotSeed));
+    if (req.estimate && (req.mode === "ket" || req.mode === "prob" || req.mode === "bloch")) {
+      return estimateView(req.mode, n, req.shots, {
+        z: sample(), readout: [], seed: req.shotSeed,
+        bloch: () => [...Array(n).keys()].map((q) => bloch(state, n, q)),
+        tomography: () => stateTomography(n, req.shots, req.shotSeed, { state }),
+      });
+    }
     switch (req.mode) {
       case "ket": {
         const { idx, nonzero } = topK(state, KET_ROWS);
@@ -314,7 +334,7 @@ export class Core {
       case "bloch":
         return { n, mode: "bloch", vectors: [...Array(n).keys()].map((q) => bloch(state, n, q)) };
       case "shots": {
-        const hit = [...sampleState(state, req.shots).entries()].sort((a, b) => b[1] - a[1]);
+        const hit = [...sample().entries()].sort((a, b) => b[1] - a[1]);
         const listed = hit.slice(0, SHOT_ROWS);
         return {
           n, mode: "shots", shots: req.shots, distinct: hit.length,

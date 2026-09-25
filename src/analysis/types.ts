@@ -153,5 +153,9 @@ export type Proposal = {
 /** What an analysis sees: a private copy of the register, and the noise model (if on). */
 export type AnalysisContext = { n: number; state: Float64Array; tape: Entry[]; scope: Record<string, number>; noise?: NoiseModel };
 
-export type AnalysisRequest = { seq: number; id: string; opts: Opts; noise?: NoiseModel };
+export type AnalysisRequest = {
+  seq: number; id: string; opts: Opts; noise?: NoiseModel;
+  /** SHOTS → repeat: run a FROM_SHOTS panel on this run's sample (shots, the run's seed). */
+  sample?: { shots: number; seed: number };
+};
 export type AnalysisReply = { seq: number; rev: number; id: string; result: AnalysisResult; ms: number };

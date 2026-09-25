@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { Calculator } from "../../calc/calculator";
-import { ANALYSIS_BY_ID, cutDefault, groupsOf, inputValue, pauliValue, symbolValue } from "../../analysis/catalog";
+import { ANALYSIS_BY_ID, FROM_SHOTS, FROM_TOMOGRAPHY, cutDefault, groupsOf, inputValue, pauliValue, symbolValue } from "../../analysis/catalog";
 import { pauliPresets } from "../../analysis/pauliPresets";
 import { PLOT_PRESETS } from "../../analysis/plotProgram";
 import { symbolGlyph } from "../../calc/entry";
@@ -123,6 +123,9 @@ function AnalysisScreen({ calc, meta }: { calc: Calculator; meta: AnalysisMeta }
           <div className="lab-inputs">
             {meta.inputs.map((s) => <Input key={s.key} calc={calc} meta={meta} spec={s} />)}
           </div>
+        )}
+        {calc.autoShots && !FROM_SHOTS.has(meta.id) && !FROM_TOMOGRAPHY.has(meta.id) && (
+          <p className="dim note">An experiment of its own, computed from the circuit: this panel doesn't read the state, so a periodic run's shots don't change it.</p>
         )}
         {res?.error && <div className="lab-error">E: {res.error}</div>}
         {res?.scalars && (

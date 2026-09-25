@@ -432,6 +432,29 @@ ANALYSES.push(
 
 export const ANALYSIS_BY_ID: Record<string, AnalysisMeta> = Object.fromEntries(ANALYSES.map((a) => [a.id, a]));
 
+/**
+ * Panels that read only the Z-basis probabilities |ψᵢ|² of the state: with
+ * SHOTS → repeat on, they run on each run's sample (Σ √fᵢ |i⟩ gives them
+ * exactly the sample's frequencies), as they would on hardware. The others
+ * need phases, ρ or the circuit itself and stay exact.
+ */
+export const FROM_SHOTS = new Set(["anticoncentration", "zz", "corrlength", "structure", "symmetry", "counting", "multifractal", "coherence", "participation"]);
+
+/**
+ * Panels that read the state beyond its Z-basis probabilities (phases,
+ * reduced ρ, non-Z observables): with SHOTS → repeat on they run on the
+ * state reconstructed by the run's state tomography (up to TOMO_MAX qubits;
+ * above that, not measurable), as they would on hardware. Everything not in
+ * FROM_SHOTS or here doesn't read the state (circuit, structure, noise model,
+ * benchmarks): an experiment of its own, computed from the circuit.
+ */
+export const FROM_TOMOGRAPHY = new Set([
+  "statevector", "ampphase", "phasedisk", "qsphere", "density", "mutualinfo", "negativity", "concurrence", "schmidt", "profile",
+  "page", "renyi", "wigner", "husimi", "magic", "magicspectrum", "charfunction", "majorana", "tripartite", "totalcorr", "chsh",
+  "discord", "contour", "schmidtgap", "entham", "entstats", "mps", "negspectrum", "ptmoments", "threetangle", "expectation", "qfi",
+  "multiqfi", "squeezing", "hamspectrum", "krylov", "diagens", "efftemp", "shadows", "stateprep", "plotprogram",
+].filter((id) => id in ANALYSIS_BY_ID));
+
 /** Default bipartition: the first half of the register. */
 export const defaultCut = (n: number) => [...Array(Math.max(1, Math.floor(n / 2))).keys()];
 

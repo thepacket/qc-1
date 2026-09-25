@@ -1,4 +1,4 @@
-import { describe, test, expect } from "vitest";
+import { describe, test, expect, vi } from "vitest";
 import { Calculator } from "../src/calc/calculator";
 import { InlineEngine } from "../src/calc/engine";
 import { Register } from "../src/calc/register";
@@ -201,5 +201,134 @@ describe("engine protocol", () => {
     const c = calc({ v: 1, n: 2, sel: 0, mode: "ket", shots: 10, tape: [[{ id: "a", gateId: "nope", column: 0, targets: [0], controls: [], clbits: [], params: [] }]] });
     expect(c.message?.kind).toBe("error");
     expect(c.tape).toHaveLength(0);
+  });
+});
+
+describe("SHOTS: periodic runs", () => {
+  test("each run samples afresh and resolves once its view is back; the rate is bounded; both are saved", async () => {
+    const c = calc();
+    c.setMode("shots");
+    add(c, "h", [0]);
+    expect(c.setShotRate(50)).toBe(false);
+    expect(c.setShotRate(0.05)).toBe(false);
+    expect(c.setShotRate(4)).toBe(true);
+    c.setAutoShots(true);
+    const before = c.view;
+    await c.periodicShots();
+    await c.periodicShots();
+    expect(c.shotRun).toBe(2);
+    expect(c.view).not.toBe(before);
+    const saved = c.save();
+    expect(saved.autoShots).toBe(true);
+    expect(saved.shotRate).toBe(4);
+    const d = calc(saved);
+    expect(d.autoShots).toBe(true);
+    expect(d.shotRate).toBe(4);
+    d.setAutoShots(false);
+    c.setAutoShots(false);
+  });
+
+  test("the runs keep going in other tabs; SHOTS shows a fresh sample when opened", async () => {
+    vi.useFakeTimers();
+    try {
+      const c = calc();
+      add(c, "h", [0]);
+      c.setMode("prob");
+      c.setShotRate(10);
+      c.setAutoShots(true);
+      await vi.advanceTimersByTimeAsync(350);
+      expect(c.shotRun).toBe(3);
+      const seed = c.shotSeed;
+      c.setMode("shots");
+      await vi.advanceTimersByTimeAsync(100);
+      expect(c.shotRun).toBe(4);
+      expect(c.shotSeed).toBeGreaterThan(seed);
+      c.setAutoShots(false);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(c.shotRun).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("while repeating, PROB and BLOCH z come from the very sample SHOTS shows; STATE from tomography", () => {
+    const c = calc();
+    c.setQubitCount(2);
+    add(c, "ry", [0], { params: ["1.1"] });
+    cx(c, 0, 1);
+    c.setShots(200);
+    c.autoShots = true; // the flag alone: no timer in this test
+    c.setMode("shots");
+    const v = c.view!;
+    if (v.mode !== "shots") throw new Error(v.mode);
+    const freq = new Map(v.rows.map((r) => [r.i, r.count / 200]));
+    c.setMode("prob");
+    const p = c.view!;
+    if (p.mode !== "prob") throw new Error(p.mode);
+    expect(p.estimate).toEqual({ shots: 200 });
+    for (const r of p.rows) {
+      expect(r.p).toBeCloseTo(freq.get(r.i) ?? 0, 14);
+      expect(r.se).toBeCloseTo(Math.sqrt((r.p * (1 - r.p)) / 200), 14);
+    }
+    c.setMode("ket");
+    const k = c.view!;
+    if (k.mode !== "ket") throw new Error(k.mode);
+    expect(k.estimate?.settings).toBe(9); // 3² Pauli settings
+    expect(k.estimate?.lambda).toBeGreaterThan(0.8);
+    const norm = k.rows.reduce((a, r) => a + r.re ** 2 + r.im ** 2, 0);
+    expect(norm).toBeCloseTo(1, 9);
+    c.setMode("bloch");
+    const b = c.view!;
+    if (b.mode !== "bloch") throw new Error(b.mode);
+    const p1 = (freq.get(1) ?? 0) + (freq.get(3) ?? 0); // q0 = 1
+    expect(b.vectors[0].z).toBeCloseTo(1 - 2 * p1, 14);
+    expect(b.errors?.[0].x).toBeGreaterThan(0);
+    c.autoShots = false;
+    c.setMode("prob");
+    expect(c.view!.estimate).toBeUndefined();
+  });
+
+  test("LAB: a Z-basis panel runs on the run's sample, a state panel on its tomography, a circuit panel stays as is", async () => {
+    const { runAnalysis } = await import("../src/analysis/run");
+    const c = calc(null, runAnalysis);
+    c.setQubitCount(2);
+    add(c, "ry", [0], { params: ["1.1"] });
+    cx(c, 0, 1);
+    c.setShots(100);
+    c.setMode("lab");
+    c.openAnalysis("symmetry");
+    const exact = JSON.stringify(c.analysis!.result);
+    c.setShotRate(20);
+    c.setAutoShots(true);
+    await new Promise((r) => setTimeout(r, 0));
+    const first = c.analysis!.result!;
+    expect(first.notes?.[0]).toMatch(/^Estimated from 100 shots/);
+    expect(JSON.stringify(first)).not.toBe(exact);
+    await c.periodicShots();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(JSON.stringify(c.analysis!.result)).not.toBe(JSON.stringify(first));
+    c.openAnalysis("density");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(c.analysis!.result!.notes?.[0]).toMatch(/^Reconstructed by state tomography \(SHOTS → repeat\): 9 Pauli settings × 100 shots/);
+    c.openAnalysis("resources");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(c.analysis!.result!.notes?.some((x) => /shots/.test(x))).toBeFalsy();
+    c.setAutoShots(false);
+  });
+
+  test("above 6 qubits, state panels aren't measurable by tomography, and STATE shows √frequency", async () => {
+    const { runAnalysis } = await import("../src/analysis/run");
+    const c = calc(null, runAnalysis);
+    c.setQubitCount(7);
+    add(c, "h", [0]);
+    c.setShots(64);
+    c.autoShots = true; // the flag alone: no timer in this test
+    c.setMode("ket");
+    expect(c.view!.estimate?.magnitudes).toBe(true);
+    c.setMode("lab");
+    c.openAnalysis("mutualinfo");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(c.analysis!.result!.error).toMatch(/^Not measurable at this size with shots: state tomography needs 3ⁿ settings \(2,187 at n = 7\)/);
+    c.autoShots = false;
   });
 });

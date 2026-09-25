@@ -1,6 +1,7 @@
 import { CircuitView } from "./CircuitView";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Calculator } from "../calc/calculator";
+import { SHOT_RATE, type Calculator } from "../calc/calculator";
+import { TOMO_MAX } from "../calc/tomography";
 import type { ViewData } from "../calc/core";
 import { formatEntry } from "../calc/steps";
 import { exportQasm3 } from "../qasm/fromTape";
@@ -76,6 +77,13 @@ export function KetView({ data }: ViewProps<"ket">) {
   const cols = `${showRe ? "6ch " : ""}${showIm ? "7.5ch " : ""}1fr auto`;
   return (
     <div className="view">
+      {data.estimate && (
+        <div className="view-head estimate">
+          {data.estimate.magnitudes
+            ? `|amplitude| = √frequency from ${data.estimate.shots.toLocaleString()} shots · phases need state tomography, not measured above ${TOMO_MAX} qubits`
+            : `reconstructed by state tomography: ${data.estimate.settings?.toLocaleString()} settings × ${data.estimate.shots.toLocaleString()} shots · leading eigenvector of ρ̂, λ₁ = ${data.estimate.lambda?.toFixed(3)} · global phase set`}
+        </div>
+      )}
       <div className="view-head">
         {nonzero === 1 ? "basis state" : `${nonzero.toLocaleString()} terms`}
         {nonzero > rows.length && ` · the ${rows.length.toLocaleString()} largest; the other ${(nonzero - rows.length).toLocaleString()} hold ${pct(data.restP)}`}
@@ -92,10 +100,10 @@ export function KetView({ data }: ViewProps<"ket">) {
   );
 }
 
-function Bars({ items, head }: { items: { label: string; p: number; note: string }[]; head: string }) {
+function Bars({ items, head, wide }: { items: { label: string; p: number; note: string }[]; head: string; /** Notes like "3.4% ± 0.6%". */ wide?: boolean }) {
   const max = items.reduce((m, x) => Math.max(m, x.p), 1e-12); // (no spread: lists can be long)
   return (
-    <div className="view">
+    <div className={`view${wide ? " wide-notes" : ""}`}>
       <div className="view-head">{head}</div>
       <RowList items={items} row={(x) => (
         <div className="bar-row" key={x.label}>
@@ -113,14 +121,17 @@ export function ProbView({ data }: ViewProps<"prob">) {
     const items = data.marginals.map((p, q) => ({ label: `q${q}`, p, note: pct(p) }));
     return <Bars items={items} head={`P(qᵢ = 1) · stabilizer state${data.n > items.length ? ` · first ${items.length} of ${data.n} qubits (work budget)` : ""}`} />;
   }
-  const items = data.rows.map(({ i, p }) => ({ label: ket(i, data.n), p, note: pct(p) }));
+  const items = data.rows.map(({ i, p, se }) => ({ label: ket(i, data.n), p, note: se === undefined ? pct(p) : `${pct(p)} ± ${pct(se)}` }));
   // Every bit of probability is accounted for: what isn't listed is one last row.
   if (!data.complete && data.restP > 1e-9) items.push({ label: "all other outcomes", p: data.restP, note: pct(data.restP) });
-  return <Bars items={items} head={data.complete ? "P(basis)" : `the ${data.rows.length.toLocaleString()} most likely + the rest`} />;
+  const head = data.complete ? "P(basis)" : `the ${data.rows.length.toLocaleString()} most likely + the rest`;
+  return <Bars items={items} wide={!!data.estimate} head={data.estimate ? `${head} · estimated from ${data.estimate.shots.toLocaleString()} shots (± standard error)` : head} />;
 }
 
 export function ShotsView({ calc, data }: ViewProps<"shots">) {
-  const items = data.rows.map(({ i, count, bits }) => ({ label: bits ? (bits.length > 24 ? `${bits.slice(0, 24)}…` : bits) : ket(i, data.n), p: count, note: String(count) }));
+  // Repeating runs keep the rows in basis order, so bars don't swap places a few times a second.
+  const rows = calc.autoShots ? [...data.rows].sort((a, b) => (a.bits && b.bits ? (a.bits < b.bits ? -1 : a.bits > b.bits ? 1 : 0) : a.i - b.i)) : data.rows;
+  const items = rows.map(({ i, count, bits }) => ({ label: bits ? (bits.length > 24 ? `${bits.slice(0, 24)}…` : bits) : ket(i, data.n), p: count, note: String(count) }));
   // Every shot is accounted for: outcomes beyond the listed ones are summed in one last row.
   if (data.other > 0) items.push({ label: `${(data.distinct - data.rows.length).toLocaleString()} other outcomes`, p: data.other, note: String(data.other) });
   const shots = data.requested ? `${data.shots.toLocaleString()} shots (of ${data.requested.toLocaleString()}: the budget at n = ${data.n})` : `${data.shots.toLocaleString()} shots`;
@@ -132,19 +143,32 @@ export function ShotsView({ calc, data }: ViewProps<"shots">) {
   );
 }
 
-/** The shot count (typed) and a re-roll. */
+/** The shot count (typed), a re-roll, and periodic runs (a toggle and their rate; the Calculator runs them in any tab). */
 function ShotsBar({ calc }: { calc: Calculator }) {
   const [draft, setDraft] = useState<string | null>(null);
+  const [rate, setRate] = useState<string | null>(null);
   const commit = () => {
     if (draft !== null && draft.trim() !== "") calc.setShots(Number(draft));
     setDraft(null);
   };
+  const commitRate = () => {
+    if (rate !== null && rate.trim() !== "" && !calc.setShotRate(Number(rate))) { setRate(null); return; }
+    setRate(null);
+  };
+  const { autoShots, shotRate } = calc;
+  const keys = (e: React.KeyboardEvent<HTMLInputElement>) => { e.stopPropagation(); if (e.key === "Enter") e.currentTarget.blur(); };
   return (
     <div className="shots-bar">
       <label>shots <input type="number" inputMode="numeric" min={1} max={1000000} value={draft ?? String(calc.shots)}
         onFocus={(e) => { setDraft(String(calc.shots)); e.target.select(); }} onChange={(e) => setDraft(e.target.value)} onBlur={commit}
-        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} /></label>
+        onKeyDown={keys} /></label>
       <button className="qb" onClick={() => calc.rerollShots()}>re-roll</button>
+      <label className="shots-auto"><input type="checkbox" checked={autoShots} onChange={(e) => calc.setAutoShots(e.target.checked)} /> repeat</label>
+      <label>rate <input className="shots-rate" type="number" inputMode="decimal" min={SHOT_RATE[0]} max={SHOT_RATE[1]} step="any"
+        value={rate ?? String(shotRate)} aria-label="Runs per second"
+        onFocus={(e) => { setRate(String(shotRate)); e.target.select(); }} onChange={(e) => setRate(e.target.value)} onBlur={commitRate}
+        onKeyDown={keys} /> /s</label>
+      {autoShots && <span className="dim" aria-live="off">run {calc.shotRun}</span>}
     </div>
   );
 }
@@ -509,13 +533,21 @@ export function BlochView({ calc, data }: ViewProps<"bloch">) {
         <Sphere v={v} r={62} labels className="sphere-main" />
         <div className="bloch-read">
           <div className="big">q{sel}</div>
-          <div>x {num(v.x)}</div>
-          <div>y {num(v.y)}</div>
-          <div>z {num(v.z)}</div>
-          <div className="dim">|r| {num(len)}{len < 0.999 ? " mixed" : ""}</div>
-          {len > 1e-3 && <div className="dim">θ {num(theta / Math.PI)}π φ {num(phi / Math.PI)}π</div>}
+          {data.estimate && data.errors ? <>
+            <div>x {num(v.x)} <span className="dim">± {num(data.errors[sel].x)}</span></div>
+            <div>y {num(v.y)} <span className="dim">± {num(data.errors[sel].y)}</span></div>
+            <div>z {num(v.z)} <span className="dim">± {num(data.errors[sel].z)}</span></div>
+            <div className="dim">|r| {num(len)}</div>
+          </> : <>
+            <div>x {num(v.x)}</div>
+            <div>y {num(v.y)}</div>
+            <div>z {num(v.z)}</div>
+            <div className="dim">|r| {num(len)}{len < 0.999 ? " mixed" : ""}</div>
+            {len > 1e-3 && <div className="dim">θ {num(theta / Math.PI)}π φ {num(phi / Math.PI)}π</div>}
+          </>}
         </div>
       </div>
+      {data.estimate && <p className="dim note">Estimated from three experiments of {data.estimate.shots.toLocaleString()} shots: every qubit measured in X, in Y and in Z (the SHOTS sample). |r| can exceed 1 by chance.</p>}
       {all.length < data.n && <p className="dim note">Bloch vectors for the first {all.length} of {data.n} qubits (each costs O(n²) on the tableau).</p>}
       <div className="minis">
         {all.map((b, q) => (

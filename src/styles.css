@@ -179,6 +179,7 @@ button {
   white-space: nowrap;
 }
 .bar-row .dim { text-align: right; }
+.wide-notes .bar-row { grid-template-columns: auto 1fr 12ch; }
 .bar {
   height: 10px;
   overflow: hidden;
@@ -820,7 +821,12 @@ button {
 .circ .gate.dragging { opacity: 0.35; }
 
 .shots-bar { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-dim); flex: none; }
+.shots-bar { flex-wrap: wrap; row-gap: 4px; }
 .shots-bar input { width: 7em; }
+.shots-bar input.shots-rate { width: 4.5em; }
+.shots-bar input[type="checkbox"] { width: auto; }
+.shots-auto { display: inline-flex; align-items: center; gap: 4px; }
+.view-head.estimate { color: var(--amber); }
 .mem-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; }
 .mem-name { font-family: var(--mono); color: var(--ink); width: 2em; }
 .mem-what { flex: 1; }

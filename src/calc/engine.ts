@@ -22,7 +22,7 @@ export interface Engine {
 export type WorkerIn = { cmd: Cmd } | { attach: MessagePort } | { analyze: AnalysisRequest };
 export type WorkerOut = { result: Result } | { sync: Result } | { view: ViewData };
 
-type Analyzer = (id: string, ctx: AnalysisContext, opts: Opts) => AnalysisResult | Promise<AnalysisResult>;
+type Analyzer = (id: string, ctx: AnalysisContext, opts: Opts, sample?: AnalysisRequest["sample"]) => AnalysisResult | Promise<AnalysisResult>;
 
 /** Synchronous in-process engine: tests, and browsers without module workers. */
 export class InlineEngine implements Engine {
@@ -47,7 +47,7 @@ export class InlineEngine implements Engine {
     const snap = this.core.snapshot();
     const t0 = performance.now();
     const result = this.analyzer
-      ? this.analyzer(req.id, { n: snap.n, state: snap.state, tape: snap.tape, scope: snap.scope, noise: req.noise }, req.opts)
+      ? this.analyzer(req.id, { n: snap.n, state: snap.state, tape: snap.tape, scope: snap.scope, noise: req.noise }, req.opts, req.sample)
       : { error: "analyses unavailable" };
     const reply = (r: AnalysisResult) => this.onAnalysis({ seq: req.seq, rev: snap.rev, id: req.id, result: r, ms: performance.now() - t0 });
     // Synchronous analyses reply at once (tests rely on it); async ones when done.

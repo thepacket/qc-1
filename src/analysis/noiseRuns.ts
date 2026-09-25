@@ -9,6 +9,7 @@ import type { AnalysisContext, AnalysisResult, Opts } from "./types";
 import { ANALYSIS_BY_ID, defaultCut, inputValue, pauliInput } from "./catalog";
 import { KET_ROWS, SHOT_ROWS, type ViewData } from "../calc/core";
 import { topK } from "../calc/analysis";
+import { estimateView, stateTomography } from "../calc/estimate";
 import { Register } from "../calc/register";
 import { densityOk, noisyDensity, noisyShots, noisyStats, runTrajectories, DENSITY_MAX } from "../noise/sim";
 import { noisyStatsParallel } from "../noise/parallel";
@@ -32,7 +33,7 @@ function model(ctx: AnalysisContext): NoiseModel {
 // ─── Density-matrix helpers ────────────────────────────────────────────
 
 /** ρ of the noisy tape: exact when possible, else a trajectory estimate (small n). */
-function densityOf(ctx: AnalysisContext, m: NoiseModel): { rho: Float64Array; method: string } {
+export function densityOf(ctx: AnalysisContext, m: NoiseModel): { rho: Float64Array; method: string } {
   if (densityOk(ctx.n, ctx.tape)) return { rho: noisyDensity(ctx.n, ctx.tape, ctx.scope, m).rho, method: "exact density matrix" };
   if (ctx.n > 8) throw new Error(`needs a unitary circuit up to ${DENSITY_MAX} qubits, or n ≤ 8 for a trajectory estimate`);
   return { rho: trajectoryDensity(ctx, m), method: `${m.trajectories} trajectories (the circuit measures, resets or uses IF)` };
@@ -124,15 +125,26 @@ const noteMethod = (method: string) => `Noisy state: ${method}.`;
 
 export async function noisyView(ctx: AnalysisContext, opts: Opts): Promise<AnalysisResult> {
   const m = model(ctx);
-  const n = ctx.n, mode = opts.mode as "prob" | "bloch" | "shots";
+  const n = ctx.n, mode = opts.mode as "ket" | "prob" | "bloch" | "shots";
   // Scrubbed (CIRC): the circuit up to that step.
   const tape = typeof opts.upTo === "number" ? ctx.tape.slice(0, opts.upTo) : ctx.tape;
   const stats = await noisyStatsParallel(n, tape, ctx.scope, m);
   const method = stats.method === "density" ? "ρ" : `${stats.trajectories} trajectories${stats.workers ? ` · ${stats.workers} cores` : ""}`;
   let view: ViewData;
-  if (mode === "bloch") view = { n, mode: "bloch", vectors: stats.bloch };
+  const shots = Number(opts.shots) || 1024;
+  // Periodic runs: STATE/PROB/BLOCH from the same noisy sample as SHOTS (estimate.ts).
+  const seed = Number(opts.seed) || 0;
+  if (opts.estimate && mode !== "shots") {
+    // What the run's experiments give on the noisy circuit: Z (as SHOTS), X and Y, and tomography of the noisy ρ.
+    const readout = Array.from({ length: n }, (_, q) => rate(m, "readout", q));
+    view = estimateView(mode, n, shots, {
+      z: noisyShots(n, stats.probs, m, shots, 0x5407 + seed), readout, seed,
+      bloch: () => stats.bloch,
+      tomography: () => stateTomography(n, shots, seed, { rho: densityOf({ ...ctx, tape }, m).rho }, readout),
+    });
+  }
+  else if (mode === "bloch") view = { n, mode: "bloch", vectors: stats.bloch };
   else if (mode === "shots") {
-    const shots = Number(opts.shots) || 1024;
     const counts = noisyShots(n, stats.probs, m, shots, 0x5407 + (Number(opts.seed) || 0));
     const rows = [...counts.entries()].sort((a, b) => b[1] - a[1]);
     const listed = rows.slice(0, SHOT_ROWS);

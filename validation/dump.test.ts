@@ -9,6 +9,7 @@ import { exportQasm3 } from "../src/qasm/fromTape";
 import { customCases, gateCases, randomCases, type Case } from "./cases/groups/statevector";
 import { setCustomGates } from "../src/calc/custom";
 import * as ent from "./cases/groups/entanglement";
+import * as tomo from "./cases/groups/tomography";
 import * as st2 from "./cases/groups/state2";
 import * as sym from "./cases/groups/symbolic";
 import * as met from "./cases/groups/metrology";
@@ -132,6 +133,7 @@ test("dump validation cases", async () => {
   };
   writeFileSync(new URL("qiskit.cases.json", OUT), JSON.stringify({ group: "qiskit", cases: ["gates", "random-tapes", "symbolic", "classical"].flatMap(py) }));
   writeFileSync(new URL("typed.cases.json", OUT), JSON.stringify({ group: "typed", cases: typ.cases().map((c) => ({ ...c, qc1: typ.compute(c) })) }));
+  writeFileSync(new URL("tomography.cases.json", OUT), JSON.stringify({ group: "tomography", cases: tomo.cases().map((c) => ({ ...c, qc1: tomo.compute(c) })) }));
   writeFileSync(new URL("blocks.cases.json", OUT), JSON.stringify({ group: "blocks", cases: blk.cases().map((c) => ({ ...c, qc1: blk.compute(c) })) }));
   writeFileSync(new URL("verify.cases.json", OUT), JSON.stringify({ group: "verify", cases: await Promise.all(vfy.cases().map(async (c) => ({ ...c, qc1: await vfy.compute(c) }))) }));
   writeFileSync(new URL("stabilizer.cases.json", OUT), JSON.stringify({

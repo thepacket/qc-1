@@ -16,7 +16,10 @@ import { baseArity, BASE_ARITY, paramDefs, spanFrom, type PaletteItem } from "./
 import { GATES_BY_ID } from "../sim/gates";
 import { stepCaptions } from "../qasm/captions";
 import { DEFAULT_NOISE, isIdeal, sanitiseNoise, type NoiseModel } from "../noise/model";
-import { ANALYSIS_BY_ID, CATEGORIES, analysesIn, searchAnalyses } from "../analysis/catalog";
+import { ANALYSIS_BY_ID, CATEGORIES, FROM_SHOTS, FROM_TOMOGRAPHY, analysesIn, searchAnalyses } from "../analysis/catalog";
+
+/** LAB panels that a periodic run's shots feed (Z sample or state tomography). */
+const fromRun = (id: string) => FROM_SHOTS.has(id) || FROM_TOMOGRAPHY.has(id);
 import type { AnalysisMeta } from "../analysis/types";
 import type { AnalysisReply, AnalysisResult, Opts, Proposal } from "../analysis/types";
 import { symbolGlyph } from "./entry";
@@ -68,12 +71,17 @@ export type LabState = {
 };
 export type LabGroup = { id: string; label: string; items: AnalysisMeta[] };
 const RECENT_MAX = 8;
+/** Periodic SHOTS runs per second: from one every 10 s to 20 a second. */
+export const SHOT_RATE: [number, number] = [0.1, 20];
 
 export type Saved = {
   v: 1; n: number; sel: number; mode: Mode; shots: number; tape: Entry[];
   lab?: LabState; scope?: Scope; memory?: Record<number, Memory>;
   /** Custom gates (DEFINE). */
   gates?: CustomGate[];
+  /** SHOTS: periodic runs (on/off) and their rate, runs per second. */
+  autoShots?: boolean;
+  shotRate?: number;
   /** The noise model (LAB → Noise). */
   noise?: NoiseModel;
   /** Classical bits declared (default: one per qubit). */
@@ -194,6 +202,8 @@ export class Calculator {
       this.sel = Math.max(0, Math.min(saved.sel, saved.n - 1));
       this.mode = saved.mode;
       this.shots = saved.shots;
+      if (typeof saved.autoShots === "boolean") this.autoShots = saved.autoShots;
+      if (typeof saved.shotRate === "number" && saved.shotRate >= SHOT_RATE[0] && saved.shotRate <= SHOT_RATE[1]) this.shotRate = saved.shotRate;
       if (saved.lab && typeof saved.lab === "object") {
         const l = saved.lab as Partial<LabState>;
         const ids = (x: unknown) => (Array.isArray(x) ? x.filter((i): i is string => typeof i === "string" && i in ANALYSIS_BY_ID) : []);
@@ -217,6 +227,7 @@ export class Calculator {
     if (ok) {
       this.send({ t: "load", n: saved.n, tape: saved.tape, scope: saved.scope }, () => { this.restoring = false; });
     }
+    if (this.autoShots) this.startShotLoop();
   }
 
   subscribe = (fn: () => void) => {
@@ -235,13 +246,13 @@ export class Calculator {
 
   save(): Saved {
     return {
-      v: 1, n: this.n, sel: this.sel, mode: this.mode, shots: this.shots, tape: this.tape,
+      v: 1, n: this.n, sel: this.sel, mode: this.mode, shots: this.shots, tape: this.tape, autoShots: this.autoShots, shotRate: this.shotRate,
       lab: this.lab, scope: this.scope, memory: this.memory, gates: this.customGates, noise: this.noise, nc: this.nc,
     };
   }
 
   private viewReq() {
-    return { mode: this.mode, shots: this.shots, shotSeed: this.shotSeed, upTo: this.scrub };
+    return { mode: this.mode, shots: this.shots, shotSeed: this.shotSeed, upTo: this.scrub, estimate: this.estimating };
   }
 
   /** Send a command; `report` runs with its reply unless the reply is an error. */
@@ -512,7 +523,9 @@ export class Calculator {
     this.analysis = { id, status: "busy", result: this.analysis?.id === id ? this.analysis.result : null, rev: this.analysis?.rev ?? -1, ms: 0 };
     // Compare reads a memory slot, which lives here, not in the workers.
     const opts = id === "compare" ? { ...this.labOpts(id), other: this.memory[Number(this.labOpts(id).slot) || 1] } : this.labOpts(id);
-    this.engine.analyze({ seq, id, opts, noise: this.noiseOn ? this.noise : undefined });
+    // Periodic runs: a Z-basis panel runs on the run's sample.
+    const sample = this.autoShots && fromRun(id) ? { shots: this.shots, seed: this.shotSeed } : undefined;
+    this.engine.analyze({ seq, id, opts, noise: this.noiseOn ? this.noise : undefined, sample });
   }
 
   /** True when the noise model is on and does something. */
@@ -529,12 +542,22 @@ export class Calculator {
     this.changed();
   }
 
+  /** STATE/PROB/BLOCH estimated from the SHOTS sample: periodic runs are on (estimate.ts). */
+  get estimating(): boolean {
+    return this.autoShots && ["ket", "prob", "bloch"].includes(this.mode);
+  }
+
+  /** The view comes from the noisy distribution: PROB/BLOCH/SHOTS under noise, and STATE when it's estimated from the (noisy) shots. */
+  get noisyMode(): boolean {
+    return this.noiseOn && (["prob", "bloch", "shots"].includes(this.mode) || this.estimating);
+  }
+
   /** PROB/BLOCH/SHOTS under noise: computed off the key path, in the analysis worker. */
   private requestNoisyView() {
-    if (!this.noiseOn || !["prob", "bloch", "shots"].includes(this.mode)) return;
+    if (!this.noisyMode) return;
     const seq = ++this.vSeq;
     // Scrubbed: the noisy view is of the circuit up to that step, like the ideal views.
-    this.engine.analyze({ seq, id: "__view", opts: { mode: this.mode, shots: this.shots, seed: this.shotSeed, upTo: this.scrub }, noise: this.noise });
+    this.engine.analyze({ seq, id: "__view", opts: { mode: this.mode, shots: this.shots, seed: this.shotSeed, upTo: this.scrub, estimate: this.estimating }, noise: this.noise });
   }
 
   cancelAnalysis() {
@@ -558,11 +581,15 @@ export class Calculator {
     if (this.transforming && r.seq === this.transforming.seq) return this.onTransform(r);
     if (r.seq > 1_000_000_000) return; // a transform that was superseded
     if (r.id === "__view") {
-      if (r.seq === this.vSeq) this.noisyView = { view: r.result.view ?? null, error: r.result.error, rev: r.rev, seq: r.seq };
+      if (r.seq === this.vSeq) {
+        this.noisyView = { view: r.result.view ?? null, error: r.result.error, rev: r.rev, seq: r.seq };
+        this.replyWaiters.splice(0).forEach((f) => f());
+      }
       this.changed();
       return;
     }
     if (this.aInflight?.seq === r.seq) this.aInflight = null;
+    if (r.id === this.lab.id && !this.aPending && !this.aInflight) this.replyWaiters.splice(0).forEach((f) => f());
     // Ignore replies for another analysis or one superseded by a newer reply.
     if (r.id === this.lab.id && r.seq >= (this.lastShownSeq ?? 0)) {
       this.lastShownSeq = r.seq;
@@ -1096,6 +1123,87 @@ export class Calculator {
     this.requestNoisyView();
     this.changed();
     return true;
+  }
+
+  /**
+   * Periodic shot runs, whichever tab is open: every 1/shotRate seconds a new
+   * sample (shotSeed), which the SHOTS view and, under noise, PROB/BLOCH/SHOTS
+   * show. The next run is timed once the last one's view is back, so a slow
+   * sample never builds a backlog.
+   */
+  autoShots = false;
+  /** Runs per second (SHOT_RATE). */
+  shotRate = 1;
+  /** Periodic runs since they were switched on. */
+  shotRun = 0;
+  private shotTimer: ReturnType<typeof setTimeout> | null = null;
+  private shotLoop = 0;
+
+  setAutoShots(on: boolean) {
+    this.autoShots = on;
+    this.shotRun = 0;
+    if (on) this.startShotLoop();
+    else this.stopShotLoop();
+    // Estimated views switch to exact ones, and back.
+    this.send({ t: "view", req: this.viewReq() });
+    this.noisyView = null;
+    this.requestNoisyView();
+    if (this.mode === "lab") this.requestAnalysis();
+    this.changed();
+  }
+
+  setShotRate(r: number): boolean {
+    if (!Number.isFinite(r) || r < SHOT_RATE[0] || r > SHOT_RATE[1]) return this.refuse(`rate ${SHOT_RATE[0]}–${SHOT_RATE[1]} runs per second`);
+    this.shotRate = r;
+    this.clearError();
+    if (this.autoShots) this.startShotLoop(); // the new period from now
+    this.changed();
+    return true;
+  }
+
+  private startShotLoop() {
+    this.stopShotLoop();
+    const loop = ++this.shotLoop;
+    const tick = () => {
+      this.shotTimer = setTimeout(async () => {
+        if (loop !== this.shotLoop) return;
+        await this.periodicShots();
+        if (loop === this.shotLoop) tick();
+      }, 1000 / this.shotRate);
+    };
+    tick();
+  }
+
+  private stopShotLoop() {
+    this.shotLoop++;
+    if (this.shotTimer) clearTimeout(this.shotTimer);
+    this.shotTimer = null;
+  }
+
+  /** Resolved when the reply the open tab waits for arrives (the noisy view, the LAB panel). */
+  private replyWaiters: (() => void)[] = [];
+
+  /**
+   * One periodic run: new samples (`shots` per experiment), and one update of
+   * the open tab from them (SHOTS, STATE/PROB/BLOCH, a LAB panel that reads
+   * the state). Resolves once that update is back, so the next run is timed
+   * from there and slow work (noise, tomography) never queues up; in other
+   * tabs the run is counted.
+   */
+  periodicShots(): Promise<void> {
+    this.shotRun++;
+    this.shotSeed++;
+    const waits: Promise<void>[] = [];
+    // A reply that never comes (a restarted worker) mustn't stop the runs: at most 5 s.
+    const reply = () => new Promise<void>((resolve) => { this.replyWaiters.push(resolve); setTimeout(resolve, 5000); });
+    if (this.noisyMode) { waits.push(reply()); this.requestNoisyView(); }
+    if (this.mode === "lab" && this.lab.id && fromRun(this.lab.id)) { waits.push(reply()); this.requestAnalysis(); }
+    if (["shots", "ket", "prob", "bloch"].includes(this.mode)) {
+      waits.push(this.nextView());
+      this.send({ t: "view", req: this.viewReq() });
+    }
+    this.changed();
+    return Promise.all(waits).then(() => undefined);
   }
 
   /** Sample the shots again. */
