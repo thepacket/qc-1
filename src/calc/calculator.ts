@@ -555,7 +555,7 @@ export class Calculator {
 
   /** The view comes from the noisy distribution: PROB/BLOCH/SHOTS under noise, and STATE when it's estimated from the (noisy) shots. */
   get noisyMode(): boolean {
-    return this.noiseOn && (["prob", "bloch", "shots"].includes(this.mode) || this.estimating);
+    return this.noiseOn && (["ket", "prob", "bloch", "shots"].includes(this.mode) || this.estimating);
   }
 
   /** PROB/BLOCH/SHOTS under noise: computed off the key path, in the analysis worker. */

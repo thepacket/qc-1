@@ -1,3 +1,5 @@
+import { REDUCED, type MeasuredState } from "./density";
+import { vonNeumannEntropy } from "./entanglement";
 /**
  * Total correlation (multi-information) — the all-parties generalization of
  * mutual information:
@@ -17,7 +19,7 @@ import { mutualInformationMatrix } from "./entanglement";
 export type TotalCorrelationResult = {
   /** Per-qubit S(ρ_i) in bits. */
   perQubit: number[];
-  /** Total correlation C = Σ_i S(ρ_i) (pure-state form). */
+  /** Total correlation C = Σ_i S(ρ_i) − S(ρ). */
   total: number;
   numQubits: number;
 };
@@ -27,6 +29,8 @@ export function totalCorrelation(state: Float64Array, n: number, maxQubits = 14)
   const mi = mutualInformationMatrix(state, n, maxQubits);
   if (!mi) return null;
   const perQubit = mi.single;
-  const total = perQubit.reduce((a, b) => a + b, 0);
+  const mixed = (state as MeasuredState)[REDUCED];
+  const globalEntropy = mixed ? vonNeumannEntropy(mixed(Array.from({ length: n }, (_, q) => q))) : 0;
+  const total = perQubit.reduce((a, b) => a + b, 0) - globalEntropy;
   return { perQubit, total, numQubits: n };
 }

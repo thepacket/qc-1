@@ -1,3 +1,6 @@
+import { mixedContext, MIXED_FULL } from "./mixed";
+import { REDUCED, type MeasuredState } from "../sim/density";
+import { isIdeal } from "../noise/model";
 /**
  * Compute side of the LAB: analysis id → result. Loaded only by the analysis
  * worker (and by InlineEngine in tests). Every numeric routine here is a
@@ -195,6 +198,7 @@ const RUNS: Record<string, Run> = {
     return {
       scalars: [
         { label: "kept", value: kept.map((q) => `q${q}`).join(" ") },
+        { label: "row / column bit order", value: [...kept].reverse().map(q => `q${q}`).join(" ") },
         { label: "purity Tr ρ²", value: r3(purity(rho)) },
         { label: "entropy S(ρ)", value: r3(vonNeumannEntropy(rho)), unit: "bits" },
       ],
@@ -581,7 +585,13 @@ Object.assign(RUNS, {
   },
 
   coherence(ctx) {
-    const res = coherenceFromAmplitudes(ctx.state, ctx.n);
+    const mixed = (ctx.state as MeasuredState)[REDUCED];
+    const rho = mixed?.(Array.from({ length: ctx.n }, (_, q) => q));
+    const diagonalEntropy = rho?.reduce((sum, row, i) => { const p = Math.max(0, row[i].re); return sum - (p ? p * Math.log2(p) : 0); }, 0);
+    const res = rho ? {
+      cL1: rho.reduce((sum, row, i) => sum + row.reduce((a, z, j) => a + (i === j ? 0 : Math.hypot(z.re, z.im)), 0), 0),
+      cL1Max: 2 ** ctx.n - 1, cRel: diagonalEntropy! - vonNeumannEntropy(rho), cRelMax: ctx.n,
+    } : coherenceFromAmplitudes(ctx.state, ctx.n);
     return {
       scalars: [
         { label: "l₁ coherence", value: r3(res.cL1) }, { label: "l₁ max (d − 1)", value: res.cL1Max },
@@ -1185,6 +1195,18 @@ export function runAnalysis(id: string, ctx: AnalysisContext, opts: Opts, sample
   if (sample && (FROM_SHOTS.has(id) || FROM_TOMOGRAPHY.has(id) || FROM_LOCAL.has(id))) return measuredRun(id, ctx, opts, sample, runAnalysis);
   if (id === "__view") {
     return noisyView(ctx, opts).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
+  }
+  if (ctx.noise && !isIdeal(ctx.noise) && !(ctx.state as MeasuredState)[REDUCED]) {
+    const supported = FROM_LOCAL.has(id) || FROM_SHOTS.has(id) || MIXED_FULL.has(id);
+    if (supported) {
+      try {
+        const mixed = mixedContext(ctx);
+        const result = runAnalysis(id, mixed.ctx, opts);
+        const describeMixed = (out: AnalysisResult): AnalysisResult => out.error ? out : { ...out, provenance: { method: "Mixed-state analysis", detail: `${mixed.method}; noise model included. Readout errors affect sampled measurements, not this pre-readout density matrix.` } };
+        return result instanceof Promise ? result.then(describeMixed) : describeMixed(result);
+      } catch (e) { return { error: e instanceof Error ? e.message : String(e) }; }
+    }
+    if (FROM_TOMOGRAPHY.has(id)) return { error: "This analysis assumes a pure state and does not support the noisy mixed state. Turn noise off for the ideal result, or choose a mixed-state analysis." };
   }
   const meta = ANALYSIS_BY_ID[id];
   const run = RUNS[id];

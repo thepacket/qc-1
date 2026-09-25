@@ -47,6 +47,34 @@ install to your home screen, and it works offline.
   stepped through with its comments), OpenQASM 3 and Qiskit (Python) export,
   share links and QR codes.
 
+## Mixed states and ordering
+
+With noise enabled, **STATE** starts with the density matrix and its purity.
+The optional leading eigenvector is labeled as one component; degenerate
+components are explicitly non-unique. Direct noisy STATE supports up to 8
+qubits, full tomography up to 6, and eigenvectors up to 6. Larger matrices show
+a labeled 8 × 8 preview; purity uses the entire matrix.
+
+In Simulation, supported LAB analyses use the noisy ensemble: reduced density,
+mutual information, negativity, concurrence, discord, tripartite information,
+phase disks, expectation and variance, coherence, total correlation, and
+probability-only quantities (up to 8 qubits). Hardware experiment uses sampled
+counts or tomography. Pure-state-only panels report their limitation under noise.
+Readout errors affect measurements, not the pre-readout density matrix.
+Reduced density plots label the actual kept-qubit order, including nonadjacent
+subsets, alongside the existing bitstring, Pauli, and typed-input mappings.
+
+## Learn and explore
+
+Open **Help (?) → Learn by predicting** for six guided experiments:
+superposition, relative phase, interference, entanglement, measurement, and
+noise. Choose a prediction, run 512 simulated shots, and compare the counts
+with calculated probabilities. Practice circuits are isolated from your work.
+
+**LAB → Explore a question** routes you to entanglement, noise-comparison,
+and circuit-equivalence analyses, with interpretation notes and prerequisites.
+The full technical catalog and search remain available below.
+
 ## Measure it like hardware
 
 By default QC-1 uses **Simulation** mode for direct calculations. Select
@@ -62,7 +90,7 @@ Each run is a set of experiments of N shots each:
 |---|---|
 | **Z** (the SHOTS sample) | SHOTS; PROB (frequencies ± standard error); the LAB panels that only read Z-basis probabilities (entropies of the distribution, ZZ correlations, symmetry sectors…) |
 | **X and Y** (every qubit measured in X, in Y) | BLOCH's x and y (z from Z), each ± its error |
-| **State tomography** (all 3ⁿ Pauli settings, linear inversion, the nearest physical ρ by Smolin–Gambetta–Smith, as Qiskit Experiments' `StateTomography`) | STATE (the leading component, with its weight λ₁); Expectation value uses the mixed density matrix, including its observable variance |
+| **State tomography** (all 3ⁿ Pauli settings, linear inversion, the nearest physical ρ by Smolin–Gambetta–Smith, as Qiskit Experiments' `StateTomography`) | STATE under noise (density matrix and purity, with optional leading component); mixed-state LAB panels use the reconstructed density matrix |
 | **Local tomography** (3ᵏ settings on just the k qubits a panel needs) | density matrices, mutual information, negativity, concurrence, discord, tripartite information and phase disks, from the measured mixed ρ of those qubits |
 
 LAB numbers carry **± error bars** from a bootstrap: the run's counts are
@@ -75,7 +103,7 @@ ideal-circuit shot; the editor's recorded branch is left intact. This also
 applies to the X/Y experiments and tomography, and to stabilizer-mode sampling.
 Analyses that only support pure states report that limitation when the circuit
 has noise or nonunitary instructions; they do not substitute a pure component
-for a mixed-state observable. STATE, amplitude and Q-sphere views explicitly
+for a mixed-state observable. Ideal STATE, amplitude and Q-sphere views explicitly
 show the leading component instead of the entire mixed state.
 
 **With noise on**, every experiment samples the noisy circuit:

@@ -1,3 +1,4 @@
+import { MIXED_FULL } from "./mixed";
 /**
  * LAB panels on a periodic run's measurements (Hardware experiment), as on hardware.
  * Each panel sees an estimate built from a measurement record:
@@ -230,8 +231,8 @@ function statePath(ctx: AnalysisContext, sample: Sample, noisy: boolean, device:
 
 /** Run panel `id` on the run's measurements, with bootstrap error bars on its numeric scalars. */
 export async function measuredRun(id: string, ctx: AnalysisContext, opts: Opts, sample: Sample, run: Run): Promise<AnalysisResult> {
-  const local = FROM_LOCAL.has(id) || id === "expectation", z = FROM_SHOTS.has(id);
-  if (!z && ctx.n > TOMO_MAX && (!local || id === "expectation")) {
+  const local = FROM_LOCAL.has(id) || MIXED_FULL.has(id), z = FROM_SHOTS.has(id);
+  if (!z && ctx.n > TOMO_MAX && (!local || MIXED_FULL.has(id))) {
     return { error: `Not measurable at this size with shots: state tomography needs 3ⁿ settings (${(3 ** ctx.n).toLocaleString()} at n = ${ctx.n}); QC-1 reconstructs up to ${TOMO_MAX} qubits. Switch to Simulation for the direct result.` };
   }
   try {
@@ -243,14 +244,14 @@ export async function measuredRun(id: string, ctx: AnalysisContext, opts: Opts, 
     }
     const device = noisy ? measurementDevice(ctx.noise!, ctx.n) : IDEAL_DEVICE;
     const path = z ? await zPath(ctx, sample, noisy, device) : local ? await localPath(id, ctx, opts, run, sample, noisy, device) : statePath(ctx, sample, noisy, device);
-    const out = await run(id, { ...ctx, state: path.estimate(0) }, opts);
+    const out = await run(id, { ...ctx, noise: undefined, state: path.estimate(0) }, opts);
     if (out.error) return out;
     // Bootstrap: resample every experiment's counts, re-run, and take each numeric scalar's spread.
     const values = new Map<string, number[]>();
     const t0 = Date.now();
     let B = 0;
     for (let b = 1; b <= BOOT_MAX && (b <= 5 || Date.now() - t0 < BOOT_MS); b++) {
-      const r = await run(id, { ...ctx, state: path.estimate(b) }, opts);
+      const r = await run(id, { ...ctx, noise: undefined, state: path.estimate(b) }, opts);
       if (r.error) continue;
       for (const s of r.scalars ?? []) if (typeof s.value === "number" && Number.isFinite(s.value)) (values.get(s.label) ?? values.set(s.label, []).get(s.label)!).push(s.value);
       B++;

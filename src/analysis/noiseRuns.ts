@@ -10,6 +10,7 @@ import { ANALYSIS_BY_ID, defaultCut, inputValue, pauliInput } from "./catalog";
 import { KET_ROWS, SHOT_ROWS, type ViewData } from "../calc/core";
 import { topK } from "../calc/analysis";
 import { estimateView, stateTomography } from "../calc/estimate";
+import { leadingState, TOMO_MAX } from "../calc/tomography";
 import { confusion } from "../calc/tomography";
 import { viewProvenance } from "../calc/provenance";
 import { Register } from "../calc/register";
@@ -130,6 +131,23 @@ export async function noisyView(ctx: AnalysisContext, opts: Opts): Promise<Analy
   const n = ctx.n, mode = opts.mode as "ket" | "prob" | "bloch" | "shots";
   // Scrubbed (CIRC): the circuit up to that step.
   const tape = typeof opts.upTo === "number" ? ctx.tape.slice(0, opts.upTo) : ctx.tape;
+  if (mode === "ket") {
+    if (n > (opts.estimate ? TOMO_MAX : 8)) return { error: opts.estimate ? `Density-matrix tomography supports up to ${TOMO_MAX} qubits. Use local density analyses in LAB for larger circuits.` : "Full noisy STATE supports up to 8 qubits. Use PROB, BLOCH, or local tomography in LAB for larger circuits." };
+    const source = densityOf({ ...ctx, tape }, m);
+    const shots = Number(opts.shots) || 1024;
+    const tomo = opts.estimate ? stateTomography(n, shots, Number(opts.seed) || 0, { rho: source.rho }, measurementDevice(m, n), undefined, !!opts.mitigate) : null;
+    const rho = tomo?.rho ?? source.rho, d = 2 ** n;
+    const purity = rho.reduce((sum, x) => sum + x * x, 0);
+    const eig = n <= 6 ? hermitianEig(toComplex(rho, d)) : null;
+    const weight = eig?.values[d - 1];
+    const state = eig ? leadingState(eig.vectors[d - 1]) : null;
+    const rows = state ? Array.from({ length: d }, (_, i) => ({ i, re: state[2 * i], im: state[2 * i + 1] })).filter(r => Math.hypot(r.re, r.im) > 1e-10) : [];
+    return { view: { mode: "ket", method: source.method, n, rows, nonzero: rows.length, restP: 0,
+      density: { rho, purity, weight, degenerate: !!eig && Math.abs(eig.values[d - 1] - eig.values[d - 2]) < 1e-8 },
+      ...(tomo ? { estimate: { shots, settings: tomo.settings, lambda: tomo.lambda } } : {}),
+      provenance: { method: tomo ? "Density-matrix tomography" : "Mixed-state simulation", detail: `${source.method}${tomo ? ` · ${tomo.settings} settings × ${shots.toLocaleString()} shots${opts.mitigate ? " · readout mitigated" : ""}` : " · before readout"}` },
+    } };
+  }
   const stats = await noisyStatsParallel(n, tape, ctx.scope, m);
   const method = stats.method === "density" ? "ρ" : `${stats.trajectories} trajectories${stats.workers ? ` · ${stats.workers} cores` : ""}`;
   let view: ViewData;

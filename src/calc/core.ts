@@ -28,6 +28,7 @@ export type ViewReq = {
 
 export type ViewData = {
   provenance?: Provenance;
+  density?: { rho: Float64Array; purity: number; weight?: number; degenerate?: boolean };
   n: number;
   /** Scrubbed to this many entries (else the end). */
   at?: number;

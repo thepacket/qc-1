@@ -94,7 +94,7 @@ ANALYSES.push(
     ],
     summary: "I₃ = I(A:B) + I(A:C) − I(A:BC); negative means information about A is scrambled into BC." },
   { id: "totalcorr", title: "Total correlation", category: "correlations", mode: "live", maxQubits: 14, minQubits: 2, inputs: [],
-    summary: "Multi-information Σ S(qᵢ) − S(all): every qubit's entanglement with the rest, added up." },
+    summary: "Multi-information Σ S(qᵢ) − S(all): total classical and quantum correlations, including mixed states." },
   { id: "chsh", title: "CHSH nonlocality", category: "correlations", mode: "live", maxQubits: 12, minQubits: 2, inputs: [],
     summary: "Maximal CHSH value per pair (Horodecki); above 2 the pair violates a Bell inequality." },
   { id: "discord", title: "Quantum discord", category: "correlations", mode: "live", maxQubits: 8, minQubits: 2, inputs: [],

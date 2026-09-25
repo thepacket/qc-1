@@ -61,7 +61,26 @@ function RowList<T>({ items, row }: { items: T[]; row: (x: T, i: number) => Reac
   );
 }
 
-export function KetView({ data }: ViewProps<"ket">) {
+function DensityState({ data, calc }: ViewProps<"ket">) {
+  const density = data.density!, d = 2 ** data.n, shown = Math.min(d, 8);
+  const labels = Array.from({ length: shown }, (_, i) => i.toString(2).padStart(data.n, "0"));
+  return <div className="view"><div className="view-head">Density matrix ρ · purity Tr ρ² = {density.purity.toFixed(4)}</div>
+    <BitOrder n={data.n} /><div className="rows lab-body">
+      <p>Rows and columns use the same basis order. Diagonal entries are probabilities; off-diagonal entries describe coherence.</p>
+      {shown < d && <p>Showing the first {shown} × {shown} entries of the {d} × {d} matrix. Purity uses the full matrix.</p>}
+      <div className="density-table"><table><thead><tr><th>ρ</th>{labels.map(l => <th key={l}>|{l}⟩</th>)}</tr></thead><tbody>{labels.map((l, i) => <tr key={l}><th>⟨{l}|</th>{labels.map((_, j) => {
+        const re = density.rho[2 * (i * d + j)], im = density.rho[2 * (i * d + j) + 1];
+        return <td key={j}>{re.toFixed(3)}{Math.abs(im) > 0.0005 ? `${im < 0 ? " − " : " + "}${Math.abs(im).toFixed(3)}i` : ""}</td>;
+      })}</tr>)}</tbody></table></div>
+      {density.weight !== undefined ? <details><summary>Optional leading eigenvector · weight {density.weight.toFixed(4)}</summary>
+        <p>This is one component of ρ, not the full mixed state.{density.degenerate ? " The largest eigenvalue is degenerate, so this component is not unique." : ""}</p>
+        <KetView calc={calc} data={{ ...data, density: undefined, estimate: undefined }} />
+      </details> : <p>The optional eigenvector view is available up to 6 qubits.</p>}
+    </div></div>;
+}
+
+export function KetView({ data, calc }: ViewProps<"ket">) {
+  if (data.density) return <DensityState data={data} calc={calc} />;
   const { n, rows, nonzero } = data;
   if (data.generators) {
     return (

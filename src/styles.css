@@ -920,3 +920,23 @@ button {
 .circ .clink line, .circ .cread line { pointer-events: none; }
 .circ .clink .bit-hit, .circ .cread .bit-hit { fill: transparent; cursor: grab; touch-action: none; }
 .undo-redo { display: inline-flex; gap: 2px; margin-left: auto; }
+
+/* Guided practice and question-based catalog entry points. */
+.learning-path, .lab-questions { padding: 10px; border: 1px solid #555; border-radius: 8px; margin-bottom: 12px; }
+.lesson-nav { display: flex; flex-wrap: wrap; gap: 6px; }
+.lesson-nav button, .learning-path > button, .learning-path div > button { padding: 8px; }
+.lesson-nav [aria-pressed="true"] { background: #285780; color: white; }
+.learning-path fieldset { margin: 12px 0; border: 1px solid #666; }
+.learning-path fieldset label { display: block; padding: 7px 0; }
+.lesson-result { border-top: 1px solid #555; margin-top: 12px; padding: 8px 0; }
+.lesson-result code { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+.lesson-result table { width: 100%; text-align: right; border-collapse: collapse; }
+.lesson-result th, .lesson-result td { padding: 6px; }
+.lesson-result th:first-child, .lesson-result td:first-child { text-align: left; }
+.lab-questions summary { cursor: pointer; padding: 12px 0; }
+.lab-questions p { line-height: 1.5; }
+.catalog-heading { padding: 0 8px; }
+
+.density-table { overflow-x: auto; margin: 12px 0; }
+.density-table table { border-collapse: collapse; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.density-table th, .density-table td { padding: 7px; border: 1px solid #555; text-align: right; }

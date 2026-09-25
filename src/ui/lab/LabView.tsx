@@ -1,3 +1,4 @@
+import { LAB_QUESTIONS } from "../../analysis/questions";
 import { useEffect, useRef } from "react";
 import type { Calculator } from "../../calc/calculator";
 import { ANALYSIS_BY_ID, FROM_LOCAL, FROM_SHOTS, FROM_TOMOGRAPHY, cutDefault, groupsOf, inputValue, pauliValue, symbolValue } from "../../analysis/catalog";
@@ -45,6 +46,15 @@ function Categories({ calc }: { calc: Calculator }) {
       <div className="view-head">LAB · choose a group (◀ ▶ =, or tap)</div>
       <SearchField calc={calc} />
       <div className="rows">
+        <section className="lab-questions" aria-label="Explore a question">
+          <h3>Explore a question</h3>
+          <button className="lab-item" onClick={() => calc.openHelp()}>New to quantum circuits? Start the guided learning path →</button>
+          {LAB_QUESTIONS.map(q => <details key={q.title}><summary>{q.title}</summary><p>{q.note}</p>{q.ids.map(id => {
+            const a = ANALYSIS_BY_ID[id];
+            return <button className="lab-item" key={id} disabled={!fits(a, calc.n)} onClick={() => calc.openAnalysis(id)}><span className="t">{a.title}</span><span className="s">{a.summary}{!fits(a, calc.n) && ` · requires ${a.minQubits ?? 1}–${a.maxQubits} qubits`}</span></button>;
+          })}</details>)}
+        </section>
+        <h3 className="catalog-heading">Technical catalog</h3>
         {groups.map((g, i) => {
           const count = g.items.length;
           // Favourites and Recent only show once they have something in them.
@@ -425,7 +435,7 @@ function NoiseSettings({ calc }: { calc: Calculator }) {
         }} />
         <p className="dim note">
           Qiskit Aer's conventions (depolarizing_error, amplitude/phase_damping_error). With noise on, PROB, BLOCH, SHOTS and the Noise & error
-          analyses use the exact density matrix (unitary circuits, n ≤ 10) or trajectories; KET, CIRC and the other analyses stay ideal.
+          analyses use density matrices or trajectories. STATE shows density and purity up to 8 qubits (6 with tomography). Supported mixed-state LAB analyses use the noisy ensemble; pure-state-only analyses report their limitation.
         </p>
       </div>
     </div>
