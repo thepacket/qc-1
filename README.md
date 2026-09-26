@@ -210,6 +210,65 @@ stack in `validation/`. `npm run docs:help` regenerates the analyses list.
 
 QC-1 reuses code from an MIT-licensed project by the same author.
 
+## Deploying to Fly.io
+
+The live app is **https://qc1.fly.dev**. [`fly.toml`](fly.toml) targets the
+`qc1` app in Toronto (`yyz`). The [`Dockerfile`](Dockerfile) builds the PWA
+with Node 24, then serves `dist/` with nginx on port 8080. All quantum
+calculations run in the browser; deployment needs no database or server-side
+API keys.
+
+Install the [Fly CLI](https://github.com/superfly/flyctl#installation) and
+sign in to an account with access to the app. On macOS with Homebrew:
+
+```bash
+brew install flyctl
+fly auth login
+```
+
+From the repository root, check and deploy the current working tree:
+
+```bash
+npm ci
+npm run typecheck
+npm test
+npm run build
+fly deploy --remote-only
+```
+
+The remote builder builds the Docker image, so local Docker is not required.
+Deploying uses the local source and `fly.toml`, including uncommitted changes.
+A Git push runs the repository's checks but does **not** deploy the app.
+See Fly's [deployment guide](https://www.fly.io/docs/launch/deploy/).
+
+Check the deployment:
+
+```bash
+fly status -a qc1
+fly checks list -a qc1
+curl --fail https://qc1.fly.dev/health
+fly logs -a qc1
+```
+
+The health endpoint should return `ok`. The configuration uses 256 MB
+shared-CPU Machines, redirects HTTP to HTTPS, and permits all Machines to
+stop when idle and restart on a request. The first request after an idle
+period may take longer.
+
+For your own deployment, choose a unique app name instead of `qc1`:
+
+```bash
+fly launch --copy-config --name YOUR_APP_NAME --region yyz --no-deploy
+fly deploy --remote-only
+```
+
+Review the generated `fly.toml` before deploying, then use your app name in
+the status commands and `https://YOUR_APP_NAME.fly.dev` for the URL.
+
+Keep the cache rules in [`deploy/nginx.conf`](deploy/nginx.conf): hashed
+assets are cached long-term, while the entry page, service worker and manifest
+revalidate so installed copies can receive updates.
+
 ## License
 
 MIT, © 2026 Andre Paquette
