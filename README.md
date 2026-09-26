@@ -1,5 +1,7 @@
 # QC-1 — Quantum Calculator One
 
+![QC-1 — Quantum Calculator One](docs/qc1-hero.png)
+
 A quantum circuit simulator for your phone. Drag gates from a palette onto
 the circuit diagram and watch the state change at once. It's a web app you can
 install to your home screen, and it works offline.

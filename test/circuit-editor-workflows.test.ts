@@ -67,3 +67,26 @@ test("classical condition selection highlights its bit and preserves measurement
   expect(moved.tape[1][0].clbits).toEqual([1]); expect(moved.tape[2][0].condition?.clbit).toBe(1);
   expect(layoutTape(2, moved.tape).items.map(it => it.col)).toEqual([5, 6, 7]);
 });
+
+test("circuit titles follow example loads and persist independently of gate edits", () => {
+  const c = calc();
+  const qasm = 'OPENQASM 3.0; include "stdgates.inc"; qubit[2] q; h q[0];';
+  c.loadQasm(qasm, "Bell pair");
+  expect(c.circuitTitle).toBe("Bell pair");
+  expect(html(c)).toContain('aria-label="Circuit title"');
+  expect(html(c)).toContain('value="Bell pair"');
+  c.setCircuitTitle("My experiment");
+  add(c, "x", [1]);
+  expect(c.circuitTitle).toBe("My experiment");
+  expect(calc(c.save()).circuitTitle).toBe("My experiment");
+  c.store(1);
+  c.loadQasm(qasm, "example_file", {}, { title: "Guided example", intro: "" });
+  expect(c.circuitTitle).toBe("Guided example");
+  c.recall(1);
+  expect(c.circuitTitle).toBe("My experiment");
+  expect(() => c.loadQasm("invalid program", "Invalid")).toThrow();
+  expect(c.circuitTitle).toBe("My experiment");
+  const legacy = c.save();
+  delete legacy.title;
+  expect(calc(legacy).circuitTitle).toBe("");
+});

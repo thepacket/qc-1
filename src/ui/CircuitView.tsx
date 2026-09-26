@@ -56,6 +56,9 @@ export function CircuitView({ calc }: { calc: Calculator }) {
   const sel = calc.diagSel;
   return (
     <>
+      <input className="circuit-title" aria-label="Circuit title" placeholder="Untitled circuit" maxLength={160}
+        value={calc.circuitTitle} onChange={e => calc.setCircuitTitle(e.target.value)}
+        onKeyDown={e => { e.stopPropagation(); if (e.key === "Enter") e.currentTarget.blur(); }} />
       <CircuitDiagram n={calc.n} tape={calc.tape} scrub={calc.scrub} bits={calc.bits}
         edit={{
           sel, set: calc.diagSet, cursor: calc.cursor, folds: calc.folds, onUnfold: (from) => calc.unfold(from),

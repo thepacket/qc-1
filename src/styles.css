@@ -1000,3 +1000,7 @@ button {
 .mode-comparison caption { text-align: left; margin-bottom: 6px; }
 .mode-comparison th, .mode-comparison td { border: 1px solid var(--ink-muted); padding: 7px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
 .mode-comparison thead { background: var(--lcd-hi); }
+
+.circuit-title { flex: none; width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--ink); font: inherit; font-weight: 600; padding: 3px 6px; }
+.circuit-title:hover { border-color: var(--ink-muted); }
+.circuit-title:focus { outline: 1px solid var(--ink); }

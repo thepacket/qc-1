@@ -421,10 +421,10 @@ function DefinePane({ calc, done }: { calc: Calculator; done: () => void }) {
 
 function ExamplesPane({ calc, done }: { calc: Calculator; done: () => void }) {
   const [lit, setLit] = useState<{ file: string; text: string } | null>(null);
-  const pick = async (file: string) => {
+  const pick = async (file: string, title: string) => {
     if (lit?.file === file) {
       try {
-        const notes = calc.loadQasm(lit.text, file.replace(/\.qasm$/, ""));
+        const notes = calc.loadQasm(lit.text, title);
         if (notes.length) calc.notify(notes[0]);
         done();
       } catch (e) {
@@ -452,7 +452,7 @@ function ExamplesPane({ calc, done }: { calc: Calculator; done: () => void }) {
           <div className="cat-group">{c.label}</div>
           {c.items.map((it) => (
             <div key={it.file}>
-              <button className={`cat-row${lit?.file === it.file ? " on" : ""}`} onClick={() => void pick(it.file)}>
+              <button className={`cat-row${lit?.file === it.file ? " on" : ""}`} onClick={() => void pick(it.file, it.label)}>
                 <span>{it.label}</span>
               </button>
               {lit?.file === it.file && (

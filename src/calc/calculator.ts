@@ -51,7 +51,7 @@ export type GateOpts = {
 };
 
 /** A saved register in a memory slot M1–M9. */
-export type Memory = { n: number; tape: Entry[]; scope: Scope };
+export type Memory = { n: number; tape: Entry[]; scope: Scope; title?: string };
 
 /**
  * The entry line's message. "info" is a key's echo (kept for tests and
@@ -76,6 +76,7 @@ export const SHOT_RATE: [number, number] = [0.1, 20];
 
 export type Saved = {
   v: 1; n: number; sel: number; mode: Mode; shots: number; tape: Entry[];
+  title?: string;
   lab?: LabState; scope?: Scope; memory?: Record<number, Memory>;
   /** Custom gates (DEFINE). */
   gates?: CustomGate[];
@@ -127,6 +128,7 @@ const BUSY_DELAY = 120;
 const tapeIds = (tape: Entry[]) => tape.map((e) => e.map((s) => s.id).join(",")).join(";");
 
 export class Calculator {
+  circuitTitle = "";
   n: number;
   tape: Entry[];
   /** Symbol values (ASCII names) and the symbols the tape uses. */
@@ -209,6 +211,7 @@ export class Calculator {
     this.n = ok ? saved.n : 2;
     this.tape = ok ? saved.tape : [];
     if (ok) {
+      this.circuitTitle = typeof saved.title === "string" ? saved.title.slice(0, 160) : "";
       this.sel = Math.max(0, Math.min(saved.sel, saved.n - 1));
       this.mode = saved.mode;
       this.shots = saved.shots;
@@ -258,9 +261,15 @@ export class Calculator {
 
   save(): Saved {
     return {
+      title: this.circuitTitle,
       v: 1, n: this.n, sel: this.sel, mode: this.mode, shots: this.shots, tape: this.tape, autoShots: this.autoShots, experimentMode: this.experimentMode, shotRate: this.shotRate, mitigateReadout: this.mitigateReadout,
       lab: this.lab, scope: this.scope, memory: this.memory, gates: this.customGates, noise: this.noise, nc: this.nc,
     };
+  }
+
+  setCircuitTitle(title: string) {
+    this.circuitTitle = title.slice(0, 160);
+    this.changed();
   }
 
   private viewReq() {
@@ -1110,7 +1119,7 @@ export class Calculator {
   /** Save the circuit in memory slot k (1–9). */
   store(k: number): boolean {
     if (!Number.isInteger(k) || k < 1 || k > 9) return this.refuse("memory M1–M9");
-    this.memory = { ...this.memory, [k]: { n: this.n, tape: [...this.tape], scope: { ...this.scope } } };
+    this.memory = { ...this.memory, [k]: { n: this.n, tape: [...this.tape], scope: { ...this.scope }, title: this.circuitTitle } };
     this.notify(`M${k} ← ${this.tape.length} steps, n = ${this.n}`);
     return true;
   }
@@ -1120,6 +1129,7 @@ export class Calculator {
     const m = this.memory[k];
     if (!m) return this.refuse(`M${k} is empty`);
     this.diagSel = null;
+    this.circuitTitle = m.title ?? "";
     this.send({ t: "replace", n: m.n, tape: m.tape, scope: m.scope, label: `load M${k}` }, () => this.notify(`loaded M${k}`));
     this.changed();
     return true;
@@ -1512,6 +1522,7 @@ export class Calculator {
    */
   loadQasm(src: string, label: string, scope: Scope = {}, guide?: { title: string; intro: string }): string[] {
     const r = importQasm(src, this.customGates);
+    this.circuitTitle = (guide?.title ?? label).slice(0, 160);
     this.guide = guide ? { ...guide, captions: stepCaptions(src, r.lines), ids: tapeIds(r.tape) } : null;
     if (r.gates.length) this.setGates([...this.customGates, ...r.gates]);
     this.sel = Math.min(this.sel, r.n - 1);
