@@ -315,3 +315,24 @@ export function entriesIn(lay: Layout, c0: number, c1: number, r0: number, r1: n
   for (const it of lay.items) if (it.col >= c0 && it.col <= c1 && it.lo <= r1 && r0 <= it.hi) out.add(it.entry);
   return out;
 }
+
+/** Move a selection as one shape, preserving internal spacing and rejecting layouts that would split it. */
+export function moveEntries(n: number, tape: Entry[], set: Set<number>, col: number, dq: number): { tape: Entry[]; selected: Set<number>; col: number } | null {
+  if (!set.size || col < 0) return null;
+  const lay = layoutTape(n, tape), pinned = pinAll(tape, lay);
+  const indices = [...set].sort((a, b) => a - b);
+  if (indices.some(i => !tape[i])) return null;
+  const base = Math.min(...lay.items.filter(it => set.has(it.entry)).map(it => it.col));
+  const moved = indices.map(i => shiftEntry(pinned[i], dq, n));
+  if (moved.some(e => !e)) return null;
+  const flat = (moved as Entry[]).flat();
+  const rest = pinned.filter((_, i) => !set.has(i)), restLay = layoutTape(n, rest);
+  const rel = flat.map(s => s.pin! - base);
+  const dest = freeColumn(restLay.items, flat, rel, col, -1, n);
+  const shifted = (moved as Entry[]).map(e => e.map(s => ({ ...s, pin: dest + s.pin! - base })));
+  const result = insertPinned(rest, restLay, shifted.flat());
+  const next = [...result.tape.slice(0, result.at), ...shifted, ...result.tape.slice(result.at + 1)];
+  // Do not silently change the shape or push unrelated gates as a side effect.
+  if (layoutTape(n, next).items.some(it => it.col !== it.step.pin)) return null;
+  return { tape: next, selected: new Set(shifted.map((_, j) => result.at + j)), col: dest };
+}

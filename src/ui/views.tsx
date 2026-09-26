@@ -13,6 +13,7 @@ import type { Vec3 } from "../calc/analysis";
 import { ket, num, pct } from "./format";
 import { project, DEFAULT_CAMERA } from "./charts/sphere";
 import { BitOrder } from "./ResultContext";
+import { blochStateLabel } from "./blochState";
 
 type ViewProps<M extends ViewData["mode"]> = { calc: Calculator; data: Extract<ViewData, { mode: M }> };
 
@@ -66,11 +67,12 @@ function DensityState({ data, calc }: ViewProps<"ket">) {
   const labels = Array.from({ length: shown }, (_, i) => i.toString(2).padStart(data.n, "0"));
   return <div className="view"><div className="view-head">Density matrix ρ · purity Tr ρ² = {density.purity.toFixed(4)}</div>
     <BitOrder n={data.n} /><div className="rows lab-body">
-      <p>Rows and columns use the same basis order. Diagonal entries are probabilities; off-diagonal entries describe coherence.</p>
+      <p>Rows and columns use the same basis order.</p>
+      <div className="density-key"><span className="density-probability">Probability</span><span className="density-coherence">Coherence</span></div>
       {shown < d && <p>Showing the first {shown} × {shown} entries of the {d} × {d} matrix. Purity uses the full matrix.</p>}
       <div className="density-table"><table><thead><tr><th>ρ</th>{labels.map(l => <th key={l}>|{l}⟩</th>)}</tr></thead><tbody>{labels.map((l, i) => <tr key={l}><th>⟨{l}|</th>{labels.map((_, j) => {
         const re = density.rho[2 * (i * d + j)], im = density.rho[2 * (i * d + j) + 1];
-        return <td key={j}>{re.toFixed(3)}{Math.abs(im) > 0.0005 ? `${im < 0 ? " − " : " + "}${Math.abs(im).toFixed(3)}i` : ""}</td>;
+        return <td key={j} className={i === j ? "density-probability" : "density-coherence"} title={i === j ? "Probability (diagonal)" : "Coherence (off-diagonal)"}>{re.toFixed(3)}{Math.abs(im) > 0.0005 ? `${im < 0 ? " − " : " + "}${Math.abs(im).toFixed(3)}i` : ""}</td>;
       })}</tr>)}</tbody></table></div>
       {density.weight !== undefined ? <details><summary>Optional leading eigenvector · weight {density.weight.toFixed(4)}</summary>
         <p>This is one component of ρ, not the full mixed state.{density.degenerate ? " The largest eigenvalue is degenerate, so this component is not unique." : ""}</p>
@@ -172,9 +174,8 @@ export function ExperimentControls({ calc }: { calc: Calculator }) {
   const hardware = calc.experimentMode === "hardware";
   return <div className="experiment-controls">
     <div className="experiment-mode" role="group" aria-label="Calculation mode">
-      <button className={`qb${!hardware ? " on" : ""}`} aria-pressed={!hardware} onClick={() => calc.setExperimentMode("simulation")}>Simulation</button>
-      <button className={`qb${hardware ? " on" : ""}`} aria-pressed={hardware} onClick={() => calc.setExperimentMode("hardware")}>Hardware experiment</button>
-      <span className="dim">{hardware ? "Simulated measurements" : "Direct calculation"}</span>
+      <button className={`qb${!hardware ? " on" : ""}`} aria-pressed={!hardware} onClick={() => calc.setExperimentMode("simulation")}>Direct Calculation</button>
+      <button className={`qb${hardware ? " on" : ""}`} aria-pressed={hardware} onClick={() => calc.setExperimentMode("hardware")}>Simulated Measurements</button>
     </div>
     {(hardware || calc.mode === "shots") && <ShotsBar calc={calc} />}
   </div>;
@@ -199,11 +200,11 @@ function ShotsBar({ calc }: { calc: Calculator }) {
         onFocus={(e) => { setDraft(String(calc.shots)); e.target.select(); }} onChange={(e) => setDraft(e.target.value)} onBlur={commit}
         onKeyDown={keys} /></label>
       <button className="qb" disabled={calc.busy} onClick={() => calc.rerollShots()}>{calc.experimentMode === "hardware" ? "Run once" : "Sample shots"}</button>
-      {calc.experimentMode === "hardware" && <label className="shots-auto"><input type="checkbox" checked={autoShots} onChange={(e) => calc.setAutoShots(e.target.checked)} /> Auto-refresh</label>}
-      {autoShots && <label>rate <input className="shots-rate" type="number" inputMode="decimal" min={SHOT_RATE[0]} max={SHOT_RATE[1]} step="any"
+      <label className="shots-auto"><input type="checkbox" checked={autoShots} onChange={(e) => calc.setAutoShots(e.target.checked)} /> Auto-repeat</label>
+      <label>rate <input className="shots-rate" type="number" inputMode="decimal" min={SHOT_RATE[0]} max={SHOT_RATE[1]} step="any"
         value={rate ?? String(shotRate)} aria-label="Runs per second"
         onFocus={(e) => { setRate(String(shotRate)); e.target.select(); }} onChange={(e) => setRate(e.target.value)} onBlur={commitRate}
-        onKeyDown={keys} /> /s</label>}
+        onKeyDown={keys} /> /s</label>
       {autoShots && <span className="dim" aria-live="off">run {calc.shotRun}</span>}
       {calc.noiseOn && calc.experimentMode === "hardware" && (
         <label className="shots-auto" title="Undo the noise model's readout confusion in the estimates (quasi-probabilities)">
@@ -507,7 +508,7 @@ export const TYPED_PRESETS: Record<"state" | "matrix", [string, string][]> = {
   matrix: [["H", "1/√2, 1/√2; 1/√2, -1/√2"], ["CZ", "1,0,0,0; 0,1,0,0; 0,0,1,0; 0,0,0,-1"], ["iSWAP", "1,0,0,0; 0,0,i,0; 0,i,0,0; 0,0,0,1"], ["√SWAP", "1,0,0,0; 0,(1+i)/2,(1-i)/2,0; 0,(1-i)/2,(1+i)/2,0; 0,0,0,1"]],
 };
 
-function Sphere({ v, r, labels, className, camera = DEFAULT_CAMERA }: { v: Vec3; r: number; labels?: boolean; className?: string; camera?: typeof DEFAULT_CAMERA }) {
+function Sphere({ v, ideal, r, labels, className, camera = DEFAULT_CAMERA }: { v: Vec3; ideal?: Vec3; r: number; labels?: boolean; className?: string; camera?: typeof DEFAULT_CAMERA }) {
   const c = r + (labels ? 14 : 2);
   const P = (x: number, y: number, z: number) => {
     const [sx, sy] = project(x, y, z, camera);
@@ -527,6 +528,7 @@ function Sphere({ v, r, labels, className, camera = DEFAULT_CAMERA }: { v: Vec3;
     ));
   };
   const [tx, ty] = P(v.x, v.y, v.z);
+  const reference = ideal ? P(ideal.x, ideal.y, ideal.z) : null;
   const len = Math.hypot(v.x, v.y, v.z);
   const axis = (x: number, y: number, z: number, label: string) => {
     const [ax, ay] = P(x, y, z);
@@ -553,6 +555,7 @@ function Sphere({ v, r, labels, className, camera = DEFAULT_CAMERA }: { v: Vec3;
       {axis(0, 1, 0, "y")}
       {axis(0, 0, 1, "|0⟩")}
       {axis(0, 0, -1, "|1⟩")}
+      {reference && <g className="bloch-ideal"><line x1={c} y1={c} x2={reference[0]} y2={reference[1]} /><circle cx={reference[0]} cy={reference[1]} r={5} /></g>}
       {len > 1e-6 && <line x1={c} y1={c} x2={tx} y2={ty} className="vec" />}
       <circle cx={tx} cy={ty} r={labels ? 4 : 2.5} className="tip" />
     </svg>
@@ -560,7 +563,7 @@ function Sphere({ v, r, labels, className, camera = DEFAULT_CAMERA }: { v: Vec3;
 }
 
 /** Camera-only interaction: the simulator's vector is never edited. */
-function InteractiveSphere({ v, qubit }: { v: Vec3; qubit: number }) {
+function InteractiveSphere({ v, ideal, qubit }: { v: Vec3; ideal?: Vec3; qubit: number }) {
   const [camera, setCamera] = useState(DEFAULT_CAMERA);
   const drag = useRef<{ id: number; x: number; y: number } | null>(null);
   const rotate = (dx: number, dy: number) => setCamera(c => ({
@@ -598,7 +601,7 @@ function InteractiveSphere({ v, qubit }: { v: Vec3; qubit: number }) {
         if (e.key === "Home") { e.preventDefault(); e.stopPropagation(); setCamera(DEFAULT_CAMERA); }
         else if (moves[e.key]) { e.preventDefault(); e.stopPropagation(); rotate(...moves[e.key]); }
       }}>
-      <Sphere v={v} r={62} labels className="sphere-main" camera={camera} />
+      <Sphere v={v} ideal={ideal} r={62} labels className="sphere-main" camera={camera} />
     </div>
   </div>;
 }
@@ -612,23 +615,44 @@ export function BlochView({ calc, data }: ViewProps<"bloch">) {
   const len = Math.hypot(v.x, v.y, v.z);
   const theta = Math.acos(Math.max(-1, Math.min(1, len > 1e-9 ? v.z / len : 1)));
   const phi = Math.atan2(v.y, v.x);
+  const estimated = !!data.estimate || !!data.provenance?.method.includes("Trajectory");
+  const ideal = calc.noiseOn && calc.blochCompare ? data.idealVectors?.[sel] : undefined;
+  const at = calc.scrub ?? calc.tape.length;
+  const shownAt = data.at ?? calc.tape.length;
   return (
     <div className="view bloch">
       <div className="bloch-main">
-        <InteractiveSphere v={v} qubit={sel} />
+        {calc.tape.length > 0 && <div className="bloch-steps">
+          <div className="scrubber">
+            <button onClick={() => calc.setScrub(at - 1)} disabled={at === 0} aria-label="Step back">◀</button>
+            <input type="range" min={0} max={calc.tape.length} value={at} aria-label="Show Bloch state after step" onChange={e => calc.setScrub(Number(e.target.value))} />
+            <button onClick={() => calc.setScrub(at + 1)} disabled={at === calc.tape.length} aria-label="Step forward">▶</button>
+          </div>
+          <div className="note">Step {shownAt}/{calc.tape.length} · {shownAt === 0 ? "Initial state" : formatEntry(calc.tape[shownAt - 1] ?? [])}{shownAt !== at ? " · updating…" : ""}</div>
+        </div>}
+        <InteractiveSphere v={v} ideal={ideal} qubit={sel} />
         <div className="bloch-read">
           {data.estimate && data.errors ? <>
             <div>x {num(v.x)} <span className="dim">± {num(data.errors[sel].x)}</span></div>
             <div>y {num(v.y)} <span className="dim">± {num(data.errors[sel].y)}</span></div>
             <div>z {num(v.z)} <span className="dim">± {num(data.errors[sel].z)}</span></div>
-            <div className="dim">|r| {num(len)}</div>
           </> : <>
             <div>x {num(v.x)}</div>
             <div>y {num(v.y)}</div>
             <div>z {num(v.z)}</div>
-            <div className="dim">|r| {num(len)}{len < 0.999 ? " mixed" : ""}</div>
-            {len > 1e-3 && <div className="dim">θ {num(theta / Math.PI)}π φ {num(phi / Math.PI)}π</div>}
           </>}
+          <div>|r| {num(len)} · <strong>{blochStateLabel(len, estimated)}</strong></div>
+          {!data.estimate && len > 1e-3 && <div className="dim">θ {num(theta / Math.PI)}π φ {num(phi / Math.PI)}π</div>}
+          <p className="dim note">Each sphere describes one qubit. A shorter vector means a more mixed local state; the center is maximally mixed.</p>
+          {data.n > 1 && <p className="dim note">Entanglement, noise, or averaging measurement outcomes can shorten the vector. A pure Bell pair has two centered vectors. These spheres alone cannot establish entanglement.</p>}
+          {estimated && <p className="dim note">Sampling uncertainty prevents a definitive purity label from this vector alone.</p>}
+          {calc.noiseOn && <div className="bloch-comparison">
+            <label><input type="checkbox" checked={calc.blochCompare} onChange={e => calc.setBlochCompare(e.target.checked)} /> Compare ideal vector</label>
+            {calc.blochCompare && (ideal ? <>
+              <p className="note">Solid: {data.estimate ? "noisy estimate" : "noisy"} · dashed / ring: ideal ({data.idealMethod}, before readout)</p>
+              <p className="note">Ideal x {num(ideal.x)} · y {num(ideal.y)} · z {num(ideal.z)} · |r| {num(Math.hypot(ideal.x, ideal.y, ideal.z))}</p>
+            </> : <p className="note">Calculating ideal comparison…</p>)}
+          </div>}
           {data.estimate && <p className="dim note">Estimated from three experiments of {data.estimate.shots.toLocaleString()} shots: every qubit measured in X, in Y and in Z (the SHOTS sample). |r| can exceed 1 by chance.</p>}
           {all.length < data.n && <p className="dim note">Bloch vectors for the first {all.length} of {data.n} qubits (each costs O(n²) on the tableau).</p>}
           <div className="minis">

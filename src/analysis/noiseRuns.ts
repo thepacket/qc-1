@@ -179,8 +179,16 @@ export async function noisyView(ctx: AnalysisContext, opts: Opts): Promise<Analy
     view = { n, mode: "prob", complete: n <= 4 || nonzero <= KET_ROWS, restP: Math.max(0, 1 - listed), rows: rows.map((i) => ({ i, p: stats.probs[i] })) };
   }
   const source = stats.method === "density" ? "Exact density-matrix simulation" : "Trajectory approximation";
+  if (view.mode === "bloch" && opts.compare) {
+    const ideal = await noisyStatsParallel(n, tape, ctx.scope, {
+      ...m, p1: 0, p2: 0, ad: 0, pd: 0, readout: 0, readout10: undefined,
+      crosstalk: 0, perQubit: undefined, perGate: undefined,
+    });
+    view.idealVectors = ideal.bloch;
+    view.idealMethod = ideal.method === "density" ? "exact" : `${ideal.trajectories} trajectories`;
+  }
   const detail = [stats.method === "density" ? "Noise model included" : `${stats.trajectories.toLocaleString()} noise trajectories`, opts.mitigate && opts.estimate ? "readout mitigated; approximate error propagation" : ""].filter(Boolean).join(" · ");
-  return { view: { ...view, method, provenance: viewProvenance(view, source, detail) } };
+  return { view: { ...view, ...(typeof opts.upTo === "number" ? { at: opts.upTo } : {}), method, provenance: viewProvenance(view, source, detail) } };
 }
 
 // ─── Analyses ──────────────────────────────────────────────────────────

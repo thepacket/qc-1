@@ -8,7 +8,7 @@ import { inverseGates } from "./inverse";
 import { layoutTape } from "./diagram";
 import {
   compact, copyEntries, endColumn, entriesIn, expandAt, freeColumn, groupEntries, moveEntry, pasteClip, placeEntry, removeEntries,
-  repositionEntry, shape, type Clip,
+  repositionEntry, shape, moveEntries, type Clip,
 } from "./grid";
 import { matrixGate, parseComplex, parseMatrix, parseState, stateGate } from "./typed";
 import { importQasm, invert } from "../qasm/import";
@@ -169,6 +169,13 @@ export class Calculator {
   noise: NoiseModel = { ...DEFAULT_NOISE };
   /** The latest noisy PROB/BLOCH/SHOTS view (computed in the analysis worker). */
   noisyView: { view: NonNullable<AnalysisResult["view"]> | null; error?: string; rev: number; seq: number } | null = null;
+  blochCompare = false;
+
+  setBlochCompare(value: boolean) {
+    this.blochCompare = value;
+    this.requestNoisyView();
+    this.changed();
+  }
   private vSeq = 0;
   /** LAB browser position and per-analysis options. */
   lab: LabState = { level: "cats", group: "state", index: 2, id: null, opts: {}, favs: [], recent: [], query: "" };
@@ -207,7 +214,6 @@ export class Calculator {
       this.shots = saved.shots;
       if (typeof saved.autoShots === "boolean") this.autoShots = saved.autoShots;
       this.experimentMode = saved.experimentMode === "hardware" || (saved.experimentMode === undefined && this.autoShots) ? "hardware" : "simulation";
-      if (this.experimentMode === "simulation") this.autoShots = false;
       if (typeof saved.mitigateReadout === "boolean") this.mitigateReadout = saved.mitigateReadout;
       if (typeof saved.shotRate === "number" && saved.shotRate >= SHOT_RATE[0] && saved.shotRate <= SHOT_RATE[1]) this.shotRate = saved.shotRate;
       if (saved.lab && typeof saved.lab === "object") {
@@ -563,7 +569,7 @@ export class Calculator {
     if (!this.noisyMode) return;
     const seq = ++this.vSeq;
     // Scrubbed: the noisy view is of the circuit up to that step, like the ideal views.
-    this.engine.analyze({ seq, id: "__view", opts: { mode: this.mode, shots: this.shots, seed: this.shotSeed, upTo: this.scrub, estimate: this.estimating, mitigate: this.mitigateReadout }, noise: this.noise });
+    this.engine.analyze({ seq, id: "__view", opts: { mode: this.mode, shots: this.shots, seed: this.shotSeed, upTo: this.scrub, estimate: this.estimating, mitigate: this.mitigateReadout, compare: this.mode === "bloch" && this.blochCompare }, noise: this.noise });
   }
 
   cancelAnalysis() {
@@ -1146,7 +1152,6 @@ export class Calculator {
 
   setExperimentMode(mode: "simulation" | "hardware") {
     this.experimentMode = mode;
-    if (mode === "simulation") { this.autoShots = false; this.stopShotLoop(); }
     this.refreshExperiment();
   }
 
@@ -1159,12 +1164,11 @@ export class Calculator {
   }
 
   setAutoShots(on: boolean) {
-    if (on) this.experimentMode = "hardware";
     this.autoShots = on;
     this.shotRun = 0;
     if (on) this.startShotLoop();
     else this.stopShotLoop();
-    // Stopping automatic refresh keeps the hardware experiment mode.
+    // Repeating runs does not change the calculation mode.
     this.refreshExperiment();
   }
 
@@ -1276,6 +1280,24 @@ export class Calculator {
     this.changed();
   }
 
+  toggleStep(i: number) {
+    if (!this.tape[i]) return;
+    const selected = new Set(this.selection());
+    if (selected.has(i)) selected.delete(i); else selected.add(i);
+    this.diagSel = null;
+    this.diagSet = selected;
+    this.cursor = null;
+    this.changed();
+  }
+
+  moveSelection(col: number, dq: number): boolean {
+    const result = moveEntries(this.n, this.tape, this.selection(), col, dq);
+    if (!result) return this.refuse("Selection cannot fit there without changing its shape or crossing another gate. Choose another column or wire.");
+    this.diagSet = result.selected;
+    this.applyEdit(result.tape, "move selection", null);
+    return true;
+  }
+
   /** The selected gates: the rectangle's, else the selected gate. */
   private selection(): Set<number> {
     return this.diagSet.size ? this.diagSet : this.diagSel !== null ? new Set([this.diagSel]) : new Set();
@@ -1308,8 +1330,8 @@ export class Calculator {
     if (!this.clip) return this.refuse("nothing copied");
     const r = pasteClip(this.n, this.tape, this.clip, newId);
     if (!r.added) return this.refuse("the copied gates need more qubits");
-    this.applyEdit(r.tape, `paste ${r.added}`, null);
     this.diagSet = new Set([...r.tape.keys()].filter((k) => k >= this.tape.length));
+    this.applyEdit(r.tape, `paste ${r.added}`, null);
     return true;
   }
 
@@ -1416,6 +1438,17 @@ export class Calculator {
 
   /** Arrow keys: the selected gate one column left/right (to the nearest free one) or one wire up/down. */
   nudgeSelected(dcol: number, dq: number): boolean {
+    if (this.diagSet.size) {
+      const own = Math.min(...layoutTape(this.n, this.tape).items.filter(it => this.diagSet.has(it.entry)).map(it => it.col));
+      if (dcol < 0) {
+        for (let c = own - 1; c >= 0; c--) {
+          const r = moveEntries(this.n, this.tape, this.diagSet, c, dq);
+          if (r && r.col < own) return this.moveSelection(c, dq);
+        }
+        return this.refuse("no free column to the left");
+      }
+      return this.moveSelection(own + dcol, dq);
+    }
     const i = this.diagSel;
     if (i === null) return false;
     const lay = layoutTape(this.n, this.tape);

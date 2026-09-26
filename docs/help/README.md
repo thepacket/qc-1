@@ -1,13 +1,69 @@
 # QC-1 help
 
-The same help is in the app (the **?** button in the display's header).
+Open **?** in the app for the guided learning path and detailed help.
 
+- [Calculation modes and noise](modes.md): Direct Calculation versus Simulated Measurements, noise, shots, and auto-repeat.
 - [LAB analyses](analyses.md): every analysis and tool, generated from the registry.
-- Keys: select a qubit with ◀ ▶, press a gate key. Angles are typed first (`3 π ÷ 4 RX`), several arguments separated by `,`. **CTRL** marks controls (2ND: anti-controls); two-qubit gates take the last mark as their partner. **ALL** applies the next one-qubit gate to every qubit; **=** repeats the last entry; **UNDO / REDO**; **AC** clears the entry, then resets the register (undoable).
-- 2ND functions are printed above each key: N− / N+ / N (register size), REDO, ○CTRL, CAT (catalog, custom gates, DEFINE), iSWAP, RST, √Y, MX, MY, IF, √X†, S†, T†, RXX, RYY, RZZ, sin / cos / exp, parentheses, U, +, √, RCL, t, VAR, STO.
-- Symbols: `t` and the VAR letters (θ φ λ α β γ δ τ ω) in angles; the symbol badge opens sliders and t playback. STO / RCL with a digit 1–9 store whole circuits.
-- Classical control: a classical register of its own (− k + at the top); a measurement writes a bit (its qubit's by default, any other from its long-press menu); "only if c[k] = v" in a gate's long-press menu makes it conditional.
-- Views: KET, PROB, BLOCH, SHOTS, CIRC (gate list and diagram, scrubber, ≡ menu: examples, OpenQASM import/export, Qiskit Python export, share links), LAB.
-- Up to 20 qubits the register is a statevector; above 20 (to 1024) a stabilizer tableau that takes Clifford gates only.
-- Noise: LAB → Noise & error → Noise model (Qiskit Aer conventions; presets and device calibration files).
-- Conventions: Qiskit's bit order — q0 is the rightmost, least significant bit of |q(n−1)…q1 q0⟩, of bitstrings and of Pauli strings (IIZ = Z on q0); classical bits print c[k−1]…c[0]. Typed matrices follow Qiskit's Operator convention; blocks are named after Qiskit circuit-library objects and checked against them exactly (QFT blocks are Qiskit's QFTGate); DCX and ECR are Qiskit's gates. RX(θ) = e^(−iθX/2), as in Qiskit.
+
+## Circuit editor
+
+Drag gates from the palette onto quantum wires. The placement outline shows
+where a gate will land; an occupied column moves it to the next free column.
+Invalid placements are rejected. Tap empty space to choose where the next
+palette gate goes.
+
+Select a gate to edit its parameters, targets, controls, measurement destination
+and classical condition. Duplicate, invert or delete it from the editor.
+Undo and Redo sit beside the qubit and classical-bit counts in the top row.
+
+Drag a rectangle over gates to select a group (on touch, long-press empty space,
+then drag). Long-press the selection for copy, cut, paste, repeat, save-as-gate
+and fold actions. Drag a selected gate to move the group, or use the arrow keys.
+Group movement preserves internal spacing and rejects placements that would
+change its shape or push unrelated gates. Edits are undoable.
+
+Select a block and open **Inspect** to see its mapped gates without changing
+the circuit. **Expand into gates** replaces the block with its constituent
+gates; Undo restores it. Symbols in gate angles use the circuit's parameter
+values, accessible from the parameter badge.
+
+Quantum wires are single lines; classical lanes are double lines. Measurements
+write classical bits, and conditional gates read them. Selecting a gate
+highlights its associated classical lanes. Change destinations and conditions
+in the gate editor or drag their connections to another classical lane.
+
+**CIRCUIT → MENU** provides examples, OpenQASM import/export, Qiskit Python
+export, share links, and circuit memory. **STEP** shows numbered entries;
+**QASM** shows the program. The step slider selects a circuit prefix; move to
+the last step to return to the complete circuit.
+
+## Result panels
+
+- **STATE:** amplitudes, or a density matrix and purity under noise. Blue cells
+  are diagonal probabilities; orange cells are off-diagonal coherence. The
+  optional leading eigenvector represents one component of a mixed state.
+- **PROB:** probabilities or sampled frequencies, according to the chosen mode.
+- **BLOCH:** rotate the main sphere by dragging or using arrow keys; **Reset
+  view** restores the camera. Coordinates, explanatory notes and qubit selectors
+  sit below it. Step through the circuit with the slider and arrows. Under
+  noise, **Compare ideal vector** adds a dashed ideal vector and ring at the
+  same circuit step. Sampled vectors have estimate labels; they do not receive
+  definitive purity labels. A centered local vector alone does not establish
+  entanglement.
+- **SHOTS:** sampled counts and all calculation-mode, shot-count, repeat and
+  rate controls. See [Calculation modes and noise](modes.md).
+- **LAB:** groups and search, with Favourites and Recent for quick access.
+  **Noise & error → Ideal vs noisy** compares probabilities, purity and an
+  observable. Noise settings are under **Noise & error → Noise model**.
+
+## Conventions and limits
+
+Qiskit's bit order is used throughout: q0 is the rightmost, least significant
+bit of kets, bitstrings and Pauli strings. For example, IIZ means Z on q0.
+Classical bits print c[k−1]…c[0]. Matrix rows and columns follow the displayed
+basis order; typed matrices use Qiskit's Operator convention.
+
+Up to 20 qubits use a statevector; above 20 and up to 1024 use a Clifford-only
+stabilizer tableau. Noise and individual analyses have smaller limits, shown
+by their result or panel. Noise uses Qiskit Aer conventions and supports presets
+and device calibration files. RX(θ) = exp(−iθX/2).

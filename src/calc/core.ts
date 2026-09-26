@@ -43,7 +43,7 @@ export type ViewData = {
 } & (
   | { mode: "ket"; rows: { i: number; re: number; im: number }[]; nonzero: number; generators?: string[]; /** Probability in the terms not listed. */ restP: number }
   | { mode: "prob"; rows: { i: number; p: number; /** Standard error, for estimates. */ se?: number }[]; complete: boolean; marginals?: number[]; /** Their standard errors, for estimates. */ marginalErrors?: number[]; /** Probability in the outcomes not listed. */ restP: number }
-  | { mode: "bloch"; vectors: Vec3[]; /** Standard errors, for estimates. */ errors?: Vec3[] }
+  | { mode: "bloch"; vectors: Vec3[]; /** Same circuit prefix without noise, before readout. */ idealVectors?: Vec3[]; idealMethod?: string; /** Standard errors, for estimates. */ errors?: Vec3[] }
   | {
       mode: "shots"; rows: { i: number; count: number; bits?: string }[]; distinct: number; shots: number;
       /** Shots whose outcomes aren't listed (beyond SHOT_ROWS distinct outcomes). */

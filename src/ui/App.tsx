@@ -196,6 +196,7 @@ export function App() {
   const overlay = calc.chatOpen || calc.helpOpen;
   // The CIRCUIT tab itself (not AI, help or PARAM over it): its qubit and bit counts, undo and redo.
   const onCircuit = calc.mode === "tape" && !overlay && !calc.param.open;
+  const onShots = calc.mode === "shots" && !overlay && !calc.param.open;
   const docked = calc.mode === "tape" && !calc.helpOpen && !calc.chatOpen && !calc.param.open;
 
   return (
@@ -214,33 +215,30 @@ export function App() {
 
       <section className="lcd" aria-live="polite">
         {/* The status row: the qubit count and undo/redo on CIRCUIT; flags and badges when there are any. */}
-        {(onCircuit || calc.busy || calc.noiseOn || calc.symbols.length > 0 || calc.scrub !== null) && <div className="status">
-          {onCircuit && <>
+        {(onCircuit || calc.busy || (onShots && calc.noiseOn) || calc.symbols.length > 0) && <div className="status">
+          {onCircuit && <div className="editor-top-row">
             <Count value={calc.n} min={1} max={STAB_MAX} set={(k) => calc.setQubitCount(k)} unit="qubit" label="Number of qubits" />
             <Count value={calc.bits} min={calc.usedBits} max={MAX_CBITS} set={(k) => calc.setClassicalCount(k)} unit="bit" label="Number of classical bits" />
-          </>}
-          <span className="flags">
+            <span className="undo-redo">
+              <button className="icon-btn" onClick={() => calc.undo()} aria-label="Undo" title="Undo (Ctrl+Z)">↶</button>
+              <button className="icon-btn" onClick={() => calc.redo()} aria-label="Redo" title="Redo (Ctrl+Shift+Z)">↷</button>
+            </span>
+          </div>}
+          {(calc.busy || (calc.noiseOn && onShots)) && <span className="flags">
             {calc.busy && <b className="busy">BUSY</b>}
-            {calc.noiseOn && <b className="noise-flag" title={noisy && nv?.view ? `noisy view: ${nv.view.method}` : "noise on"}>NOISE{noisy && nv?.view ? ` · ${nv.view.method}` : ""}</b>}
-          </span>
-          <span className="grow" />
+            {calc.noiseOn && onShots && <b className="noise-flag" title={noisy && nv?.view ? `noisy view: ${nv.view.method}` : "noise on"}>NOISE{noisy && nv?.view ? ` · ${nv.view.method}` : ""}</b>}
+          </span>}
+          {!onCircuit && <span className="grow" />}
           {calc.symbols.length > 0 && (
             <button className="sym-badge" onClick={() => (calc.param.open ? calc.closeParams() : calc.openParams())} aria-label="Parameters">
               {calc.playback ? "▶ " : ""}
               {calc.symbols.map((s) => `${symbolGlyph(s)}=${(calc.scope[s] ?? 0).toFixed(2)}`).join(" ")}
             </button>
           )}
-          {calc.scrub !== null && (
-            <button className="scrub-badge" onClick={() => calc.setScrub(null)} aria-label="Stop scrubbing">@{calc.scrub}/{calc.tape.length} ✕</button>
-          )}
-          {onCircuit && <span className="undo-redo">
-            <button className="icon-btn" onClick={() => calc.undo()} aria-label="Undo" title="Undo (Ctrl+Z)">↶</button>
-            <button className="icon-btn" onClick={() => calc.redo()} aria-label="Redo" title="Redo (Ctrl+Shift+Z)">↷</button>
-          </span>}
         </div>}
 
 
-        {!overlay && !calc.param.open && calc.mode !== "tape" && <ExperimentControls calc={calc} />}
+        {onShots && <ExperimentControls calc={calc} />}
         {!overlay && !calc.param.open && !["lab", "tape"].includes(calc.mode) && <ResultSource source={data?.provenance} />}
         {view}
 

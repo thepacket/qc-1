@@ -14,8 +14,8 @@ install to your home screen, and it works offline.
 - **Qiskit's bit order** everywhere: q0 is the rightmost bit of kets,
   bitstrings and Pauli strings, so results read the way Qiskit prints them.
 - **A circuit editor on the diagram**: drag gates from the palette into the
-  grid, move them, drag control dots, long-press for a gate's angles, controls
-  and conditions, or for the Edit and Transform menus. Every OpenQASM 3
+  grid, move them, drag control dots, and select a gate to edit its parameters,
+  targets, controls and conditions. Long-press opens the Edit and Transform menus. Every OpenQASM 3
   standard gate is in the palette, plus state preparation, typed states and
   matrices, and your own gates. A classical register of its own, one lane per
   bit, for measurements and gates that run only if a bit is set.
@@ -24,7 +24,7 @@ install to your home screen, and it works offline.
   Amplitudes, Efficient SU(2), QAOA, Pauli evolution, phase estimation, Pauli
   measurement, arithmetic and more. Each block is named after a Qiskit
   circuit-library object and equals it exactly; expand it into its gates or
-  invert it.
+  invert it. Inspect a selected block inline without changing the circuit.
 - **Symbols and the t clock** in angles (θ₀, γ₁… with keys for them), with
   sliders and playback; a step-through of the circuit.
 - **Views**: CIRCUIT (the diagram, the steps, the OpenQASM), STATE, PROB,
@@ -38,8 +38,8 @@ install to your home screen, and it works offline.
 - **Noise** with Qiskit Aer's conventions: exact density matrices or
   trajectories, asymmetric readout errors, ZNE and PEC, device calibration
   import.
-- **Measure it like hardware**: Hardware experiment mode provides single runs
-  and optional auto-refresh, showing simulated measurement results with
+- **Measure it like hardware**: Simulated Measurements mode provides single runs
+  and optional auto-repeat, showing simulated measurement results with
   shot noise, tomography and error bars (see below).
 - **AI chat** through OpenRouter with your own key: it reads the circuit, runs LAB
   analyses and proposes circuits you apply with a tap.
@@ -53,9 +53,10 @@ With noise enabled, **STATE** starts with the density matrix and its purity.
 The optional leading eigenvector is labeled as one component; degenerate
 components are explicitly non-unique. Direct noisy STATE supports up to 8
 qubits, full tomography up to 6, and eigenvectors up to 6. Larger matrices show
-a labeled 8 × 8 preview; purity uses the entire matrix.
+a labeled 8 × 8 preview; purity uses the entire matrix. Blue diagonal cells
+show probabilities; orange off-diagonal cells show coherence, with a color key.
 
-In Simulation, supported LAB analyses use the noisy ensemble: reduced density,
+In Direct Calculation, supported LAB analyses use the noisy ensemble: reduced density,
 mutual information, negativity, concurrence, discord, tripartite information,
 phase disks, expectation and variance, coherence, total correlation, and
 probability-only quantities (up to 8 qubits). Mixed-state **Quantum Fisher
@@ -69,7 +70,7 @@ the trajectory count or refuse an oversized calculation; results report the
 actual count and approximation. Trajectory uncertainty is not included in
 error bars. Full noisy STATE retains its 8-qubit limit.
 
-Hardware experiment uses sampled
+Simulated Measurements uses sampled
 counts or tomography. Pure-state-only panels report their limitation under noise.
 Readout errors affect measurements, not the pre-readout density matrix.
 Reduced density plots label the actual kept-qubit order, including nonadjacent
@@ -82,11 +83,10 @@ superposition, relative phase, interference, entanglement, measurement, and
 noise. Choose a prediction, run 512 simulated shots, and compare the counts
 with calculated probabilities. Practice circuits are isolated from your work.
 
-**LAB → Explore a question** routes you to entanglement, noise-comparison,
-and circuit-equivalence analyses, with interpretation notes and prerequisites.
-The full technical catalog and search remain available below.
+LAB opens directly to its groups and search. Favourites and Recent provide
+quick access to analyses.
 
-**LAB → What did noise change? → Ideal vs noisy** compares probabilities,
+**LAB → Noise & error → Ideal vs noisy** compares probabilities,
 purity, and a Pauli observable in adjacent columns, with their differences.
 Enable the noise model first. Readout errors can be included in the probability
 comparison; purity and observables remain pre-readout state quantities.
@@ -94,14 +94,27 @@ The panel supports up to 8 qubits and identifies trajectory approximations.
 
 ## Measure it like hardware
 
-By default QC-1 uses **Simulation** mode for direct calculations. Select
-**Hardware experiment** to see simulated measurement results, then **Run once**
-for a fresh sample or enable **auto-refresh**. Stopping auto-refresh preserves
-measurement mode; select Simulation to return to direct calculations.
-Result labels identify the method, shot count, reconstruction, or noise model
-used. Bitstrings display their qubit order: q0 is the rightmost bit.
+The mode toggles appear only at the top of **SHOTS**: **Direct Calculation**
+(the default) and **Simulated Measurements**. The active mode has a cyan
+background. These settings also determine how STATE, PROB, BLOCH and supported
+LAB panels obtain their results. Neither mode connects to physical hardware.
 
-Each run is a set of experiments of N shots each:
+Noise is independent of the mode: enable it in **LAB → Noise & error → Noise
+model**. **Auto-repeat** and **rate** work in either mode, with or without noise.
+Starting or stopping repetition does not change the selected mode. Mode,
+repeat and rate settings are saved with the session. Exact results stay the
+same between repeats; SHOTS draws fresh samples.
+
+Use **Sample shots** in Direct Calculation or **Run once** in Simulated
+Measurements for a fresh sample. The mode toggles, noise indicator, shot count,
+auto-repeat and rate controls are shown in SHOTS; other result panels retain
+labels describing their calculation method.
+
+See [Calculation modes and noise](docs/help/modes.md) for the comparison table,
+also available near the top of the in-app Help. Bitstrings display their qubit
+order: q0 is the rightmost bit.
+
+In **Simulated Measurements**, each run is a set of experiments of N shots each:
 
 | Experiment | What it feeds |
 |---|---|

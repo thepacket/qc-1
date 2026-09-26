@@ -168,7 +168,6 @@ button {
 .scrubber { display: flex; align-items: center; gap: 6px; padding: 2px 0 4px; }
 .scrubber input[type="range"] { flex: 1; accent-color: var(--series-1); }
 .scrubber button { min-width: 28px; }
-.scrub-badge { font-family: var(--mono); font-size: 10px; padding: 0 5px; border-radius: 3px; border: 1px solid var(--series-1); color: var(--ink); }
 
 .bar-row {
   display: grid;
@@ -208,6 +207,17 @@ button {
 .bloch-read .minis { margin: 6px auto 0; width: max-content; max-width: 100%; }
 .bloch-sphere-row { flex: 0 0 auto; display: grid; grid-template-columns: 64px minmax(0, 260px) 64px; align-items: center; gap: 8px; width: min(100%, 404px); }
 .bloch-qubit-label { font-size: 18px; font-weight: 700; text-align: center; }
+.bloch-steps { width: 100%; flex: 0 0 auto; overflow-wrap: anywhere; }
+.bloch-steps .scrubber input { min-width: 0; }
+.bloch-comparison { margin-top: 8px; }
+.bloch-comparison label { display: inline-flex; align-items: center; gap: 4px; }
+.bloch-ideal { stroke: var(--series-1); stroke-width: 2; fill: none; }
+.bloch-ideal line { stroke-dasharray: 4 3; }
+.bloch-read { overflow-wrap: anywhere; }
+.bloch-read .mini { flex-shrink: 0; }
+@media (max-width: 480px) {
+  .bloch-sphere-row { grid-template-columns: 64px minmax(0, 260px); width: min(100%, 332px); }
+}
 .sphere { fill: rgba(255, 255, 255, 0.03); stroke: var(--ink-muted); stroke-width: 1; }
 .eq { fill: none; stroke: var(--ink-muted); stroke-width: 1; }
 .eq.back { stroke-dasharray: 2 3; opacity: 0.6; }
@@ -707,7 +717,7 @@ button {
 .dock {
   position: relative;
   flex: none;
-  min-height: 236px; /* grows with the group rows; the display takes the rest */
+  min-height: 203px; /* grows with the group rows; the display takes the rest */
   display: flex;
   flex-direction: column;
   padding: 8px 10px;
@@ -726,10 +736,10 @@ button {
 /* Tiles: three rows that scroll sideways. A vertical drag picks a tile up; a horizontal swipe scrolls. */
 .palette-tiles {
   flex: none;
-  height: calc(3 * 44px + 2 * 6px + 8px); /* three rows, and room for a thin scrollbar */
+  height: calc(3 * 33px + 2 * 6px + 8px); /* three rows, and room for a thin scrollbar */
   display: grid;
   grid-auto-flow: column;
-  grid-template-rows: repeat(3, 44px);
+  grid-template-rows: repeat(3, 33px);
   grid-auto-columns: 58px;
   gap: 6px;
   overflow-x: auto;
@@ -754,8 +764,8 @@ button {
 .tile:active { filter: brightness(1.2); }
 .tile.long { font-size: 12px; } /* State…, Matrix…, reset, custom names: still fit the tile */
 .palette-families button { height: 24px; font-size: 11px; }
-.palette-tiles.palette-blocks { display: flex; flex-wrap: wrap; height: auto; min-height: calc(2 * 44px + 6px); overflow: visible; }
-.tile.wide { width: 118px; height: 44px; white-space: normal; font-size: 12px; line-height: 1.15; text-align: center; }
+.palette-tiles.palette-blocks { display: flex; flex-wrap: wrap; height: auto; min-height: calc(2 * 33px + 6px); overflow: visible; }
+.tile.wide { width: 118px; height: 33px; white-space: normal; font-size: 12px; line-height: 1.15; text-align: center; }
 .sheet-field { display: flex; flex-direction: column; gap: 4px; flex-basis: 100%; }
 .sheet-row input.sheet-wide { width: 100%; box-sizing: border-box; }
 .sheet-field > label { display: flex; }
@@ -831,6 +841,7 @@ button {
 .shots-bar input[type="checkbox"] { width: auto; }
 .experiment-controls { flex: none; padding: 6px 0; border-bottom: 1px solid var(--grid); }
 .experiment-mode { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11px; }
+.experiment-mode .qb[aria-pressed="true"] { background: #67e8f9; border-color: #67e8f9; color: #111110; }
 .experiment-controls .shots-bar { margin-top: 6px; }
 .result-source { flex: none; display: flex; flex-wrap: wrap; gap: 3px 8px; padding: 6px 0; font-size: 11px; color: var(--ink-dim); }
 .result-source strong { color: var(--ink); font-weight: 500; }
@@ -926,7 +937,7 @@ button {
 .undo-redo { display: inline-flex; gap: 2px; margin-left: auto; }
 
 /* Guided practice and question-based catalog entry points. */
-.learning-path, .lab-questions { padding: 10px; border: 1px solid #555; border-radius: 8px; margin-bottom: 12px; }
+.learning-path { padding: 10px; border: 1px solid #555; border-radius: 8px; margin-bottom: 12px; }
 .lesson-nav { display: flex; flex-wrap: wrap; gap: 6px; }
 .lesson-nav button, .learning-path > button, .learning-path div > button { padding: 8px; }
 .lesson-nav [aria-pressed="true"] { background: #285780; color: white; }
@@ -937,9 +948,6 @@ button {
 .lesson-result table { width: 100%; text-align: right; border-collapse: collapse; }
 .lesson-result th, .lesson-result td { padding: 6px; }
 .lesson-result th:first-child, .lesson-result td:first-child { text-align: left; }
-.lab-questions summary { cursor: pointer; padding: 12px 0; }
-.lab-questions p { line-height: 1.5; }
-.catalog-heading { padding: 0 8px; }
 
 .density-table { overflow-x: auto; margin: 12px 0; }
 .density-table table { border-collapse: collapse; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -950,4 +958,45 @@ button {
 .sphere-interactive:focus-visible { outline: 2px solid var(--series-1); outline-offset: 2px; }
 .sphere-interactive svg { display: block; width: 100%; }
 .sphere-controls { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 11px; }
-.sphere-controls button { padding: 6px; }
+.sphere-controls button { padding: 6px; font-size: 11px; white-space: nowrap; }
+
+/* Circuit editing tools stay beside the diagram, independent of run information. */
+.circ { flex-direction: column; min-height: 140px; overflow: hidden; }
+.circ-scroll { overflow: auto; }
+.circuit-inspector { flex: 0 0 auto; max-height: 40%; min-height: 0; overflow: auto; border-top: 1px solid var(--grid); }
+.diagram-menu.gate-inspector { position: static; min-width: 0; max-width: none; max-height: none; box-shadow: none; display: flex; flex-flow: row wrap; gap: 4px; }
+.gate-inspector .menu-head, .gate-inspector .menu-about, .gate-inspector .menu-fields { width: 100%; }
+.gate-inspector .menu-row { flex-wrap: wrap; }
+.gate-inspector .menu-sep { display: none; }
+.block-inspection { padding: 8px; }
+.block-inspection .circ { height: 220px; margin-top: 6px; }
+.block-inspection summary { cursor: pointer; }
+.circ .active-bit line { stroke: var(--series-1); stroke-width: 1.8; }
+.circ .active-bit circle { fill: var(--series-1); }
+.circ-labels .active-bit { fill: var(--series-1); font-weight: bold; }
+.circuit-inspector { flex: 0 1 210px; max-height: 48%; }
+.diagram-menu.gate-inspector { position: relative; }
+.gate-inspector > button[aria-label="Close gate editor"] { position: absolute; right: 4px; top: 0; min-height: 28px; }
+.diagram-menu.gate-inspector .menu-head { padding-right: 55px; }
+.calc:has(.circuit-inspector) .dock { min-height: 150px; max-height: 150px; }
+.calc:has(.circuit-inspector) .palette { overflow: auto; }
+
+.editor-top-row { display: flex; align-items: center; gap: 6px; width: 100%; }
+.editor-top-row .undo-redo { display: flex; flex: none; margin-left: auto; }
+@media (max-width: 400px) {
+  .editor-top-row { gap: 4px; }
+  .editor-top-row .qcount { gap: 2px; }
+  .editor-top-row .qcount button { width: 18px; }
+  .editor-top-row .icon-btn { min-width: 24px; }
+}
+
+.density-probability { background: rgba(57, 135, 229, 0.3); }
+.density-coherence { background: rgba(217, 89, 38, 0.2); }
+.density-key { display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; }
+.density-key span { padding: 3px 7px; border-radius: 3px; }
+
+.mode-comparison { overflow-x: auto; }
+.mode-comparison table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.mode-comparison caption { text-align: left; margin-bottom: 6px; }
+.mode-comparison th, .mode-comparison td { border: 1px solid var(--ink-muted); padding: 7px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.mode-comparison thead { background: var(--lcd-hi); }

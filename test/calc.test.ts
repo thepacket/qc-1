@@ -336,6 +336,7 @@ describe("SHOTS: periodic runs", () => {
     c.openAnalysis("symmetry");
     const exact = JSON.stringify(c.analysis!.result);
     c.setShotRate(20);
+    c.setExperimentMode("hardware");
     c.setAutoShots(true);
     await new Promise((r) => setTimeout(r, 0));
     const first = c.analysis!.result!;
@@ -390,4 +391,43 @@ describe("SHOTS: periodic runs", () => {
     expect(b.errors![0].x).toBeGreaterThan(0);
     c.experimentMode = "simulation";
   });
+});
+
+test("direct auto-repeat preserves mode, rate, and saved settings", async () => {
+  vi.useFakeTimers();
+  const c = calc();
+  let restored: Calculator | undefined;
+  try {
+    add(c, "h", [0]); c.setMode("shots"); c.setShotRate(4);
+    c.setAutoShots(true);
+    expect(c.experimentMode).toBe("simulation");
+    const before = c.view;
+    await vi.advanceTimersByTimeAsync(500);
+    expect(c.shotRun).toBe(2); expect(c.view).not.toBe(before);
+    c.setExperimentMode("hardware"); c.setExperimentMode("simulation");
+    expect(c.autoShots).toBe(true);
+    restored = calc(c.save());
+    expect(restored.experimentMode).toBe("simulation");
+    expect(restored.autoShots).toBe(true); expect(restored.shotRate).toBe(4);
+    c.setMode("prob"); await vi.advanceTimersByTimeAsync(250);
+    expect(c.view!.estimate).toBeUndefined();
+    c.setAutoShots(false); const seed = c.shotSeed;
+    await vi.advanceTimersByTimeAsync(500); expect(c.shotSeed).toBe(seed);
+  } finally { c.setAutoShots(false); restored?.setAutoShots(false); vi.useRealTimers(); }
+});
+
+test("direct calculation with noise repeats shots without enabling hardware estimates", async () => {
+  const { runAnalysis } = await import("../src/analysis/run");
+  vi.useFakeTimers();
+  const c = calc(null, runAnalysis);
+  try {
+    add(c, "h", [0]); c.setMode("shots");
+    c.setNoise({ enabled: true }); c.setAutoShots(true);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(c.shotRun).toBe(1); expect(c.experimentMode).toBe("simulation");
+    expect(c.noisyView?.view?.mode).toBe("shots");
+    c.setMode("bloch"); await c.periodicShots();
+    expect(c.noisyView?.view?.mode).toBe("bloch");
+    expect(c.noisyView?.view?.estimate).toBeUndefined();
+  } finally { c.setAutoShots(false); vi.useRealTimers(); }
 });

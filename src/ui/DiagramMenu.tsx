@@ -54,10 +54,11 @@ function amplitudes(p: string): [string, string] {
  * selection: Quantiom's Edit and Transform menus. Tap outside (or Esc) to
  * close it.
  */
-export function DiagramMenu({ calc, menu, close }: { calc: Calculator; menu: MenuAt; close: () => void }) {
+export function DiagramMenu({ calc, menu, close, inline = false }: { calc: Calculator; menu: MenuAt; close: () => void; inline?: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: menu.x, top: menu.y });
   useLayoutEffect(() => {
+    if (inline) return;
     const el = box.current;
     if (!el) return;
     const r = el.getBoundingClientRect(), m = 8;
@@ -65,15 +66,16 @@ export function DiagramMenu({ calc, menu, close }: { calc: Calculator; menu: Men
       left: Math.max(m, Math.min(menu.x, innerWidth - r.width - m)),
       top: menu.y + r.height + m > innerHeight ? Math.max(m, menu.y - r.height) : menu.y,
     });
-  }, [menu.x, menu.y, menu.kind]);
+  }, [menu.x, menu.y, menu.kind, inline]);
   useEffect(() => {
+    if (inline) return;
     const down = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) close(); };
     const key = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
     // After this press ends: the long-press that opened the menu must not close it.
     const t = setTimeout(() => window.addEventListener("pointerdown", down, true), 0);
     window.addEventListener("keydown", key);
     return () => { clearTimeout(t); window.removeEventListener("pointerdown", down, true); window.removeEventListener("keydown", key); };
-  }, [close]);
+  }, [close, inline]);
 
   const act = (f: () => unknown) => () => { f(); close(); };
   let body: React.ReactNode = null;
@@ -95,6 +97,14 @@ export function DiagramMenu({ calc, menu, close }: { calc: Calculator; menu: Men
     body = <>
       <div className="menu-head">{i + 1}: {formatEntry(e)}</div>
       {about && <div className="menu-about dim">{about}</div>}
+      {!broadcast && <div className="menu-fields">
+        {(["target", "control"] as const).flatMap(role => (role === "target" ? s.targets : s.controls).map((q, j) =>
+          <label className="menu-field" key={`${role}${j}`}><span>{role} {j + 1}</span>
+            <select aria-label={`${role} ${j + 1}`} value={q} onChange={ev => calc.reassignQubit(i, role, j, Number(ev.target.value))}>
+              {Array.from({ length: calc.n }, (_, k) => <option key={k} value={k} disabled={k !== q && [...s.targets, ...s.controls].includes(k)}>q{k}</option>)}
+            </select>
+          </label>))}
+      </div>}
       {s.gateId === "initialize" ? (() => {
         const [a, b] = amplitudes(s.params[0] ?? "");
         return <div className="menu-fields">
@@ -117,17 +127,18 @@ export function DiagramMenu({ calc, menu, close }: { calc: Calculator; menu: Men
           </select>
         </div>
       )}
-      <button role="menuitem" onClick={act(() => calc.duplicateGate(i))}>Duplicate</button>
-      <button role="menuitem" disabled={!unitary} onClick={act(() => calc.invertGate(i))}>Invert (†)</button>
-      {custom && <button role="menuitem" disabled={!def || broadcast} onClick={act(() => calc.expandGate(i))}>Expand into gates</button>}
+      <button role={inline ? undefined : "menuitem"} onClick={act(() => calc.duplicateGate(i))}>Duplicate</button>
+      {inline && <button onClick={act(() => calc.saveSelectionAsGate())}>Make block</button>}
+      <button role={inline ? undefined : "menuitem"} disabled={!unitary} onClick={act(() => calc.invertGate(i))}>Invert (†)</button>
+      {custom && <button role={inline ? undefined : "menuitem"} disabled={!def || broadcast} onClick={act(() => calc.expandGate(i))}>Expand into gates</button>}
       <div className="menu-sep" />
-      <button role="menuitem" disabled={!unitary || broadcast || s.controls.length + s.targets.length >= calc.n} onClick={act(() => calc.addControlAnywhere(i))}>Add control</button>
-      <button role="menuitem" disabled={last < 0} onClick={act(() => calc.removeControl(i, s.controls[last]))}>Remove control</button>
-      <button role="menuitem" disabled={last < 0} onClick={act(() => calc.toggleControlState(i, s.controls[last]))}>
+      <button role={inline ? undefined : "menuitem"} disabled={!unitary || broadcast || s.controls.length + s.targets.length >= calc.n} onClick={act(() => calc.addControlAnywhere(i))}>Add control</button>
+      <button role={inline ? undefined : "menuitem"} disabled={last < 0} onClick={act(() => calc.removeControl(i, s.controls[last]))}>Remove control</button>
+      <button role={inline ? undefined : "menuitem"} disabled={last < 0} onClick={act(() => calc.toggleControlState(i, s.controls[last]))}>
         Toggle anti-control{last >= 0 ? ` (q${s.controls[last]}: ${states[last] ? "●→○" : "○→●"})` : ""}
       </button>
       {(broadcast || (s.targets.length === 1 && s.controls.length === 0 && !custom)) && (
-        <button role="menuitem" onClick={act(() => calc.setBroadcast(i, !broadcast))}>{broadcast ? "On one qubit" : "On every qubit"}</button>
+        <button role={inline ? undefined : "menuitem"} onClick={act(() => calc.setBroadcast(i, !broadcast))}>{broadcast ? "On one qubit" : "On every qubit"}</button>
       )}
       <div className="menu-row">
         <span>only if</span>
@@ -145,11 +156,14 @@ export function DiagramMenu({ calc, menu, close }: { calc: Calculator; menu: Men
         </>}
       </div>
       <div className="menu-sep" />
-      <button role="menuitem" className="danger" onClick={act(() => calc.removeGate(i))}>Delete</button>
+      <button role={inline ? undefined : "menuitem"} className="danger" onClick={act(() => calc.removeGate(i))}>Delete</button>
     </>;
   } else {
     body = <EditTransform calc={calc} act={act} />;
   }
+  if (inline) return <section className="diagram-menu gate-inspector" aria-label="Selected gate editor">
+    <button onClick={close} aria-label="Close gate editor">Close</button>{body}
+  </section>;
   return createPortal(
     <div ref={box} className="diagram-menu" role="menu" style={pos} onContextMenu={(e) => e.preventDefault()}>{body}</div>,
     document.body,
