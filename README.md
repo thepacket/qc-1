@@ -184,6 +184,8 @@ numpy or scipy references. Examples:
 
 See [`validation/README.md`](validation/README.md). In the app, LAB →
 Verification & export → **Self-test** replays the references on your device.
+There are **502 in-app reference checks**, separate from the **1,586 automated
+development tests**.
 Bugs found in the upstream code this was ported from (60 so far) are listed in
 [`docs/quantiom-bugs.md`](docs/quantiom-bugs.md).
 
