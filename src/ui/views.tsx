@@ -208,9 +208,12 @@ function ShotsBar({ calc }: { calc: Calculator }) {
         onKeyDown={keys} /> /s</label>
       {autoShots && <span className="dim" aria-live="off">run {calc.shotRun}</span>}
       {calc.noiseOn && calc.experimentMode === "hardware" && (
+        <span className="readout-controls">
         <label className="shots-auto" title="Undo the noise model's readout confusion in the estimates (quasi-probabilities)">
-          <input type="checkbox" checked={calc.mitigateReadout} onChange={(e) => calc.setMitigateReadout(e.target.checked)} /> mitigate readout
+          <input type="checkbox" checked={calc.mitigateReadout} onChange={(e) => calc.setMitigateReadout(e.target.checked)} /> Readout mitigation
         </label>
+        <button className="qb" aria-label="Readout mitigation info" onClick={() => { calc.openAnalysis("readout"); calc.setMode("lab"); }}>info</button>
+        </span>
       )}
     </div>
   );
@@ -574,7 +577,6 @@ function InteractiveSphere({ v, ideal, qubit }: { v: Vec3; ideal?: Vec3; qubit: 
   return <div className="bloch-sphere-row">
     <div className="sphere-controls">
       <div className="bloch-qubit-label">q{qubit}</div>
-      <button onClick={() => setCamera(DEFAULT_CAMERA)}>Reset view</button>
     </div>
     <div className="sphere-interactive" role="group" tabIndex={0}
       aria-label="Interactive Bloch sphere. Drag or use arrow keys to rotate the view. Home resets the view."
@@ -604,6 +606,7 @@ function InteractiveSphere({ v, ideal, qubit }: { v: Vec3; ideal?: Vec3; qubit: 
       }}>
       <Sphere v={v} ideal={ideal} r={62} labels className="sphere-main" camera={camera} />
     </div>
+    <button className="sphere-reset" onClick={() => setCamera(DEFAULT_CAMERA)}>Reset view</button>
   </div>;
 }
 

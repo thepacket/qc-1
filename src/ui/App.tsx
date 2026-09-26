@@ -214,8 +214,9 @@ export function App() {
       </nav>
 
       <section className="lcd" aria-live="polite">
-        {/* The status row: the qubit count and undo/redo on CIRCUIT; flags and badges when there are any. */}
-        {(onCircuit || calc.busy || (onShots && calc.noiseOn) || calc.symbols.length > 0) && <div className="status">
+        <div className="busy-row">{calc.busy && <b className="busy">BUSY</b>}</div>
+        {/* Circuit controls, noise details and parameter badges sit below the reserved BUSY row. */}
+        {(onCircuit || (onShots && calc.noiseOn) || calc.symbols.length > 0) && <div className="status">
           {onCircuit && <div className="editor-top-row">
             <Count value={calc.n} min={1} max={STAB_MAX} set={(k) => calc.setQubitCount(k)} unit="qubit" label="Number of qubits" />
             <Count value={calc.bits} min={calc.usedBits} max={MAX_CBITS} set={(k) => calc.setClassicalCount(k)} unit="bit" label="Number of classical bits" />
@@ -224,8 +225,7 @@ export function App() {
               <button className="icon-btn" onClick={() => calc.redo()} aria-label="Redo" title="Redo (Ctrl+Shift+Z)">↷</button>
             </span>
           </div>}
-          {(calc.busy || (calc.noiseOn && onShots)) && <span className="flags">
-            {calc.busy && <b className="busy">BUSY</b>}
+          {calc.noiseOn && onShots && <span className="flags">
             {calc.noiseOn && onShots && <b className="noise-flag" title={noisy && nv?.view ? `noisy view: ${nv.view.method}` : "noise on"}>NOISE{noisy && nv?.view ? ` · ${nv.view.method}` : ""}</b>}
           </span>}
           {!onCircuit && <span className="grow" />}

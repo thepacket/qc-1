@@ -32,7 +32,7 @@ export function HelpView({ calc }: { calc: Calculator }) {
         <h3>Shots and repeated runs</h3>
         <p>The noise indicator, mode toggles, shot count, <b>Auto-repeat</b> and <b>rate</b> controls appear only at the top of <b>SHOTS</b>. Choose <b>Sample shots</b> in Direct Calculation or <b>Run once</b> in Simulated Measurements for a new sample.</p>
         <p>Auto-repeat works in either mode, with or without noise. Rate is measured in runs per second; a slow calculation finishes before the next run is scheduled. Repeating preserves the selected mode, continues across tabs, and is saved with the session. Exact calculated quantities stay unchanged while shot counts can vary. A fixed trajectory approximation can also repeat identically.</p>
-        <p>With noise in Simulated Measurements, <b>mitigate readout</b> corrects counts using the configured readout confusion matrix. It does not remove gate noise and can amplify statistical error.</p>
+        <p>With noise in Simulated Measurements, <b>Readout mitigation</b> corrects counts using the configured readout confusion matrix. It does not remove gate noise and can amplify statistical error.</p>
         <h3>Building a circuit</h3>
         <p>Edit the title above the diagram by clicking or tapping it. Loading an example sets its title to the example name. Your title is saved with the session and circuit memory.</p>
         <p>In the <b>CIRCUIT</b> tab, the gate palette sits under the diagram. The diagram is a grid: a column for each time step, a row for each qubit. <b>Drag a gate up into a cell</b> and let go: it lands in that column (or the first free one to its right) and stays there. A dashed outline shows where. A gate on k qubits takes k wires from the one you drop it on (controls first).</p>
@@ -55,14 +55,14 @@ export function HelpView({ calc }: { calc: Calculator }) {
         <h3>Views</h3>
         <ul>
           <li><b>CIRCUIT:</b> the diagram and gate palette; MENU for examples, import and export, STEP for numbered entries, and QASM for the program.</li>
-          <li><b>STATE:</b> amplitudes, or density matrix and purity under noise. Blue matrix cells are diagonal probabilities; orange cells are off-diagonal coherence. Rows and columns follow the same displayed basis order. The optional leading eigenvector is one component of the mixed state.</li>
+          <li><b>STATE:</b> amplitudes, or density matrix and purity under noise. Orange matrix cells are diagonal probabilities; dark gray cells are off-diagonal coherence. Rows and columns follow the same displayed basis order. The optional leading eigenvector is one component of the mixed state.</li>
           <li><b>PROB:</b> calculated probabilities or sampled frequencies, according to the selected mode.</li>
           <li><b>BLOCH:</b> a selected qubit's sphere and coordinates, with smaller spheres to select other qubits.</li>
           <li><b>SHOTS:</b> sampled counts, calculation-mode controls, shot count, auto-repeat and rate.</li>
           <li><b>LAB:</b> analyses and tools, organized into groups with search, Favourites and Recent. PIN adds a result to the report.</li>
         </ul>
         <h3>Using the Bloch sphere</h3>
-        <p>Drag the main sphere to rotate it, or focus it and use the arrow keys. <b>Reset view</b>, below the qubit label on the left, restores the camera; Home does the same. Coordinates and explanatory notes sit below the sphere, followed by the small qubit selectors.</p>
+        <p>Drag the main sphere to rotate it, or focus it and use the arrow keys. <b>Reset view</b>, below the main sphere, restores the camera; Home does the same. Coordinates and explanatory notes sit below the sphere, followed by the small qubit selectors.</p>
         <p>The slider and ◀ ▶ show the state after each circuit step. Under noise, <b>Compare ideal vector</b> adds a dashed ideal vector and ring at the same step, with separate ideal coordinates.</p>
         <p>A sphere describes one qubit's local state. A shorter vector means a more mixed state; the center is maximally mixed. Entanglement, noise or averaging measurement outcomes can all shorten it. A pure Bell pair has two centered vectors, so these spheres alone cannot establish entanglement. Sampled and trajectory vectors are labelled as estimates, without definitive purity labels; shot estimates can extend outside the sphere through statistical fluctuation.</p>
         <h3>How simulated measurements are calculated</h3>

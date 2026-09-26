@@ -37,6 +37,5 @@ trajectory approximation can also repeat identically rather than being a new
 noise realization on every run.
 
 The noise indicator and experiment controls appear only in SHOTS. Noise
-settings remain in LAB. In Simulated Measurements with noise, **mitigate
-readout** corrects the measurement counts using the configured readout confusion
+settings remain in LAB. In Simulated Measurements with noise, **Readout mitigation** corrects the measurement counts using the configured readout confusion
 matrix; it does not remove gate noise, and it can amplify statistical error.

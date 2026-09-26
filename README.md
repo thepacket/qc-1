@@ -55,8 +55,8 @@ With noise enabled, **STATE** starts with the density matrix and its purity.
 The optional leading eigenvector is labeled as one component; degenerate
 components are explicitly non-unique. Direct noisy STATE supports up to 8
 qubits, full tomography up to 6, and eigenvectors up to 6. Larger matrices show
-a labeled 8 × 8 preview; purity uses the entire matrix. Blue diagonal cells
-show probabilities; orange off-diagonal cells show coherence, with a color key.
+a labeled 8 × 8 preview; purity uses the entire matrix. Orange diagonal cells
+show probabilities; dark gray off-diagonal cells show coherence, with a color key.
 
 In Direct Calculation, supported LAB analyses use the noisy ensemble: reduced density,
 mutual information, negativity, concurrence, discord, tripartite information,
@@ -144,7 +144,7 @@ show the leading component instead of the entire mixed state.
 - readout errors can be **asymmetric**: a 1 misread as 0 more often than a 0 as
   1, set in the noise model or read from an IBM device file (`prob_meas1_prep0`,
   `prob_meas0_prep1`);
-- **mitigate readout** (in the SHOTS bar) undoes the readout confusion matrix
+- **Readout mitigation** (in the SHOTS bar) undoes the readout confusion matrix
   on every count, as readout-error mitigation does on a device.
 
 Readout mitigation also amplifies statistical uncertainty. BLOCH propagates

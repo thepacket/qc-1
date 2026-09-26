@@ -39,8 +39,8 @@ the last step to return to the complete circuit.
 
 ## Result panels
 
-- **STATE:** amplitudes, or a density matrix and purity under noise. Blue cells
-  are diagonal probabilities; orange cells are off-diagonal coherence. The
+- **STATE:** amplitudes, or a density matrix and purity under noise. Orange cells
+  are diagonal probabilities; dark gray cells are off-diagonal coherence. The
   optional leading eigenvector represents one component of a mixed state.
 - **PROB:** probabilities or sampled frequencies, according to the chosen mode.
 - **BLOCH:** rotate the main sphere by dragging or using arrow keys; **Reset
