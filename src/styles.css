@@ -842,6 +842,7 @@ button {
 .experiment-controls { flex: none; padding: 6px 0; border-bottom: 1px solid var(--grid); }
 .experiment-mode { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11px; }
 .experiment-mode .qb[aria-pressed="true"] { background: #67e8f9; border-color: #67e8f9; color: #111110; }
+.experiment-mode .noise-model-button { background: var(--amber); border-color: var(--amber); color: #111110; }
 .experiment-controls .shots-bar { margin-top: 6px; }
 .result-source { flex: none; display: flex; flex-wrap: wrap; gap: 3px 8px; padding: 6px 0; font-size: 11px; color: var(--ink-dim); }
 .result-source strong { color: var(--ink); font-weight: 500; }

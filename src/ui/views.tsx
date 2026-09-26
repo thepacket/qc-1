@@ -176,6 +176,7 @@ export function ExperimentControls({ calc }: { calc: Calculator }) {
     <div className="experiment-mode" role="group" aria-label="Calculation mode">
       <button className={`qb${!hardware ? " on" : ""}`} aria-pressed={!hardware} onClick={() => calc.setExperimentMode("simulation")}>Direct Calculation</button>
       <button className={`qb${hardware ? " on" : ""}`} aria-pressed={hardware} onClick={() => calc.setExperimentMode("hardware")}>Simulated Measurements</button>
+      <button className="qb noise-model-button" onClick={() => { calc.openAnalysis("noisemodel"); calc.setMode("lab"); }}>Noise model</button>
     </div>
     {(hardware || calc.mode === "shots") && <ShotsBar calc={calc} />}
   </div>;
