@@ -208,7 +208,9 @@ npm test
 `npm run validate` regenerates the reference fixtures; it needs the Python
 stack in `validation/`. `npm run docs:help` regenerates the analyses list.
 
-QC-1 reuses code from an MIT-licensed project by the same author.
+QC-1 was originally mostly coded by Claude Opus 5.5, complemented by
+GPT-6 Astra for scientific correctness. The author (thepacket) iteratively
+kept them aligned with his vision.
 
 ## Deploying to Fly.io
 
