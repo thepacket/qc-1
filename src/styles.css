@@ -948,7 +948,7 @@ button {
 .lesson-result th:first-child, .lesson-result td:first-child { text-align: left; }
 
 .density-table { overflow-x: auto; margin: 12px 0; }
-.density-table table { border-collapse: collapse; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.density-table table { border-collapse: collapse; font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .density-table th, .density-table td { padding: 7px; border: 1px solid #555; text-align: right; }
 
 .sphere-interactive { touch-action: none; cursor: grab; user-select: none; border-radius: 8px; }
